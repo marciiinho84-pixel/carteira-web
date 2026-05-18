@@ -2,18 +2,24 @@
 Formatadores de exibição: moeda, percentual, cores, badges.
 """
 
+import math
 import streamlit as st
 
 
+def _invalido(v) -> bool:
+    """Retorna True para None, NaN ou infinito."""
+    return v is None or (isinstance(v, float) and not math.isfinite(v))
+
+
 def moeda(v: float | None, sinal: bool = False) -> str:
-    if v is None:
+    if _invalido(v):
         return "—"
     prefixo = "+" if sinal and v > 0 else ""
     return f"R$ {prefixo}{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 def pct(v: float | None, casas: int = 2, sinal: bool = True) -> str:
-    if v is None:
+    if _invalido(v):
         return "—"
     prefixo = "+" if sinal and v > 0 else ""
     return f"{prefixo}{v * 100:.{casas}f}%"

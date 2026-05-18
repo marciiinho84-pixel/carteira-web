@@ -46,7 +46,7 @@ def render():
 
         df_edit = st.data_editor(
             df_orig,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             num_rows="fixed",
             height=520,

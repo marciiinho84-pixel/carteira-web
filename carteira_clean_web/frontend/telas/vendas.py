@@ -72,7 +72,7 @@ def render():
         margin=dict(t=20, b=40),
     )
     fig.add_hline(y=0, line_color="rgba(255,255,255,0.3)", line_width=1)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
     st.divider()
 
@@ -93,7 +93,7 @@ def render():
         })
 
     df_tab = pd.DataFrame(rows_tab)
-    st.dataframe(df_tab, use_container_width=True, hide_index=True)
+    st.dataframe(df_tab, width='stretch', hide_index=True)
 
     # Totalizador
     st.markdown(

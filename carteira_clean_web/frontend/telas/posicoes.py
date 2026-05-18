@@ -113,8 +113,21 @@ def render():
 
     st.dataframe(
         df_exib.style.apply(_cor_linha, axis=1),
-        use_container_width=True,
+        width='stretch',
         hide_index=True,
+        column_config={
+            "":          st.column_config.TextColumn("St",  width=40),
+            "Ticker":    st.column_config.TextColumn(width=70),
+            "Família":   st.column_config.TextColumn(width=120),
+            "Composite": st.column_config.TextColumn(width=80),
+            "Qtd":       st.column_config.TextColumn(width=90),
+            "Custo Médio":  st.column_config.TextColumn(width=100),
+            "Custo Total":  st.column_config.TextColumn(width=110),
+            "Preço Atual":  st.column_config.TextColumn(width=100),
+            "Valor Atual":  st.column_config.TextColumn(width=110),
+            "P&L R$":    st.column_config.TextColumn(width=110),
+            "P&L %":     st.column_config.TextColumn(width=70),
+        },
     )
 
     # ─── Detalhamento por composite ───────────────────────────────

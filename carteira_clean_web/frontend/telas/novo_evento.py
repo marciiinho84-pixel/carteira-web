@@ -172,7 +172,7 @@ def render():
             "💾 Salvar e Recalcular",
             type="primary",
             disabled=not pode_salvar,
-            use_container_width=True,
+            width='stretch',
         )
 
         if salvar and pode_salvar:

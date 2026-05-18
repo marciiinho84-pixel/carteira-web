@@ -121,7 +121,7 @@ def render():
                      gridcolor="rgba(255,255,255,0.04)")
     fig.update_yaxes(ticksuffix="%", row=2, col=1)
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
     st.divider()
 
@@ -142,7 +142,7 @@ def render():
             })
         st.dataframe(
             pd.DataFrame(rows_tab),
-            use_container_width=True,
+            width='stretch',
             hide_index=True,
             height=400,
         )

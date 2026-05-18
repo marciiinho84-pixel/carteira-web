@@ -92,7 +92,7 @@ def render():
                 "Saldo Proj.": fmt.moeda(p["saldo_projetado"]),
             })
         df_pend = pd.DataFrame(rows)
-        st.dataframe(df_pend, use_container_width=True, hide_index=True)
+        st.dataframe(df_pend, width='stretch', hide_index=True)
     else:
         st.info("✓ Nenhuma operação pendente nos próximos 5 dias úteis.")
 
@@ -131,14 +131,14 @@ def render():
                 font_color="white",
                 coloraxis_showscale=False,
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
         with col_tab:
             df_tab = df_set[["setor", "valor", "pct_rv", "n_ativos"]].copy()
             df_tab["valor"] = df_tab["valor"].apply(fmt.moeda)
             df_tab["pct_rv"] = df_tab["pct_rv"].apply(lambda v: fmt.pct(v, casas=1))
             df_tab.columns = ["Setor", "Valor", "% RV", "# Ativos"]
-            st.dataframe(df_tab, use_container_width=True, hide_index=True, height=420)
+            st.dataframe(df_tab, width='stretch', hide_index=True, height=420)
 
     st.divider()
 
@@ -181,4 +181,4 @@ def render():
         height=280,
         margin=dict(t=40, b=10),
     )
-    st.plotly_chart(fig_bar, use_container_width=True)
+    st.plotly_chart(fig_bar, width='stretch')
