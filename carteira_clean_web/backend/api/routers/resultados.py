@@ -23,7 +23,7 @@ from carteira_clean_web.backend.api.schemas import (
     PosicaoOut, VendaOut, EvolucaoDiariaOut, AlertaOut,
     DashboardOut, MetaOut, AtribuicaoOut, CarteiraRVOut,
 )
-from carteira_clean_web.backend.engine.constantes import COTIZADO_PUBLICO, AGREGADO_PRIVADO
+from carteira_clean_web.backend.engine.constantes import COTIZADO_PUBLICO, AGREGADO_PRIVADO, DATA_INICIO
 from carteira_clean_web.backend.engine.ir_mensal import calc_ir_mensal
 from carteira_clean_web.backend.engine.utils import (
     preco_em, status_liquidacao, data_liquidacao,
@@ -64,6 +64,9 @@ def posicoes():
 
     # Dia útil anterior para var_dia
     d_minus_1 = pd.bdate_range(end=hoje, periods=2)[0].date()
+    # Yield projetado por ativo
+    proventos_dict = estado.get("proventos", {})
+    meses_periodo = max((hoje - DATA_INICIO).days / 30.44, 1.0)
 
     resultado = []
     for tkr in sorted(posicoes_dict.keys()):
@@ -106,6 +109,13 @@ def posicoes():
                     var_dia_pct = (preco_atual - p_d1) / p_d1
                     var_dia = p.qtd * (preco_atual - p_d1)
 
+        # yield projetado 12m para este ativo
+        prov_ativo = proventos_dict.get(tkr, 0.0)
+        if prov_ativo > 0 and valor_atual > 0:
+            yield_12m_ativo = round((prov_ativo * (12.0 / meses_periodo)) / valor_atual, 6)
+        else:
+            yield_12m_ativo = 0.0
+
         resultado.append(PosicaoOut(
             ticker=tkr,
             classe=info.get("classe"),
@@ -120,6 +130,7 @@ def posicoes():
             pnl_pct=pnl_pct,
             var_dia=round(var_dia, 2) if var_dia is not None else None,
             var_dia_pct=round(var_dia_pct, 6) if var_dia_pct is not None else None,
+            yield_12m=yield_12m_ativo,
         ))
     return resultado
 
@@ -154,6 +165,7 @@ def evolucao(
             ipca_acum=row.ipca_acum,
             ibov_acum=row.ibov_acum,
             sp500_brl_acum=row.sp500_brl_acum,
+            drawdown=round(float(row.drawdown), 6) if hasattr(row, "drawdown") else None,
         )
         for row in df.itertuples(index=False)
     ]
@@ -200,6 +212,26 @@ def dashboard():
         drawdown_max = round(df.loc[idx_min, "drawdown"], 6)
         drawdown_max_data = str(df.loc[idx_min, "data"])
 
+    # volatilidade anualizada da Gerida
+    twr_daily = df["twr_gerida"].diff().fillna(0)
+    vol_anualizada = float(twr_daily.std() * np.sqrt(252)) if len(df) > 1 else 0.0
+
+    # beta da Gerida vs IBOV
+    beta_ibov = None
+    if n >= 20:
+        ibov_daily = df["ibov_acum"].diff().fillna(0)
+        ibov_var = float(ibov_daily.var())
+        if ibov_var > 0:
+            cov_matrix = np.cov(twr_daily.values, ibov_daily.values)
+            beta_ibov = round(float(cov_matrix[0, 1] / ibov_var), 4)
+
+    # yield projetado 12m (baseado em proventos do event log)
+    proventos_dict = estado.get("proventos", {})
+    meses_periodo = max((estado["hoje"] - DATA_INICIO).days / 30.44, 1.0)
+    renda_anual_est = sum(v * (12.0 / meses_periodo) for v in proventos_dict.values() if v > 0)
+    pat_total = ult["patrimonio_total"]
+    yield_12m = round(renda_anual_est / pat_total, 6) if pat_total > 0 else 0.0
+
     return DashboardOut(
         patrimonio_total=ult["patrimonio_total"],
         patrimonio_gerida=ult["patrimonio_gerida"],
@@ -220,6 +252,10 @@ def dashboard():
         var_dia_pct=var_dia_pct,
         drawdown_max=drawdown_max,
         drawdown_max_data=drawdown_max_data,
+        vol_anualizada=round(vol_anualizada, 6),
+        beta_ibov=beta_ibov,
+        yield_12m=yield_12m,
+        renda_anual_est=round(renda_anual_est, 2),
     )
 
 

@@ -125,6 +125,44 @@ def render():
 
     st.divider()
 
+    # ─── Gráfico Underwater (drawdown) ───────────────────────────
+    if "drawdown" in df_f.columns and df_f["drawdown"].notna().any():
+        st.subheader("Drawdown (Underwater)")
+        dd_min = df_f["drawdown"].min()
+        fig_dd = go.Figure(go.Scatter(
+            x=df_f["data"],
+            y=df_f["drawdown"] * 100,
+            fill="tozeroy",
+            fillcolor="rgba(231, 76, 60, 0.20)",
+            line=dict(color="#e74c3c", width=1.5),
+            hovertemplate="Drawdown: %{y:+.2f}%<extra></extra>",
+            name="Drawdown",
+        ))
+        fig_dd.add_hline(y=0, line_color="rgba(255,255,255,0.3)", line_width=1)
+        fig_dd.update_layout(
+            height=220,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(20,22,36,0.8)",
+            font_color="white",
+            hovermode="x unified",
+            showlegend=False,
+            margin=dict(t=10, b=30, l=60, r=20),
+            xaxis=dict(gridcolor="rgba(255,255,255,0.08)"),
+            yaxis=dict(
+                gridcolor="rgba(255,255,255,0.08)",
+                ticksuffix="%",
+                title="Drawdown (%)",
+            ),
+        )
+        st.plotly_chart(fig_dd, use_container_width=True, config={'responsive': True})
+        if dd_min < 0:
+            idx_dd = df_f["drawdown"].idxmin()
+            st.caption(
+                f"Drawdown máximo do período: **{dd_min * 100:+.2f}%** "
+                f"(em {df_f.loc[idx_dd, 'data'].strftime('%d/%m/%Y')})"
+            )
+        st.divider()
+
     # ─── Tabela diária (expansível) ───────────────────────────────
     with st.expander("📊 Tabela Diária Completa", expanded=False):
         rows_tab = []

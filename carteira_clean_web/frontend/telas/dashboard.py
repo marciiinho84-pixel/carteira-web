@@ -167,6 +167,65 @@ def render():
 
     st.divider()
 
+    # ─── Métricas de risco e retorno ─────────────────────────────
+    st.subheader("Risco e Retorno")
+    r1, r2, r3, r4 = st.columns(4)
+
+    with r1:
+        dd = dash.get("drawdown_max")
+        dd_data = dash.get("drawdown_max_data")
+        if dd is not None:
+            dt_str = pd.to_datetime(dd_data).strftime("%d/%m/%Y") if dd_data else ""
+            cor_dd = "#e74c3c"
+            fmt.card_kpi(
+                "Drawdown Máx. YTD",
+                fmt.pct(dd, casas=2),
+                delta=dt_str,
+                cor_delta="#aaa",
+            )
+        else:
+            fmt.card_kpi("Drawdown Máx. YTD", "—")
+
+    with r2:
+        vol = dash.get("vol_anualizada")
+        fmt.card_kpi(
+            "Volatilidade a.a.",
+            fmt.pct(vol, casas=1) if vol is not None else "—",
+            delta="IBOV ~25% típico",
+            cor_delta="#aaa",
+        )
+
+    with r3:
+        beta = dash.get("beta_ibov")
+        if beta is not None:
+            if beta < 0.5:
+                interp = "Defensiva"
+            elif beta < 0.8:
+                interp = "Moderada"
+            elif beta < 1.2:
+                interp = "Alinhada"
+            else:
+                interp = "Agressiva"
+            fmt.card_kpi("Beta vs IBOV", f"{beta:.2f}", delta=interp, cor_delta="#aaa")
+        else:
+            fmt.card_kpi("Beta vs IBOV", "—", delta="< 20 obs.", cor_delta="#aaa")
+
+    with r4:
+        yield_12m = dash.get("yield_12m")
+        renda_anual = dash.get("renda_anual_est", 0) or 0
+        if yield_12m is not None:
+            renda_mes = renda_anual / 12
+            fmt.card_kpi(
+                "Yield Projetado 12m",
+                fmt.pct(yield_12m, casas=2),
+                delta=f"~{fmt.moeda(renda_mes)}/mês",
+                cor_delta="#2ecc71",
+            )
+        else:
+            fmt.card_kpi("Yield Projetado 12m", "—")
+
+    st.divider()
+
     # ─── Alertas ativos ───────────────────────────────────────────
     alertas = dash.get("alertas", [])
     if alertas:

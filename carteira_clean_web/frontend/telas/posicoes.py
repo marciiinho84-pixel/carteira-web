@@ -93,6 +93,7 @@ def render():
         else:
             var_dia_str = "—"
 
+        y12 = r.get("yield_12m") or 0
         rows.append({
             "": status,
             "Ticker": r["ticker"],
@@ -106,6 +107,7 @@ def render():
             "Valor Atual": fmt.moeda(r["valor_atual"]),
             "P&L R$": fmt.moeda(pnl, sinal=True),
             "P&L %": fmt.pct(r["pnl_pct"]),
+            "Yield 12m": fmt.pct(y12, casas=1) if y12 else "—",
         })
 
     df_exib = pd.DataFrame(rows)
@@ -137,6 +139,7 @@ def render():
             "Valor Atual":  st.column_config.TextColumn(width=110),
             "P&L R$":    st.column_config.TextColumn(width=110),
             "P&L %":     st.column_config.TextColumn(width=70),
+            "Yield 12m": st.column_config.TextColumn(width=80),
         },
     )
 

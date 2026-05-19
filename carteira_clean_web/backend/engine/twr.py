@@ -197,4 +197,9 @@ def calc_twr_e_benchmarks(
     df["ibov_acum"] = ibov_acum
     df["sp500_brl_acum"] = sp_brl_acum
 
+    # Drawdown da Gerida: queda % do pico histórico (sempre ≤ 0)
+    max_gerida = df["patrimonio_gerida"].cummax()
+    denom = max_gerida.where(max_gerida > 0, other=1.0)
+    df["drawdown"] = ((df["patrimonio_gerida"] - max_gerida) / denom).clip(upper=0)
+
     return df

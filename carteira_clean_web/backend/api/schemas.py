@@ -150,6 +150,7 @@ class PosicaoOut(BaseModel):
     pnl_pct: float
     var_dia: Optional[float] = None      # variação absoluta no dia (R$)
     var_dia_pct: Optional[float] = None  # variação percentual no dia
+    yield_12m: Optional[float] = None    # yield projetado 12m (fração)
 
 
 class VendaOut(BaseModel):
@@ -176,6 +177,7 @@ class EvolucaoDiariaOut(BaseModel):
     ipca_acum: float
     ibov_acum: float
     sp500_brl_acum: float
+    drawdown: Optional[float] = None
 
 
 class AlertaOut(BaseModel):
@@ -209,10 +211,14 @@ class DashboardOut(BaseModel):
     pnl_vendas_rv: float
     n_alertas: int
     alertas: List[AlertaOut] = []
-    var_dia: Optional[float] = None      # variação absoluta da carteira no dia (R$)
-    var_dia_pct: Optional[float] = None  # variação percentual da carteira no dia
+    var_dia: Optional[float] = None
+    var_dia_pct: Optional[float] = None
     drawdown_max: Optional[float] = None
     drawdown_max_data: Optional[str] = None
+    vol_anualizada: Optional[float] = None   # volatilidade anualizada da Gerida
+    beta_ibov: Optional[float] = None        # beta da Gerida vs IBOV
+    yield_12m: Optional[float] = None        # yield projetado 12m do portfolio (fração)
+    renda_anual_est: Optional[float] = None  # renda anual estimada em R$
 
 
 class MetaOut(BaseModel):
