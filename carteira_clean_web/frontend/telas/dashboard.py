@@ -18,9 +18,41 @@ def render():
 
     dash = api.get("dashboard")
     evo_data = api.get("evolucao")
+    ir_data = api.get("ir-mensal") or []
 
     if dash is None:
         return
+
+    # ─── Alerta DARF (se houver IR a pagar este mês) ─────────────
+    if ir_data:
+        mes_atual = pd.Timestamp.today().strftime("%Y-%m")
+        ir_mes = next((r for r in ir_data if r["mes"] == mes_atual and r["gera_darf"]), None)
+        if ir_mes:
+            venc = ir_mes.get("darf_vencimento", "?")
+            venc_fmt = f"{venc[8:10]}/{venc[5:7]}" if venc and len(venc) >= 10 else venc
+            st.error(
+                f"🔴 **DARF Código 6015** — "
+                f"IR sobre RV: **{fmt.moeda(ir_mes['ir_devido'])}** — "
+                f"Vence em **{venc_fmt}** (último dia útil do mês seguinte)"
+            )
+
+    # ─── Variação no dia (KPI destaque) ──────────────────────────
+    var_dia = dash.get("var_dia")
+    var_dia_pct = dash.get("var_dia_pct")
+    if var_dia is not None:
+        seta = "↑" if var_dia >= 0 else "↓"
+        cor_var = "#2ecc71" if var_dia >= 0 else "#e74c3c"
+        var_texto = f"{seta} {fmt.moeda(abs(var_dia), sinal=False)} ({fmt.pct(abs(var_dia_pct), casas=2)})"
+        st.markdown(
+            f"<div style='background: linear-gradient(135deg,rgba(30,34,50,0.9),rgba(20,24,38,0.9));"
+            f"border-left:4px solid {cor_var};padding:12px 20px;border-radius:8px;margin-bottom:16px;'>"
+            f"<span style='color:#aaa;font-size:0.85em;'>VARIAÇÃO HOJE (D-1 → D)</span><br>"
+            f"<span style='color:{cor_var};font-size:1.5em;font-weight:700;'>{var_texto}</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.info("ℹ️ Variação diária indisponível (modo sem preços de mercado ou 1º cálculo).")
 
     # ─── KPIs principais ─────────────────────────────────────────
     st.subheader("Patrimônio & Performance")

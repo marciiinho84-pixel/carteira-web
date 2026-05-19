@@ -148,6 +148,8 @@ class PosicaoOut(BaseModel):
     valor_atual: float
     pnl: float
     pnl_pct: float
+    var_dia: Optional[float] = None      # variação absoluta no dia (R$)
+    var_dia_pct: Optional[float] = None  # variação percentual no dia
 
 
 class VendaOut(BaseModel):
@@ -207,6 +209,10 @@ class DashboardOut(BaseModel):
     pnl_vendas_rv: float
     n_alertas: int
     alertas: List[AlertaOut] = []
+    var_dia: Optional[float] = None      # variação absoluta da carteira no dia (R$)
+    var_dia_pct: Optional[float] = None  # variação percentual da carteira no dia
+    drawdown_max: Optional[float] = None
+    drawdown_max_data: Optional[str] = None
 
 
 class MetaOut(BaseModel):

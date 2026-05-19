@@ -20,6 +20,53 @@ def render():
     if vendas is None:
         return
 
+    # ─── Painel IR Mensal ─────────────────────────────────────────
+    ir_data = api.get("ir-mensal") or []
+    if ir_data:
+        st.subheader("📊 Imposto de Renda — Estimativa Mensal")
+        mes_atual = pd.Timestamp.today().strftime("%Y-%m")
+        ir_mes_atual = next((r for r in ir_data if r["mes"] == mes_atual), None) or ir_data[-1]
+
+        mes_fmt = f"{ir_mes_atual['mes'][5:7]}/{ir_mes_atual['mes'][:4]}"
+        status_ir = ir_mes_atual["status"]
+        cor_box = "#2ecc71" if status_ir == "ISENTO" else "#e74c3c" if ir_mes_atual["gera_darf"] else "#f39c12"
+        icone = "✓" if status_ir == "ISENTO" else "⚠"
+
+        st.markdown(
+            f"<div style='border:1px solid {cor_box};border-left:5px solid {cor_box};"
+            f"padding:16px;border-radius:8px;margin-bottom:16px;'>"
+            f"<b style='font-size:1.1em;'>IMPOSTO DE RENDA — {mes_fmt.upper()}</b><br><br>"
+            f"Volume vendas:&nbsp;&nbsp;&nbsp;&nbsp;<b>{fmt.moeda(ir_mes_atual['volume_vendas'])}</b><br>"
+            f"Status:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"
+            f"<b style='color:{cor_box};'>{status_ir} {icone}</b><br>"
+            f"IR a pagar:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>{fmt.moeda(ir_mes_atual['ir_devido'])}</b><br>"
+            f"Prejuízo acum.:&nbsp;&nbsp;<b>{fmt.moeda(ir_mes_atual['prejudizo_acumulado'])}</b>"
+            + (f"<br>DARF Cód. 6015 — vence <b>{ir_mes_atual['darf_vencimento'][8:10]}/{ir_mes_atual['darf_vencimento'][5:7]}</b>" if ir_mes_atual["gera_darf"] else "")
+            + "</div>",
+            unsafe_allow_html=True,
+        )
+
+        st.subheader("Histórico Mensal de IR")
+        rows_ir = []
+        for r in ir_data:
+            rows_ir.append({
+                "Mês": f"{r['mes'][5:7]}/{r['mes'][:4]}",
+                "Ativos": ", ".join(r.get("tickers_vendidos", [])),
+                "Volume Vendas": fmt.moeda(r["volume_vendas"]),
+                "Lucro Bruto": fmt.moeda(r["lucro_bruto"]),
+                "Compensado": fmt.moeda(r["prejudizo_compensado"]),
+                "IR Estimado": fmt.moeda(r["ir_devido"]),
+                "Status": r["status"],
+                "DARF Vence": (
+                    f"{r['darf_vencimento'][8:10]}/{r['darf_vencimento'][5:7]}"
+                    if r.get("darf_vencimento") else "—"
+                ),
+            })
+        df_ir = pd.DataFrame(rows_ir)
+        st.dataframe(df_ir, hide_index=True, use_container_width=True)
+        st.divider()
+
+
     if not vendas:
         st.info("Nenhuma venda de RV registrada.")
         return

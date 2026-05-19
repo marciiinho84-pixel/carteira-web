@@ -318,3 +318,31 @@ def render():
                     st.warning(f"🟡 {msg}")
                 else:
                     st.info(f"🔵 {msg}")
+
+        st.divider()
+        st.markdown("**💾 Backup do banco de dados:**")
+        if st.button("💾 Fazer backup agora", use_container_width=True,
+                     key="btn_backup_manual"):
+            with st.spinner("Fazendo backup..."):
+                res = api.post("backup")
+            if res and res.get("ok"):
+                st.success(
+                    f"✅ Backup criado: `{res['arquivo']}` "
+                    f"({res.get('tamanho_bytes', 0) // 1024} KB)"
+                )
+            else:
+                st.error("❌ Falha ao criar backup.")
+
+        backups = api.get("backup/listar") or []
+        if backups:
+            st.caption("Últimos 5 backups (em ~/Carteira/backups/):")
+            import pandas as pd
+            df_bkp = pd.DataFrame(backups)
+            df_bkp["tamanho"] = df_bkp["tamanho_bytes"].apply(
+                lambda x: f"{x // 1024} KB"
+            )
+            df_bkp = df_bkp[["arquivo", "criado_em", "tamanho"]]
+            df_bkp.columns = ["Arquivo", "Criado em", "Tamanho"]
+            st.dataframe(df_bkp, hide_index=True, use_container_width=True)
+        else:
+            st.caption("Nenhum backup encontrado em ~/Carteira/backups/")

@@ -1,13 +1,15 @@
 """
-GET  /api/v1/ativos
-POST /api/v1/ativos
-PATCH /api/v1/ativos/{ticker}
+GET    /api/v1/ativos
+POST   /api/v1/ativos
+PATCH  /api/v1/ativos/{ticker}
+DELETE /api/v1/ativos/{ticker}
 """
 
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 
-from carteira_clean_web.backend.db.models import Ativo
+from fastapi.responses import Response
+from carteira_clean_web.backend.db.models import Ativo, Evento
 from carteira_clean_web.backend.api.schemas import AtivoOut, AtivoCreate, AtivoUpdate
 from carteira_clean_web.backend.api.deps import get_db
 
@@ -43,3 +45,17 @@ def editar_ativo(ticker: str, payload: AtivoUpdate, db: Session = Depends(get_db
     db.commit()
     db.refresh(ativo)
     return ativo.to_dict()
+
+
+@router.delete("/{ticker}", status_code=204)
+def excluir_ativo(ticker: str, db: Session = Depends(get_db)):
+    """Remove ativo do cadastro. Recusado se houver eventos vinculados."""
+    ativo = db.query(Ativo).filter(Ativo.ticker == ticker).first()
+    if not ativo:
+        raise HTTPException(404, f"Ativo '{ticker}' não encontrado")
+    tem_eventos = db.query(Evento).filter(Evento.ativo == ticker).first()
+    if tem_eventos:
+        raise HTTPException(400, f"Ativo '{ticker}' tem eventos vinculados — remova os eventos antes")
+    db.delete(ativo)
+    db.commit()
+    return Response(status_code=204)

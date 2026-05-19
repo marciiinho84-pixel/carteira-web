@@ -85,6 +85,14 @@ def render():
         pnl_vals.append(pnl)
         status = "🟢" if pnl > 0 else ("🔴" if pnl < 0 else "🟡")
 
+        vd = r.get("var_dia")
+        vd_pct = r.get("var_dia_pct")
+        if vd is not None:
+            seta = "↑" if vd >= 0 else "↓"
+            var_dia_str = f"{seta}{fmt.moeda(abs(vd), sinal=False)} ({fmt.pct(abs(vd_pct), casas=2)})"
+        else:
+            var_dia_str = "—"
+
         rows.append({
             "": status,
             "Ticker": r["ticker"],
@@ -94,6 +102,7 @@ def render():
             "Custo Médio": fmt.moeda(r["custo_medio"]),
             "Custo Total": fmt.moeda(r["custo_total"]),
             "Preço Atual": fmt.moeda(r["preco_atual"]) if r["preco_atual"] else "—",
+            "Var dia": var_dia_str,
             "Valor Atual": fmt.moeda(r["valor_atual"]),
             "P&L R$": fmt.moeda(pnl, sinal=True),
             "P&L %": fmt.pct(r["pnl_pct"]),
@@ -124,6 +133,7 @@ def render():
             "Custo Médio":  st.column_config.TextColumn(width=100),
             "Custo Total":  st.column_config.TextColumn(width=110),
             "Preço Atual":  st.column_config.TextColumn(width=100),
+            "Var dia":      st.column_config.TextColumn("Var dia ↕", width=130),
             "Valor Atual":  st.column_config.TextColumn(width=110),
             "P&L R$":    st.column_config.TextColumn(width=110),
             "P&L %":     st.column_config.TextColumn(width=70),

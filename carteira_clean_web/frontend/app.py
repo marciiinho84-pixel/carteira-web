@@ -5,6 +5,7 @@ Carteira Clean — aplicação Streamlit principal.
 import streamlit as st
 
 from carteira_clean_web.frontend.utils import api
+from carteira_clean_web.backend.scripts.backup import backup_se_necessario
 from carteira_clean_web.frontend.telas import (
     carteira_rv,
     novo_evento,
@@ -15,6 +16,14 @@ from carteira_clean_web.frontend.telas import (
     evolucao,
     configuracoes,
 )
+
+# Backup automático: uma vez por dia, não bloqueia se falhar
+if "backup_hoje_feito" not in st.session_state:
+    try:
+        backup_se_necessario()
+    except Exception:
+        pass
+    st.session_state["backup_hoje_feito"] = True
 
 st.set_page_config(
     page_title="Carteira Clean",

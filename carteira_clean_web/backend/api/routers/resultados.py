@@ -11,6 +11,7 @@ Todos leem o cache do engine — sem recalcular.
 """
 
 import numpy as np
+import pandas as pd
 from collections import defaultdict
 from datetime import date
 from typing import Optional
@@ -23,6 +24,7 @@ from carteira_clean_web.backend.api.schemas import (
     DashboardOut, MetaOut, AtribuicaoOut, CarteiraRVOut,
 )
 from carteira_clean_web.backend.engine.constantes import COTIZADO_PUBLICO, AGREGADO_PRIVADO
+from carteira_clean_web.backend.engine.ir_mensal import calc_ir_mensal
 from carteira_clean_web.backend.engine.utils import (
     preco_em, status_liquidacao, data_liquidacao,
     status_liquidacao_d1, data_liquidacao_d1,
@@ -60,6 +62,9 @@ def posicoes():
         pat_gerida = ult["patrimonio_gerida"]
         pat_funcef = ult["patrimonio_funcef"]
 
+    # Dia útil anterior para var_dia
+    d_minus_1 = pd.bdate_range(end=hoje, periods=2)[0].date()
+
     resultado = []
     for tkr in sorted(posicoes_dict.keys()):
         p = posicoes_dict[tkr]
@@ -84,6 +89,23 @@ def posicoes():
         pnl = valor_atual - p.custo_total
         pnl_pct = pnl / p.custo_total if p.custo_total > 0 else 0
 
+        # var_dia: (preço_hoje - preço_d-1) / preço_d-1, aplicado ao qtd atual
+        var_dia = var_dia_pct = None
+        if familia in COTIZADO_PUBLICO and preco_atual is not None:
+            p_d1 = preco_em(precos_pub.get(tkr, {}), d_minus_1)
+            if p_d1 and p_d1 > 0:
+                var_dia_pct = (preco_atual - p_d1) / p_d1
+                var_dia = p.qtd * (preco_atual - p_d1)
+        elif preco_atual is not None and p.qtd > 0:
+            p_d1 = preco_em(precos_man.get(tkr, {}), d_minus_1, max_lookback_dias=10)
+            if p_d1 and p_d1 > 0:
+                if familia in AGREGADO_PRIVADO:
+                    var_dia_pct = (preco_atual - p_d1) / p_d1
+                    var_dia = preco_atual - p_d1
+                else:
+                    var_dia_pct = (preco_atual - p_d1) / p_d1
+                    var_dia = p.qtd * (preco_atual - p_d1)
+
         resultado.append(PosicaoOut(
             ticker=tkr,
             classe=info.get("classe"),
@@ -96,6 +118,8 @@ def posicoes():
             valor_atual=valor_atual,
             pnl=pnl,
             pnl_pct=pnl_pct,
+            var_dia=round(var_dia, 2) if var_dia is not None else None,
+            var_dia_pct=round(var_dia_pct, 6) if var_dia_pct is not None else None,
         ))
     return resultado
 
@@ -159,6 +183,23 @@ def dashboard():
     sharpe = (twr_ann - cdi_ytd) / (std * np.sqrt(252)) if std > 0 else 0
     pnl = sum(v["pnl"] for v in estado["vendas_rv"])
     alertas = [AlertaOut(nivel=a[0], ativo=a[1], mensagem=a[2]) for a in estado["alertas"]]
+
+    # var_dia: diferença entre última e penúltima linha do df_evo
+    var_dia = var_dia_pct = None
+    if n >= 2:
+        pat_hoje = ult["patrimonio_total"]
+        pat_d1 = df.iloc[-2]["patrimonio_total"]
+        if pat_d1 > 0:
+            var_dia = round(pat_hoje - pat_d1, 2)
+            var_dia_pct = round((pat_hoje - pat_d1) / pat_d1, 6)
+
+    # drawdown máximo
+    drawdown_max = drawdown_max_data = None
+    if "drawdown" in df.columns and not df["drawdown"].isna().all():
+        idx_min = df["drawdown"].idxmin()
+        drawdown_max = round(df.loc[idx_min, "drawdown"], 6)
+        drawdown_max_data = str(df.loc[idx_min, "data"])
+
     return DashboardOut(
         patrimonio_total=ult["patrimonio_total"],
         patrimonio_gerida=ult["patrimonio_gerida"],
@@ -175,6 +216,10 @@ def dashboard():
         pnl_vendas_rv=round(pnl, 2),
         n_alertas=len(alertas),
         alertas=alertas,
+        var_dia=var_dia,
+        var_dia_pct=var_dia_pct,
+        drawdown_max=drawdown_max,
+        drawdown_max_data=drawdown_max_data,
     )
 
 
@@ -344,6 +389,15 @@ def vendas():
         )
         for v in sorted(estado["vendas_rv"], key=lambda x: x["data"])
     ]
+
+
+# ─── IR Mensal ────────────────────────────────────────────────────
+
+@router.get("/ir-mensal")
+def ir_mensal():
+    """Estimativa de IR mensal sobre vendas de RV com regras de isenção."""
+    estado = _exige_cache()
+    return calc_ir_mensal(estado["vendas_rv"], estado["ativos"])
 
 
 # ─── Meta / Projeção ──────────────────────────────────────────────
