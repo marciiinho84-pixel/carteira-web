@@ -145,7 +145,7 @@ def render():
             hovermode="x unified",
             margin=dict(t=10, b=40, l=60, r=20),
         )
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, use_container_width=True, config={'responsive': True})
 
     st.divider()
 

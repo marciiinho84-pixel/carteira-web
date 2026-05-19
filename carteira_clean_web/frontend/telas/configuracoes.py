@@ -117,7 +117,7 @@ def render():
 
         df_edit = st.data_editor(
             df_orig,
-            width="stretch",
+            use_container_width=True,
             hide_index=True,
             num_rows="fixed",
             height=520,
@@ -187,6 +187,10 @@ def render():
                 if st.button("❌ Cancelar", key="btn_cancel_ativos"):
                     st.session_state.pop("confirmar_ativos", None)
                     st.rerun()
+
+        st.divider()
+        st.caption("Exportar tabela de ativos cadastrados:")
+        fmt.botoes_exportar(df_orig, "cad_ativos", key="cfg_ativos")
 
     # ─── Aba 2: Premissas da Meta ─────────────────────────────────
     with aba[1]:
@@ -336,7 +340,6 @@ def render():
         backups = api.get("backup/listar") or []
         if backups:
             st.caption("Últimos 5 backups (em ~/Carteira/backups/):")
-            import pandas as pd
             df_bkp = pd.DataFrame(backups)
             df_bkp["tamanho"] = df_bkp["tamanho_bytes"].apply(
                 lambda x: f"{x // 1024} KB"

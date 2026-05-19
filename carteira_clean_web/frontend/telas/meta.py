@@ -154,7 +154,7 @@ def render():
         legend=dict(orientation="h", y=1.05),
         margin=dict(t=10, b=40, l=80, r=120),
     )
-    st.plotly_chart(fig, width='stretch')
+    st.plotly_chart(fig, use_container_width=True, config={'responsive': True})
 
     st.divider()
 
@@ -180,7 +180,7 @@ def render():
 
     st.dataframe(
         df_tab.style.apply(_destacar_meta, axis=1),
-        width='stretch',
+        use_container_width=True,
         hide_index=True,
     )
 

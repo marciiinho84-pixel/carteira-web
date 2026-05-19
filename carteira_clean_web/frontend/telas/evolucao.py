@@ -121,7 +121,7 @@ def render():
                      gridcolor="rgba(255,255,255,0.04)")
     fig.update_yaxes(ticksuffix="%", row=2, col=1)
 
-    st.plotly_chart(fig, width='stretch')
+    st.plotly_chart(fig, use_container_width=True, config={'responsive': True})
 
     st.divider()
 
@@ -140,9 +140,15 @@ def render():
                 "CDI": fmt.pct(r["cdi_acum"]),
                 "IBOV": fmt.pct(r["ibov_acum"]),
             })
-        st.dataframe(
-            pd.DataFrame(rows_tab),
-            width='stretch',
-            hide_index=True,
-            height=400,
-        )
+        df_evo_tab = pd.DataFrame(rows_tab)
+        st.dataframe(df_evo_tab, use_container_width=True, hide_index=True, height=400)
+
+        st.caption("Exportar série histórica:")
+        # Export com valores numéricos (não formatados)
+        df_evo_export = df_f[["data","patrimonio_total","patrimonio_gerida",
+                               "patrimonio_funcef","patrimonio_rv",
+                               "twr_gerida","twr_total","cdi_acum","ibov_acum"]].copy()
+        df_evo_export["data"] = df_evo_export["data"].dt.strftime("%d/%m/%Y")
+        df_evo_export.columns = ["Data","Patrim. Total","Gerida","FUNCEF","RV",
+                                  "TWR Gerida","TWR Total","CDI","IBOV"]
+        fmt.botoes_exportar(df_evo_export, "evolucao", key="evo")

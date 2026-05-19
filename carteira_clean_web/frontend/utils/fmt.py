@@ -1,8 +1,12 @@
 """
-Formatadores de exibição: moeda, percentual, cores, badges.
+Formatadores de exibição: moeda, percentual, cores, badges, export.
 """
 
+import io
 import math
+from datetime import date
+
+import pandas as pd
 import streamlit as st
 
 
@@ -48,6 +52,40 @@ def colorir(valor: str, cor: str) -> str:
 def delta_colored(v: float, fmt_fn=pct) -> str:
     cor = "#2ecc71" if v >= 0 else "#e74c3c"
     return f'<span style="color:{cor}">{fmt_fn(v)}</span>'
+
+
+def botoes_exportar(df: pd.DataFrame, nome_tabela: str, key: str) -> None:
+    """Renderiza botões 📄 CSV e 📊 XLSX lado a lado para download da tabela."""
+    hoje = date.today().strftime("%Y-%m-%d")
+    nome = f"{nome_tabela}_{hoje}"
+
+    col1, col2 = st.columns(2)
+
+    # CSV com BOM (abre sem erro de acentuação no LibreOffice/Excel BR)
+    with col1:
+        csv_bytes = df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+        st.download_button(
+            label="📄 Exportar CSV",
+            data=csv_bytes,
+            file_name=f"{nome}.csv",
+            mime="text/csv",
+            use_container_width=True,
+            key=f"{key}_csv",
+        )
+
+    # XLSX com openpyxl
+    with col2:
+        buf = io.BytesIO()
+        with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+            df.to_excel(writer, index=False, sheet_name="Dados")
+        st.download_button(
+            label="📊 Exportar XLSX",
+            data=buf.getvalue(),
+            file_name=f"{nome}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key=f"{key}_xlsx",
+        )
 
 
 def card_kpi(titulo: str, valor: str, delta: str = "", cor_delta: str = "gray") -> None:

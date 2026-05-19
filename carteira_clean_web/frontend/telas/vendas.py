@@ -119,7 +119,7 @@ def render():
         margin=dict(t=20, b=40),
     )
     fig.add_hline(y=0, line_color="rgba(255,255,255,0.3)", line_width=1)
-    st.plotly_chart(fig, width='stretch')
+    st.plotly_chart(fig, use_container_width=True, config={'responsive': True})
 
     st.divider()
 
@@ -140,7 +140,7 @@ def render():
         })
 
     df_tab = pd.DataFrame(rows_tab)
-    st.dataframe(df_tab, width='stretch', hide_index=True)
+    st.dataframe(df_tab, use_container_width=True, hide_index=True)
 
     # Totalizador
     st.markdown(
@@ -148,3 +148,12 @@ def render():
         f"{n_operacoes} operações — "
         f"Recebido: {fmt.moeda(total_recebido)}"
     )
+
+    # ─── Exportação ───────────────────────────────────────────────
+    st.caption("Exportar tabela de vendas:")
+    df_export_v = df[["data","ticker","qtd_vendida","preco_venda",
+                       "custo_medio","valor_recebido","pnl","pnl_pct"]].copy()
+    df_export_v["data"] = df_export_v["data"].dt.strftime("%d/%m/%Y")
+    df_export_v.columns = ["Data","Ticker","Qtd Vendida","Preço Venda",
+                            "Custo Médio","Valor Recebido","P&L R$","P&L %"]
+    fmt.botoes_exportar(df_export_v, "vendas", key="vnd")

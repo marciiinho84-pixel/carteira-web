@@ -32,6 +32,44 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# CSS mobile-first: colunas empilham em telas < 640px, botões com área de toque adequada
+st.markdown("""
+<style>
+@media (max-width: 640px) {
+    /* Empilha colunas em telas estreitas */
+    div[data-testid="column"] {
+        width: 100% !important;
+        flex: 1 1 100% !important;
+        min-width: 100% !important;
+    }
+    /* Área de toque mínima para botões (padrão Apple 44px) */
+    .stButton > button,
+    .stDownloadButton > button {
+        min-height: 44px !important;
+        font-size: 1rem !important;
+    }
+    /* Treemap / gráficos: altura mínima */
+    div[data-testid="stPlotlyChart"] iframe,
+    div[data-testid="stPlotlyChart"] > div {
+        min-height: 300px !important;
+    }
+    /* Tabelas: garante scroll horizontal */
+    div[data-testid="stDataFrame"] > div {
+        overflow-x: auto !important;
+    }
+    /* Reduz padding lateral em mobile */
+    .block-container {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
+    /* Card KPI: permite quebra de linha */
+    div[data-testid="metric-container"] {
+        min-width: 0 !important;
+    }
+}
+</style>
+""", unsafe_allow_html=True)
+
 PAGINAS = {
     "📊 Carteira RV": carteira_rv,
     "➕ Novo Evento": novo_evento,

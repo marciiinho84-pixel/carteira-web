@@ -122,7 +122,7 @@ def render():
 
     st.dataframe(
         df_exib.style.apply(_cor_linha, axis=1),
-        width='stretch',
+        use_container_width=True,
         hide_index=True,
         column_config={
             "":          st.column_config.TextColumn("St",  width=40),
@@ -139,6 +139,14 @@ def render():
             "P&L %":     st.column_config.TextColumn(width=70),
         },
     )
+
+    # ─── Exportação ───────────────────────────────────────────────
+    st.caption("Exportar tabela de posições:")
+    df_export = df_filtrado[["ticker","familia","composite","qtd","custo_total",
+                              "custo_medio","preco_atual","valor_atual","pnl","pnl_pct"]].copy()
+    df_export.columns = ["Ticker","Família","Composite","Qtd","Custo Total",
+                         "Custo Médio","Preço Atual","Valor Atual","P&L R$","P&L %"]
+    fmt.botoes_exportar(df_export, "posicoes", key="pos")
 
     # ─── Detalhamento por composite ───────────────────────────────
     st.divider()

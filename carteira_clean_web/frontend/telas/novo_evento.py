@@ -193,7 +193,11 @@ def _secao_corrigir(tickers, ativos_info):
             "Valor": fmt.moeda(ev.get("valor", 0)),
             "Observação": (ev.get("obs") or "")[:40],
         })
-    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+    df_evs = pd.DataFrame(rows)
+    st.dataframe(df_evs, hide_index=True, use_container_width=True)
+
+    st.caption("Exportar últimos 20 eventos:")
+    fmt.botoes_exportar(df_evs, "eventos", key="ev")
 
     st.divider()
 
