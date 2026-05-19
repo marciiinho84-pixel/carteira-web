@@ -23,7 +23,10 @@ from carteira_clean_web.backend.api.schemas import (
     DashboardOut, MetaOut, AtribuicaoOut, CarteiraRVOut,
 )
 from carteira_clean_web.backend.engine.constantes import COTIZADO_PUBLICO, AGREGADO_PRIVADO
-from carteira_clean_web.backend.engine.utils import preco_em, status_liquidacao, data_liquidacao
+from carteira_clean_web.backend.engine.utils import (
+    preco_em, status_liquidacao, data_liquidacao,
+    status_liquidacao_d1, data_liquidacao_d1,
+)
 
 router = APIRouter(tags=["Resultados"])
 
@@ -207,20 +210,31 @@ def carteira_rv():
 
     evs_pendentes = []
     for ev in eventos:
-        if ativos.get(ev["ativo"], {}).get("familia", "") not in COTIZADO_PUBLICO:
+        familia = ativos.get(ev["ativo"], {}).get("familia", "")
+        # RV cotizado: D+2
+        if familia in COTIZADO_PUBLICO:
+            st = status_liquidacao(ev, hoje)
+            if st == "LIQUIDADO":
+                continue
+            d_liq = data_liquidacao(ev["data"])
+            prazo = "D+2"
+        # Fundo CP (FIC FUNC): D+1, apenas COMPRA/VENDA
+        elif familia == "Fundo CP" and ev["tipo"] in ("COMPRA", "VENDA"):
+            st = status_liquidacao_d1(ev, hoje)
+            if st == "LIQUIDADO":
+                continue
+            d_liq = data_liquidacao_d1(ev["data"])
+            prazo = "D+1"
+        else:
             continue
-        st = status_liquidacao(ev, hoje)
-        if st == "LIQUIDADO":
-            continue
-        d_liq = data_liquidacao(ev["data"])
         if d_liq not in proximos_5_du:
             continue
         valor = abs(ev["valor"] or 0)
         impacto = valor if st == "PENDENTE_SAIDA" else -valor
-        evs_pendentes.append((d_liq, ev, impacto))
+        evs_pendentes.append((d_liq, ev, impacto, prazo))
 
     evs_pendentes.sort(key=lambda x: (x[0], x[1]["data"]))
-    for d_liq, ev, impacto in evs_pendentes:
+    for d_liq, ev, impacto, prazo in evs_pendentes:
         if impacto > 0:
             entrando_5d += impacto
         else:
@@ -234,6 +248,7 @@ def carteira_rv():
             "qtd": ev["qtd"],
             "valor": abs(ev["valor"] or 0),
             "impacto": impacto,
+            "prazo": prazo,
             "saldo_projetado": round(saldo_running, 2),
         })
 

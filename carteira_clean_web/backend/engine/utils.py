@@ -52,3 +52,24 @@ def data_liquidacao(d_trade: date) -> date:
     """Data D+2 a partir da data do trade."""
     dias_uteis = pd.bdate_range(start=d_trade, periods=3)
     return dias_uteis[-1].date()
+
+
+def status_liquidacao_d1(ev: dict, hoje: date) -> str:
+    """LIQUIDADO / PENDENTE_ENTRADA / PENDENTE_SAIDA — prazo D+1 (fundos)."""
+    obs = str(ev.get("obs") or "")
+    dias_uteis_passados = num_dias_uteis_entre(ev["data"], hoje)
+    if "LIQUIDADO" in obs.upper() and "PENDENTE" not in obs.upper():
+        return "LIQUIDADO"
+    if dias_uteis_passados >= 1:
+        return "LIQUIDADO"
+    if ev["tipo"] == "COMPRA":
+        return "PENDENTE_ENTRADA"
+    elif ev["tipo"] == "VENDA":
+        return "PENDENTE_SAIDA"
+    return "LIQUIDADO"
+
+
+def data_liquidacao_d1(d_trade: date) -> date:
+    """Data D+1 a partir da data do trade (para fundos CP)."""
+    dias_uteis = pd.bdate_range(start=d_trade, periods=2)
+    return dias_uteis[-1].date()

@@ -25,6 +25,77 @@ def render():
 
     # ─── Aba 1: Edição de Ativos ──────────────────────────────────
     with aba[0]:
+        # ── Formulário: Cadastrar novo ativo ──────────────────────
+        with st.expander("➕ Cadastrar novo ativo", expanded=False):
+            st.caption("Preencha os campos obrigatórios e clique em Cadastrar.")
+            fa1, fa2 = st.columns(2)
+            with fa1:
+                novo_ticker = st.text_input(
+                    "Ticker *", placeholder="Ex: BBAS3",
+                    key="cfg_novo_ticker",
+                ).upper().strip()
+                novo_classe = st.selectbox(
+                    "Classe *",
+                    options=["Renda Variável", "Renda Fixa", "Multimercado", "Previdência"],
+                    key="cfg_novo_classe",
+                )
+                novo_familia = st.selectbox(
+                    "Família *",
+                    options=["Ação BR", "BDR", "BDR de ETF", "ETF BR",
+                             "Fundo CP", "Fundo de Pensão", "Fundo Indexado",
+                             "Tesouro Direto", "Letra de Crédito"],
+                    key="cfg_novo_familia",
+                )
+                novo_setor = st.text_input(
+                    "Setor *", placeholder="Ex: Bancos",
+                    key="cfg_novo_setor",
+                )
+            with fa2:
+                novo_composite = st.selectbox(
+                    "Composite *",
+                    options=["Gerida", "FUNCEF"],
+                    key="cfg_novo_composite",
+                )
+                novo_indexador = st.text_input(
+                    "Indexador (opcional)", placeholder="Ex: CDI+1%",
+                    key="cfg_novo_indexador",
+                )
+                novo_benchmark = st.text_input(
+                    "Benchmark (opcional)", placeholder="Ex: IBOV",
+                    key="cfg_novo_benchmark",
+                )
+                novo_obs = st.text_input(
+                    "Observação (opcional)", placeholder="Ex: Banco do Brasil",
+                    key="cfg_novo_obs",
+                )
+
+            pode_cadastrar = bool(novo_ticker and novo_setor)
+            if not novo_ticker:
+                st.warning("⚠️ Ticker obrigatório.")
+            if not novo_setor:
+                st.warning("⚠️ Setor obrigatório.")
+
+            if st.button("💾 Cadastrar Ativo", type="primary",
+                         disabled=not pode_cadastrar, key="cfg_btn_cadastrar"):
+                payload = {
+                    "ticker": novo_ticker,
+                    "classe": novo_classe,
+                    "familia": novo_familia,
+                    "setor": novo_setor,
+                    "composite": novo_composite,
+                    "indexador": novo_indexador or None,
+                    "benchmark": novo_benchmark or None,
+                    "observacao": novo_obs or None,
+                }
+                res = api.post("ativos", data=payload)
+                if res is not None:
+                    st.success(
+                        f"✅ **{novo_ticker}** cadastrado com sucesso! "
+                        "Disponível em ➕ Novo Evento."
+                    )
+                    st.rerun()
+
+        st.divider()
         st.subheader("Editar Ativos Cadastrados")
         st.caption(
             "Edite Setor, Benchmark e Observação diretamente na tabela. "

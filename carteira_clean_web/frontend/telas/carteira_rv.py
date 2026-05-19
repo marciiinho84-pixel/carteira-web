@@ -73,14 +73,15 @@ def render():
 
     st.divider()
 
-    # ─── Seção 2: Calendário D+2 ─────────────────────────────────
-    st.subheader("2. Calendário de Liquidações D+2")
+    # ─── Seção 2: Calendário D+2 / D+1 ──────────────────────────
+    st.subheader("2. Calendário de Liquidações D+2 / D+1")
     pendentes = rv.get("pendentes", [])
     if pendentes:
         rows = []
         for p in pendentes:
             impacto = p["impacto"]
             cor_imp = "🟢" if impacto > 0 else "🔴"
+            prazo = p.get("prazo", "D+2")
             rows.append({
                 "Liquidação": p["liquidacao"],
                 "Trade": p["trade"],
@@ -88,7 +89,7 @@ def render():
                 "Ativo": p["ativo"],
                 "Qtd": p.get("qtd", "—"),
                 "Valor": fmt.moeda(p["valor"]),
-                "Impacto": f"{cor_imp} {fmt.moeda(abs(impacto))}",
+                "Impacto": f"{cor_imp} {fmt.moeda(abs(impacto))}  [{prazo}]",
                 "Saldo Proj.": fmt.moeda(p["saldo_projetado"]),
             })
         df_pend = pd.DataFrame(rows)
