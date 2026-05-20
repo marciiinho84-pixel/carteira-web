@@ -88,16 +88,39 @@ def botoes_exportar(df: pd.DataFrame, nome_tabela: str, key: str) -> None:
         )
 
 
+def _dark() -> bool:
+    return st.session_state.get("dark_mode", True)
+
+
+def plotly_theme() -> dict:
+    """Retorna kwargs base para update_layout dos gráficos Plotly."""
+    if _dark():
+        return {
+            "paper_bgcolor": "rgba(0,0,0,0)",
+            "plot_bgcolor": "rgba(20,22,36,0.8)",
+            "font_color": "white",
+        }
+    return {
+        "paper_bgcolor": "rgba(0,0,0,0)",
+        "plot_bgcolor": "rgba(235,238,245,0.85)",
+        "font_color": "#1a1a2e",
+    }
+
+
 def card_kpi(titulo: str, valor: str, delta: str = "", cor_delta: str = "gray") -> None:
-    """Renderiza um KPI compacto em markdown."""
+    """Renderiza um KPI compacto em markdown — sensível ao tema."""
+    dark = _dark()
+    bg = "#1e2130" if dark else "#f0f2f8"
+    txt = "#fff" if dark else "#1a1a2e"
+    sub = "#aaa" if dark else "#555"
     delta_html = f'<br><small style="color:{cor_delta}">{delta}</small>' if delta else ""
     st.markdown(
         f"""
-        <div style="background:#1e2130;padding:16px 20px;border-radius:10px;
+        <div style="background:{bg};padding:16px 20px;border-radius:10px;
                     border-left:4px solid #4a9eff;margin-bottom:8px">
-            <div style="color:#aaa;font-size:0.78rem;text-transform:uppercase;
+            <div style="color:{sub};font-size:0.78rem;text-transform:uppercase;
                         letter-spacing:0.05em">{titulo}</div>
-            <div style="font-size:1.5rem;font-weight:700;color:#fff;margin-top:4px">
+            <div style="font-size:1.5rem;font-weight:700;color:{txt};margin-top:4px">
                 {valor}{delta_html}
             </div>
         </div>

@@ -126,22 +126,14 @@ def render():
                     hovertemplate=f"<b>{nome}</b><br>%{{x|%d/%m/%Y}}<br>%{{y:+.2f}}%<extra></extra>",
                 ))
 
-        fig.add_hline(y=0, line_dash="solid", line_color="rgba(255,255,255,0.2)", line_width=1)
+        _gc = "rgba(255,255,255,0.08)" if fmt._dark() else "rgba(0,0,0,0.10)"
+        fig.add_hline(y=0, line_dash="solid", line_color="rgba(150,150,150,0.3)", line_width=1)
         fig.update_layout(
             height=420,
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(20,22,36,0.8)",
-            font_color="white",
-            xaxis=dict(gridcolor="rgba(255,255,255,0.08)", title=""),
-            yaxis=dict(
-                gridcolor="rgba(255,255,255,0.08)",
-                title="Retorno Acumulado (%)",
-                ticksuffix="%",
-            ),
-            legend=dict(
-                orientation="h", yanchor="bottom", y=1.02,
-                xanchor="right", x=1,
-            ),
+            **fmt.plotly_theme(),
+            xaxis=dict(gridcolor=_gc, title=""),
+            yaxis=dict(gridcolor=_gc, title="Retorno Acumulado (%)", ticksuffix="%"),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             hovermode="x unified",
             margin=dict(t=10, b=40, l=60, r=20),
         )
@@ -276,6 +268,17 @@ def render():
             )
 
         st.divider()
+
+    # ─── Diário: decisões aguardando revisão ─────────────────────
+    pendentes_dec = api.get("decisoes/pendentes") or []
+    if pendentes_dec:
+        n = len(pendentes_dec)
+        st.info(
+            f"📓 **{n} decisão/ões aguardam revisão no Diário** — "
+            f"mais antiga: {pendentes_dec[0].get('ativo', '')} "
+            f"({pendentes_dec[0].get('acao', '')}) prevista para "
+            f"{pendentes_dec[0].get('revisao_em', '?')}"
+        )
 
     # ─── Alertas ativos ───────────────────────────────────────────
     alertas = dash.get("alertas", [])

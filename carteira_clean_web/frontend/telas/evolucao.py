@@ -100,25 +100,22 @@ def render():
             hovertemplate=f"{nome}: %{{y:+.2f}}%<extra></extra>",
         ), row=2, col=1)
 
+    _pt = fmt.plotly_theme()
+    _gc = "rgba(255,255,255,0.08)" if fmt._dark() else "rgba(0,0,0,0.10)"
     fig.update_layout(
         height=580,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(20,22,36,0.8)",
-        font_color="white",
+        **_pt,
         hovermode="x unified",
         legend=dict(orientation="h", y=1.05),
         margin=dict(t=40, b=20, l=80, r=80),
     )
     for i in range(1, 3):
-        fig.update_xaxes(gridcolor="rgba(255,255,255,0.08)", row=i, col=1)
-        fig.update_yaxes(gridcolor="rgba(255,255,255,0.08)", row=i, col=1)
-    # Eixo esquerdo: Total + FUNCEF
+        fig.update_xaxes(gridcolor=_gc, row=i, col=1)
+        fig.update_yaxes(gridcolor=_gc, row=i, col=1)
     fig.update_yaxes(tickformat=",.0f", title_text="Total / FUNCEF (R$)",
                      row=1, col=1, secondary_y=False)
-    # Eixo direito: Gerida
     fig.update_yaxes(tickformat=",.0f", title_text="Gerida (R$)",
-                     row=1, col=1, secondary_y=True,
-                     gridcolor="rgba(255,255,255,0.04)")
+                     row=1, col=1, secondary_y=True, gridcolor=_gc)
     fig.update_yaxes(ticksuffix="%", row=2, col=1)
 
     st.plotly_chart(fig, use_container_width=True, config={'responsive': True})
@@ -138,21 +135,15 @@ def render():
             hovertemplate="Drawdown: %{y:+.2f}%<extra></extra>",
             name="Drawdown",
         ))
-        fig_dd.add_hline(y=0, line_color="rgba(255,255,255,0.3)", line_width=1)
+        fig_dd.add_hline(y=0, line_color="rgba(150,150,150,0.4)", line_width=1)
         fig_dd.update_layout(
             height=220,
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(20,22,36,0.8)",
-            font_color="white",
+            **fmt.plotly_theme(),
             hovermode="x unified",
             showlegend=False,
             margin=dict(t=10, b=30, l=60, r=20),
-            xaxis=dict(gridcolor="rgba(255,255,255,0.08)"),
-            yaxis=dict(
-                gridcolor="rgba(255,255,255,0.08)",
-                ticksuffix="%",
-                title="Drawdown (%)",
-            ),
+            xaxis=dict(gridcolor=_gc),
+            yaxis=dict(gridcolor=_gc, ticksuffix="%", title="Drawdown (%)"),
         )
         st.plotly_chart(fig_dd, use_container_width=True, config={'responsive': True})
         if dd_min < 0:

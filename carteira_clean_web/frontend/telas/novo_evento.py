@@ -136,6 +136,7 @@ def _form_novo_evento(tickers, ativos_info):
             with st.spinner("Salvando e recalculando..."):
                 resultado = api.post("eventos", data=payload)
             if resultado is not None:
+                ev_id_salvo = resultado.get("id")
                 st.success(
                     f"✅ Evento salvo! **{tipo_sel}** de **{ticker_sel}** "
                     f"em {data_sel.strftime('%d/%m/%Y')} — {fmt.moeda(valor)}"
@@ -148,6 +149,13 @@ def _form_novo_evento(tickers, ativos_info):
                         f"Patrimônio: {fmt.moeda(recalc.get('patrimonio_total'))} | "
                         f"P&L RV: {fmt.moeda(recalc.get('pnl_vendas_rv'), sinal=True)}"
                     )
+                # Oferta opcional de registrar tese (apenas COMPRA)
+                if tipo_sel == "COMPRA":
+                    if st.button("📓 Registrar tese para esta compra (opcional)",
+                                 key="ne_btn_tese"):
+                        st.session_state["ne_tese_ev_id"] = ev_id_salvo
+                        st.session_state["ne_tese_ativo"] = ticker_sel
+                        st.rerun()
                 st.balloons()
 
     with col_ajuda:
@@ -400,6 +408,23 @@ def render():
 
     st.divider()
     _form_novo_evento(tickers, ativos_info)
+
+    # Formulário de tese (aparece após COMPRA, opcional)
+    if st.session_state.get("ne_tese_ev_id"):
+        ev_id_tese = st.session_state["ne_tese_ev_id"]
+        ativo_tese = st.session_state.get("ne_tese_ativo", "")
+        st.divider()
+        with st.expander("📓 Registrar tese de investimento", expanded=True):
+            from carteira_clean_web.frontend.telas.diario import _form_nova_decisao
+            salvo = _form_nova_decisao(tickers, ev_id=ev_id_tese,
+                                       ativo_pre=ativo_tese, acao_pre="COMPRA")
+            if salvo:
+                st.session_state.pop("ne_tese_ev_id", None)
+                st.session_state.pop("ne_tese_ativo", None)
+            if st.button("⏭️ Pular — registrar depois", key="ne_btn_pular_tese"):
+                st.session_state.pop("ne_tese_ev_id", None)
+                st.session_state.pop("ne_tese_ativo", None)
+                st.rerun()
 
     st.divider()
     _secao_corrigir(tickers, ativos_info)

@@ -12,7 +12,7 @@ from typing import Optional
 
 from sqlalchemy import (
     Column, Integer, String, Float, Date, Text,
-    UniqueConstraint, CheckConstraint, Index,
+    UniqueConstraint, CheckConstraint, Index, ForeignKey,
 )
 from sqlalchemy.orm import DeclarativeBase
 
@@ -111,3 +111,43 @@ class PrecoManual(Base):
         UniqueConstraint("data", "ticker", name="uq_preco_data_ticker"),
         Index("ix_precos_ticker_data", "ticker", "data"),
     )
+
+
+class Decisao(Base):
+    """Diário de decisões de investimento."""
+    __tablename__ = "decisoes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    data_decisao = Column(Date, nullable=False)
+    evento_id = Column(Integer, ForeignKey("eventos.id", ondelete="SET NULL"), nullable=True)
+    ativo = Column(String(20), nullable=False)
+    acao = Column(String(10), nullable=False)
+    tese = Column(Text, nullable=False)
+    expectativa_retorno_pct = Column(Float, nullable=True)
+    horizonte = Column(String(10), nullable=True)
+    revisao_em = Column(Date, nullable=True)
+    resultado_revisao = Column(Text, nullable=True)
+    notas = Column(Text, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("acao IN ('COMPRA','VENDA','MANTER','OBSERVAR')", name="ck_acao"),
+        CheckConstraint("horizonte IN ('curto','medio','longo') OR horizonte IS NULL",
+                        name="ck_horizonte"),
+        Index("ix_decisoes_ativo", "ativo"),
+        Index("ix_decisoes_revisao", "revisao_em"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "data_decisao": str(self.data_decisao) if self.data_decisao else None,
+            "evento_id": self.evento_id,
+            "ativo": self.ativo,
+            "acao": self.acao,
+            "tese": self.tese,
+            "expectativa_retorno_pct": self.expectativa_retorno_pct,
+            "horizonte": self.horizonte,
+            "revisao_em": str(self.revisao_em) if self.revisao_em else None,
+            "resultado_revisao": self.resultado_revisao,
+            "notas": self.notas,
+        }
