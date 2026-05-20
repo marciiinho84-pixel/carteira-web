@@ -191,7 +191,7 @@ with sync_playwright() as p:
 
     if "✅" in page_body or "Evento salvo" in page_body:
         cm = wege_depois["custo_medio"] if wege_depois else None
-        pnl_v = wege_vendas[-1].get("pnl_realizado") if wege_vendas else None
+        pnl_v = wege_vendas[-1].get("pnl") if wege_vendas else None
         pnl_ok = pnl_v is not None and abs(pnl_v - (-209.41)) < 1.0
         cm_ok = cm is not None and abs(cm - 47.3182) < 0.001
         if cm_ok and pnl_ok:
@@ -402,11 +402,11 @@ with sync_playwright() as p:
                         and float(e.get("preco", 0) or 0) > 9000]
         evento_id = divo_eventos[-1]["id"] if divo_eventos else None
 
-        # Tentar editar via UI — verificar se existe botão de edição
-        navigate(page, "⚙️ Configurações")
+        # Tentar editar via UI — verificar se existe botão de edição em Novo Evento
+        navigate(page, "➕ Novo Evento")
         page_body2 = body_text(page)
         has_edit_event = any(kw in page_body2 for kw in [
-            "Editar evento", "Editar DIVO11", "eventos", "Evento ID",
+            "Corrigir", "Remover Evento", "Editar", "excluir", "DIVO11",
         ])
 
         if has_edit_event:

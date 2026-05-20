@@ -36,6 +36,7 @@ class Ativo(Base):
     risco = Column(String(50))
     composite = Column(String(20), nullable=False, default="Gerida")
     observacao = Column(Text)
+    data_vencimento = Column(Date, nullable=True)
 
     __table_args__ = (
         CheckConstraint("composite IN ('Gerida', 'FUNCEF')", name="ck_composite"),
@@ -53,6 +54,7 @@ class Ativo(Base):
             "risco": self.risco,
             "composite": self.composite,
             "observacao": self.observacao,
+            "data_vencimento": self.data_vencimento,
         }
 
 

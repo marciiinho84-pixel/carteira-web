@@ -63,13 +63,21 @@ def _form_novo_evento(tickers, ativos_info):
 
         usa_qtd_preco = tipo_sel in TIPOS_COM_QTD_PRECO
         if usa_qtd_preco:
+            def _sync_valor():
+                q = st.session_state.get("ne_qtd", 0) or 0
+                p = st.session_state.get("ne_preco", 0) or 0
+                if q > 0 and p > 0:
+                    st.session_state["ne_valor"] = round(q * p, 2)
+
             c1, c2, c3 = st.columns(3)
             with c1:
                 qtd = st.number_input("Quantidade", min_value=0.0, value=0.0,
-                                      step=1.0, format="%.6f", key="ne_qtd")
+                                      step=1.0, format="%.6f", key="ne_qtd",
+                                      on_change=_sync_valor)
             with c2:
                 preco = st.number_input("Preço (R$)", min_value=0.0, value=0.0,
-                                        step=0.01, format="%.4f", key="ne_preco")
+                                        step=0.01, format="%.4f", key="ne_preco",
+                                        on_change=_sync_valor)
             with c3:
                 valor_calc = qtd * preco if qtd > 0 and preco > 0 else 0.0
                 valor = st.number_input("Valor R$", min_value=0.0,

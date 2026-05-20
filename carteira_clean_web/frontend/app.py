@@ -14,6 +14,7 @@ from carteira_clean_web.frontend.telas import (
     vendas,
     meta,
     evolucao,
+    proventos,
     configuracoes,
 )
 
@@ -78,6 +79,7 @@ PAGINAS = {
     "💰 Vendas": vendas,
     "🎯 Meta": meta,
     "📈 Evolução": evolucao,
+    "📅 Proventos": proventos,
     "⚙️ Configurações": configuracoes,
 }
 

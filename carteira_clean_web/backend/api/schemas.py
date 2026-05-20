@@ -21,6 +21,7 @@ class AtivoOut(BaseModel):
     risco: Optional[str] = None
     composite: str
     observacao: Optional[str] = None
+    data_vencimento: Optional[date] = None
 
 
 class AtivoCreate(BaseModel):
@@ -34,6 +35,7 @@ class AtivoCreate(BaseModel):
     risco: Optional[str] = None
     composite: str = "Gerida"
     observacao: Optional[str] = None
+    data_vencimento: Optional[date] = None
 
     @field_validator("composite")
     @classmethod
@@ -53,6 +55,7 @@ class AtivoUpdate(BaseModel):
     risco: Optional[str] = None
     composite: Optional[str] = None
     observacao: Optional[str] = None
+    data_vencimento: Optional[date] = None
 
     @field_validator("composite")
     @classmethod
@@ -218,7 +221,10 @@ class DashboardOut(BaseModel):
     vol_anualizada: Optional[float] = None   # volatilidade anualizada da Gerida
     beta_ibov: Optional[float] = None        # beta da Gerida vs IBOV
     yield_12m: Optional[float] = None        # yield projetado 12m do portfolio (fração)
+    yield_12m_gerida: Optional[float] = None # yield sobre só patrimônio_gerida
     renda_anual_est: Optional[float] = None  # renda anual estimada em R$
+    proventos_30d: Optional[float] = None    # renda estimada nos próximos 30 dias
+    vencimentos_rf: List[dict] = []          # ativos RF com data_vencimento
 
 
 class MetaOut(BaseModel):

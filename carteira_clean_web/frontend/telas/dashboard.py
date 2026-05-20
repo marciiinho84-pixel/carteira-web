@@ -212,19 +212,70 @@ def render():
 
     with r4:
         yield_12m = dash.get("yield_12m")
+        yield_12m_gerida = dash.get("yield_12m_gerida")
         renda_anual = dash.get("renda_anual_est", 0) or 0
         if yield_12m is not None:
             renda_mes = renda_anual / 12
             fmt.card_kpi(
                 "Yield Projetado 12m",
                 fmt.pct(yield_12m, casas=2),
-                delta=f"~{fmt.moeda(renda_mes)}/mês",
+                delta=f"Gerida: {fmt.pct(yield_12m_gerida, casas=2)} · ~{fmt.moeda(renda_mes)}/mês",
                 cor_delta="#2ecc71",
             )
         else:
             fmt.card_kpi("Yield Projetado 12m", "—")
 
     st.divider()
+
+    # ─── Vencimentos RF ───────────────────────────────────────────
+    venc_rf = dash.get("vencimentos_rf", [])
+    proventos_30d = dash.get("proventos_30d", 0) or 0
+    if venc_rf or proventos_30d > 0:
+        st.subheader("Renda Fixa & Proventos")
+        vc1, vc2 = st.columns(2)
+
+        with vc1:
+            if venc_rf:
+                linhas = []
+                for v in venc_rf:
+                    anos = v["dias_restantes"] // 365
+                    dias_r = v["dias_restantes"] % 365
+                    periodo_str = f"{anos}a {dias_r}d" if anos > 0 else f"{v['dias_restantes']}d"
+                    dt_fmt = pd.to_datetime(v["data_vencimento"]).strftime("%d/%m/%Y")
+                    val_str = fmt.moeda(v["valor_atual"]) if v.get("valor_atual") else "—"
+                    cor_al = "#e74c3c" if v["alerta"] == "CRITICO" else (
+                        "#f39c12" if v["alerta"] == "ATENCAO" else "#2ecc71"
+                    )
+                    linhas.append(
+                        f"<tr><td><b>{v['ticker']}</b></td>"
+                        f"<td style='color:{cor_al}'>{periodo_str}</td>"
+                        f"<td>{dt_fmt}</td>"
+                        f"<td>{val_str}</td></tr>"
+                    )
+                st.markdown(
+                    "<div style='background:#1e2130;padding:14px 18px;border-radius:10px;"
+                    "border-left:4px solid #4a9eff;'>"
+                    "<div style='color:#aaa;font-size:0.78rem;text-transform:uppercase;"
+                    "letter-spacing:0.05em;margin-bottom:8px'>PRÓXIMOS VENCIMENTOS RF</div>"
+                    "<table style='width:100%;font-size:0.9rem;border-collapse:collapse'>"
+                    "<tr style='color:#888;font-size:0.75rem'>"
+                    "<th align='left'>Ativo</th><th align='left'>Prazo</th>"
+                    "<th align='left'>Vencimento</th><th align='left'>Valor Bruto</th></tr>"
+                    + "".join(linhas) + "</table></div>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.info("Nenhum ativo RF com vencimento cadastrado.")
+
+        with vc2:
+            fmt.card_kpi(
+                "Renda estimada (30 dias)",
+                fmt.moeda(proventos_30d),
+                delta="Projeção histórica — sem garantia",
+                cor_delta="#aaa",
+            )
+
+        st.divider()
 
     # ─── Alertas ativos ───────────────────────────────────────────
     alertas = dash.get("alertas", [])

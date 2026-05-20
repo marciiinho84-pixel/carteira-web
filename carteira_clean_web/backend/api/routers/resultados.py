@@ -230,7 +230,43 @@ def dashboard():
     meses_periodo = max((estado["hoje"] - DATA_INICIO).days / 30.44, 1.0)
     renda_anual_est = sum(v * (12.0 / meses_periodo) for v in proventos_dict.values() if v > 0)
     pat_total = ult["patrimonio_total"]
+    pat_gerida = ult["patrimonio_gerida"]
     yield_12m = round(renda_anual_est / pat_total, 6) if pat_total > 0 else 0.0
+    yield_12m_gerida = round(renda_anual_est / pat_gerida, 6) if pat_gerida > 0 else 0.0
+    proventos_30d = round(renda_anual_est / 12, 2)
+
+    # Vencimentos RF (de estado["ativos"] que tem data_vencimento após recálculo)
+    hoje_date = estado["hoje"]
+    posicoes_dict = estado["posicoes"]
+    precos_man = estado.get("precos_manuais", {})
+    vencimentos_rf = []
+    for tkr, info in estado["ativos"].items():
+        dv = info.get("data_vencimento")
+        if dv is None:
+            continue
+        if isinstance(dv, str):
+            from datetime import date as date_cls
+            dv = date_cls.fromisoformat(dv)
+        dias_rest = (dv - hoje_date).days
+        # Valor atual via posição
+        p = posicoes_dict.get(tkr)
+        val = None
+        if p:
+            familia = info.get("familia", "")
+            if familia in AGREGADO_PRIVADO:
+                preco = preco_em(precos_man.get(tkr, {}), hoje_date, max_lookback_dias=60)
+                val = preco if preco else p.custo_total
+            else:
+                val = p.custo_total
+        vencimentos_rf.append({
+            "ticker": tkr,
+            "familia": info.get("familia"),
+            "data_vencimento": str(dv),
+            "dias_restantes": dias_rest,
+            "valor_atual": round(val, 2) if val else None,
+            "alerta": "CRITICO" if dias_rest <= 30 else ("ATENCAO" if dias_rest <= 90 else "OK"),
+        })
+    vencimentos_rf.sort(key=lambda x: x["data_vencimento"])
 
     return DashboardOut(
         patrimonio_total=ult["patrimonio_total"],
@@ -255,7 +291,10 @@ def dashboard():
         vol_anualizada=round(vol_anualizada, 6),
         beta_ibov=beta_ibov,
         yield_12m=yield_12m,
+        yield_12m_gerida=yield_12m_gerida,
         renda_anual_est=round(renda_anual_est, 2),
+        proventos_30d=proventos_30d,
+        vencimentos_rf=vencimentos_rf,
     )
 
 
@@ -434,6 +473,72 @@ def ir_mensal():
     """Estimativa de IR mensal sobre vendas de RV com regras de isenção."""
     estado = _exige_cache()
     return calc_ir_mensal(estado["vendas_rv"], estado["ativos"])
+
+
+# ─── Proventos projetados ─────────────────────────────────────────
+
+@router.get("/proventos-projetados")
+def proventos_projetados():
+    """Histórico de proventos pagos + projeção para os próximos 12 meses.
+    Baseado exclusivamente no event log — sem scraping externo."""
+    from collections import defaultdict
+    from carteira_clean_web.backend.engine.constantes import PROVENTOS
+
+    estado = _exige_cache()
+    eventos = estado["eventos"]
+    ativos_info = estado["ativos"]
+    hoje = estado["hoje"]
+    meses_periodo = max((hoje - DATA_INICIO).days / 30.44, 1.0)
+
+    tipos_prov = PROVENTOS  # DIVIDENDO, JCP, RENDIMENTO, AMORTIZACAO
+    prov_events = [e for e in eventos if e["tipo"] in tipos_prov]
+
+    # Histórico (já recebido)
+    historico = []
+    total_hist = 0.0
+    prov_por_ativo = defaultdict(float)
+    for ev in prov_events:
+        familia = ativos_info.get(ev["ativo"], {}).get("familia", "")
+        historico.append({
+            "data": str(ev["data"]),
+            "ativo": ev["ativo"],
+            "familia": familia,
+            "tipo": ev["tipo"],
+            "valor": round(ev["valor"] or 0, 2),
+            "status": "REALIZADO",
+        })
+        total_hist += ev["valor"] or 0
+        prov_por_ativo[ev["ativo"]] += ev["valor"] or 0
+
+    # Projeção: média mensal × 12 meses à frente
+    projecao = []
+    total_proj_12m = 0.0
+    for tkr, total in prov_por_ativo.items():
+        if total <= 0:
+            continue
+        mensal = total / meses_periodo
+        familia = ativos_info.get(tkr, {}).get("familia", "")
+        for offset in range(1, 13):
+            proj_ano = hoje.year + (hoje.month - 1 + offset) // 12
+            proj_mes = (hoje.month - 1 + offset) % 12 + 1
+            projecao.append({
+                "data": f"{proj_ano}-{proj_mes:02d}-01",
+                "ativo": tkr,
+                "familia": familia,
+                "tipo": "PROJEÇÃO",
+                "valor": round(mensal, 2),
+                "status": "PROJETADO*",
+            })
+            total_proj_12m += mensal
+
+    return {
+        "historico": sorted(historico, key=lambda x: x["data"], reverse=True),
+        "projecao": sorted(projecao, key=lambda x: x["data"]),
+        "total_historico": round(total_hist, 2),
+        "total_projetado_12m": round(total_proj_12m, 2),
+        "meses_base": round(meses_periodo, 1),
+        "aviso": "Projeção baseada em histórico — dados anunciados serão adicionados quando disponíveis.",
+    }
 
 
 # ─── Meta / Projeção ──────────────────────────────────────────────
