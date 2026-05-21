@@ -21,7 +21,7 @@ sys.path.insert(0, str(ROOT))
 
 from carteira_clean_web.backend.engine.io import carregar_dados
 from carteira_clean_web.backend.engine.constantes import COTIZADO_PUBLICO
-from carteira_clean_web.backend.engine.precos import baixar_precos_publicos, baixar_benchmarks
+from carteira_clean_web.backend.engine.precos import baixar_precos_publicos, baixar_benchmarks, baixar_precos_tesouro
 from carteira_clean_web.backend.engine.posicoes import calc_posicoes_e_vendas
 from carteira_clean_web.backend.engine.inferencia import inferir_fluxos_externos_retroativos
 from carteira_clean_web.backend.engine.twr import calc_evolucao_diaria, calc_twr_e_benchmarks
@@ -65,6 +65,14 @@ def run(db_path: Path = None, no_api: bool = False, verbose: bool = False) -> di
     tickers_pub = [t for t, info in ativos.items() if info.get("familia") in COTIZADO_PUBLICO]
     precos_publicos = baixar_precos_publicos(tickers_pub, DATA_INICIO, hoje, no_api)
     benchmarks = baixar_benchmarks(DATA_INICIO, hoje, no_api)
+
+    # Injeta PUs do Tesouro Direto em precos_manuais (sem alterar o banco)
+    precos_td = baixar_precos_tesouro(ativos, no_api)
+    if precos_td:
+        for tkr, serie in precos_td.items():
+            if tkr not in precos_manuais:
+                precos_manuais[tkr] = {}
+            precos_manuais[tkr].update(serie)
 
     log.info("\n[3/6] Calculando posições e vendas (PEPS)...")
     posicoes, vendas_rv, vendas_rf, proventos = calc_posicoes_e_vendas(eventos, ativos)

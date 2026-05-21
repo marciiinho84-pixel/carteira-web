@@ -19,6 +19,7 @@ from carteira_clean_web.frontend.telas import (
     correlacao,
     whatif,
     configuracoes,
+    importar,
 )
 
 # Backup automático: uma vez por dia, não bloqueia se falhar
@@ -92,6 +93,7 @@ st.markdown(f"""
 PAGINAS = {
     "📊 Carteira RV": carteira_rv,
     "➕ Novo Evento": novo_evento,
+    "📥 Importar Extrato": importar,
     "🏠 Dashboard": dashboard,
     "📋 Posições": posicoes,
     "💰 Vendas": vendas,
@@ -130,11 +132,18 @@ with st.sidebar:
     else:
         st.caption("⚠️ Engine não calculado")
 
-    if st.button("🔄 Recalcular", use_container_width=True):
+    if st.button("🔄 Recalcular", use_container_width=True, help="Recalcula sem buscar cotações (rápido)"):
         with st.spinner("Calculando..."):
             res = api.post("calcular", params={"no_api": "true"})
         if res and res.get("ok"):
             st.success("✅ Atualizado!")
+            st.rerun()
+
+    if st.button("🌐 Atualizar cotações", use_container_width=True, help="Baixa preços do dia via internet (~30s)"):
+        with st.spinner("Baixando cotações e recalculando... (~30s)"):
+            res = api.post("calcular", params={"no_api": "false"})
+        if res and res.get("ok"):
+            st.success("✅ Cotações atualizadas!")
             st.rerun()
 
 PAGINAS[pagina_sel].render()

@@ -17,7 +17,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from carteira_clean_web.backend.api.routers import (
-    ativos, eventos, precos_manuais, calcular, resultados, backup, decisoes,
+    ativos, eventos, precos_manuais, calcular, resultados, backup, decisoes, importacao,
 )
 
 app = FastAPI(
@@ -26,7 +26,7 @@ app = FastAPI(
         "API REST do projeto Carteira Clean. "
         "Chame POST /api/v1/calcular antes de acessar os endpoints de resultados."
     ),
-    version="2.2.0",
+    version="2.5.0",
     docs_url="/docs",
     redoc_url="/redoc",
 )
@@ -47,6 +47,7 @@ app.include_router(calcular.router, prefix=PREFIX)
 app.include_router(resultados.router, prefix=PREFIX)
 app.include_router(backup.router, prefix=PREFIX)
 app.include_router(decisoes.router, prefix=PREFIX)
+app.include_router(importacao.router, prefix=PREFIX)
 
 
 @app.get("/", include_in_schema=False)

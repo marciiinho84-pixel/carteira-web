@@ -7,11 +7,11 @@ Três tabelas espelham as 3 abas-fonte do Excel:
   - precos_manuais → HISTORICO_PRECOS
 """
 
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 from sqlalchemy import (
-    Column, Integer, String, Float, Date, Text,
+    Column, Integer, String, Float, Date, DateTime, Text, Boolean,
     UniqueConstraint, CheckConstraint, Index, ForeignKey,
 )
 from sqlalchemy.orm import DeclarativeBase
@@ -151,3 +151,59 @@ class Decisao(Base):
             "resultado_revisao": self.resultado_revisao,
             "notas": self.notas,
         }
+
+
+class Importacao(Base):
+    """Registro de cada importação de extrato via Claude API."""
+    __tablename__ = "importacoes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    data_upload = Column(DateTime, default=datetime.utcnow)
+    arquivo_nome = Column(Text, nullable=False)
+    arquivo_path = Column(Text)
+    arquivo_hash = Column(Text)
+    formato = Column(String(10))           # pdf|jpeg|png|xlsx|csv
+    tipo_documento = Column(String(50))    # b3_custodia|b3_movimentacoes|...
+    status = Column(String(20), default="UPLOADED")  # UPLOADED|PROCESSING|PREVIEW|CONFIRMED|CANCELLED|ERROR
+    total_eventos_extraidos = Column(Integer, default=0)
+    total_eventos_gravados = Column(Integer, default=0)
+    total_eventos_duplicados = Column(Integer, default=0)
+    eventos_extraidos_json = Column(Text)
+    erro_mensagem = Column(Text, nullable=True)
+    custo_api_usd = Column(Float, default=0.0)
+    data_confirmacao = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('UPLOADED','PROCESSING','PREVIEW','CONFIRMED','CANCELLED','ERROR')",
+            name="ck_importacao_status",
+        ),
+        Index("ix_importacoes_status", "status"),
+        Index("ix_importacoes_data", "data_upload"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "data_upload": self.data_upload.isoformat() if self.data_upload else None,
+            "arquivo_nome": self.arquivo_nome,
+            "arquivo_path": self.arquivo_path,
+            "arquivo_hash": self.arquivo_hash,
+            "formato": self.formato,
+            "tipo_documento": self.tipo_documento,
+            "status": self.status,
+            "total_eventos_extraidos": self.total_eventos_extraidos,
+            "total_eventos_gravados": self.total_eventos_gravados,
+            "total_eventos_duplicados": self.total_eventos_duplicados,
+            "custo_api_usd": self.custo_api_usd,
+            "erro_mensagem": self.erro_mensagem,
+            "data_confirmacao": self.data_confirmacao.isoformat() if self.data_confirmacao else None,
+        }
+
+
+class ImportacaoEvento(Base):
+    """Associa importações aos eventos gravados no DB."""
+    __tablename__ = "importacao_evento"
+
+    importacao_id = Column(Integer, ForeignKey("importacoes.id", ondelete="CASCADE"), primary_key=True)
+    evento_id = Column(Integer, ForeignKey("eventos.id", ondelete="CASCADE"), primary_key=True)
