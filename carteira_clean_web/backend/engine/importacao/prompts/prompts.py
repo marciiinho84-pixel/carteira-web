@@ -85,13 +85,55 @@ def get_prompt_caixa_rv() -> tuple[str, str]:
 
 
 def get_prompt_funcef() -> tuple[str, str]:
-    system = _SYSTEM_BASE + "\n\nDocumento: Extrato FUNCEF (Fundação dos Economiários Federais).\n" + _FORMATO_JSON
-    user = (
-        "Extraia todas as contribuições e rendimentos deste extrato FUNCEF. "
-        "Contribuições mensais ao plano de previdência: tipo CONTRIBUICAO, ativo='FUNCEF'. "
-        "Rentabilidade/rendimento creditado: tipo RENDIMENTO, ativo='FUNCEF'. "
-        "Saldo total: tipo SALDO_INICIAL com data e valor total."
+    system = (
+        "Você é um especialista em análise de extratos da FUNCEF (Fundação dos Economiários Federais). "
+        "Sua tarefa é extrair SOMENTE três informações específicas deste extrato e retorná-las em JSON estruturado. "
+        "Sempre responda SOMENTE com JSON válido, sem texto antes ou depois."
     )
+    user = """Analise este extrato da FUNCEF e extraia EXATAMENTE as seguintes informações:
+
+1. **Cota mais recente** — seção "Valorização da Cota Patrimonial do Plano":
+   - Data e valor da cota do MÊS MAIS RECENTE listado
+
+2. **Saldo atual** — seção "Saldo nas SubContas" ou equivalente:
+   - Valor total em R$ (soma de todas as subcontas)
+   - Quantidade total de cotas
+
+3. **Contribuição do mês mais recente** — seção de contribuições/movimentações:
+   - Identificar qual é o mês mais recente com lançamento
+   - Somar TODAS as contribuições daquele único mês (participante + patrocinadora)
+   - Criar 1 único evento consolidado para esse mês
+   - NÃO retornar contribuições de meses anteriores
+
+IMPORTANTE: NÃO extraia histórico de contribuições passadas. O sistema já tem o histórico.
+Retorne SOMENTE o JSON abaixo, preenchido com os dados encontrados:
+
+{
+  "documento": {
+    "tipo": "funcef",
+    "titular": "nome do titular se disponível",
+    "competencia": "YYYY-MM"
+  },
+  "cota_atual": {
+    "data": "YYYY-MM-DD",
+    "valor": 0.0
+  },
+  "saldo_atual": {
+    "valor_real": 0.0,
+    "quantidade_cotas": 0.0
+  },
+  "contribuicao_mes": {
+    "data": "YYYY-MM-DD",
+    "ativo": "FUNCEF",
+    "tipo": "CONTRIBUICAO",
+    "qtd": 0.0,
+    "valor": 0.0,
+    "obs": "Contribuição consolidada do mês YYYY/MM (participante + patrocinadora)"
+  },
+  "observacoes": "campo livre para anotar dúvidas ou dados ausentes"
+}
+
+Se algum campo não estiver disponível no documento, use null."""
     return system, user
 
 

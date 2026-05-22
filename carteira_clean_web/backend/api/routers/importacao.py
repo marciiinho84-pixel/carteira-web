@@ -58,13 +58,20 @@ def _proximo_linha_excel(db: Session) -> int:
 async def upload_extrato(
     arquivo: UploadFile = File(...),
     tipo_documento: str = Form(...),
+    confirmar_override: bool = Form(False),
     db: Session = Depends(get_db),
 ):
     """
     Recebe arquivo, processa com Claude e retorna preview de eventos.
+    Se o detector automático divergir do tipo informado, retorna 409 para o usuário confirmar.
+    Use confirmar_override=true para forçar o tipo informado mesmo com divergência.
     """
     from carteira_clean_web.backend.engine.importacao.extrator import extrair_eventos
-    from carteira_clean_web.backend.engine.importacao.detector import TIPOS_DOCUMENTO
+    from carteira_clean_web.backend.engine.importacao.detector import (
+        TIPOS_DOCUMENTO, TIPO_LABELS, detectar_tipo_documento,
+    )
+    from carteira_clean_web.backend.engine.importacao.processadores.pdf import extrair_texto_pdf
+    from carteira_clean_web.backend.engine.importacao.processadores.planilha import csv_para_texto, xlsx_para_texto
 
     if tipo_documento not in TIPOS_DOCUMENTO:
         raise HTTPException(400, f"tipo_documento inválido. Use um de: {TIPOS_DOCUMENTO}")
@@ -77,6 +84,43 @@ async def upload_extrato(
 
     arquivo_hash = _arquivo_hash(conteudo)
     nome_arquivo = arquivo.filename or "documento"
+    formato_detectado = nome_arquivo.rsplit(".", 1)[-1].lower() if "." in nome_arquivo else "desconhecido"
+
+    # Detecção automática de tipo — extrai amostra de texto para comparar
+    if not confirmar_override:
+        try:
+            amostra = ""
+            if formato_detectado == "pdf":
+                amostra = extrair_texto_pdf(conteudo)[:2000]
+            elif formato_detectado == "csv":
+                amostra = csv_para_texto(conteudo, max_linhas=20)
+            elif formato_detectado == "xlsx":
+                amostra = xlsx_para_texto(conteudo, max_linhas=20)
+            elif formato_detectado in ("jpg", "jpeg", "png"):
+                amostra = ""  # sem texto para detectar em imagens
+
+            if amostra:
+                tipo_detectado = detectar_tipo_documento(amostra)
+                if tipo_detectado and tipo_detectado != tipo_documento:
+                    label_detectado = TIPO_LABELS.get(tipo_detectado, tipo_detectado)
+                    label_informado = TIPO_LABELS.get(tipo_documento, tipo_documento)
+                    raise HTTPException(
+                        409,
+                        {
+                            "mensagem": (
+                                f"O documento parece ser '{label_detectado}' "
+                                f"mas você selecionou '{label_informado}'. "
+                                f"Confirme o tipo antes de processar."
+                            ),
+                            "tipo_detectado": tipo_detectado,
+                            "tipo_informado": tipo_documento,
+                            "dica": "Reenvie com confirmar_override=true para forçar o tipo selecionado.",
+                        },
+                    )
+        except HTTPException:
+            raise
+        except Exception as e:
+            log.warning(f"Detecção automática falhou (ignorando): {e}")
 
     # Verifica se este arquivo já foi importado antes
     importacao_anterior = db.query(Importacao).filter(
@@ -90,7 +134,7 @@ async def upload_extrato(
     imp = Importacao(
         arquivo_nome=nome_arquivo,
         arquivo_hash=arquivo_hash,
-        formato=nome_arquivo.rsplit(".", 1)[-1].lower() if "." in nome_arquivo else "desconhecido",
+        formato=formato_detectado,
         tipo_documento=tipo_documento,
         status="PROCESSING",
         data_upload=datetime.utcnow(),
@@ -100,7 +144,20 @@ async def upload_extrato(
     db.refresh(imp)
 
     try:
+        # Alerta preventivo para PDF com muitas páginas
+        alertas_pre = []
+        if formato_detectado == "pdf":
+            from carteira_clean_web.backend.engine.importacao.processadores.pdf import contar_paginas_pdf
+            n_pags = contar_paginas_pdf(conteudo)
+            if n_pags > 30:
+                alertas_pre.append(
+                    f"PDF extenso ({n_pags} páginas) — apenas as primeiras 100 serão processadas. "
+                    f"Para melhor resultado, divida em períodos menores."
+                )
+                log.warning(f"PDF com {n_pags} páginas para importação {imp.id}")
+
         # Chama Claude
+        log.info(f"Importação #{imp.id}: chamando Claude para {nome_arquivo}...")
         eventos, custo = extrair_eventos(conteudo, nome_arquivo, tipo_documento)
 
         # Detecta duplicatas
@@ -134,14 +191,16 @@ async def upload_extrato(
             "duplicatas": n_dup,
             "custo_api_usd": round(custo, 6),
             "eventos": eventos,
+            "alertas": alertas_pre,
         }
 
     except Exception as e:
+        erro_msg = str(e)
         imp.status = "ERROR"
-        imp.erro_mensagem = str(e)
+        imp.erro_mensagem = erro_msg[:1000]  # limita para não explodir o DB
         db.commit()
-        log.error(f"Erro na importação {imp.id}: {e}", exc_info=True)
-        raise HTTPException(500, f"Erro ao processar arquivo: {str(e)}")
+        log.error(f"Erro na importação {imp.id}: {erro_msg}", exc_info=True)
+        raise HTTPException(500, f"Erro ao processar arquivo: {erro_msg}")
 
 
 @router.get("/importacao/{importacao_id}/preview")

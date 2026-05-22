@@ -16,6 +16,7 @@ load_dotenv(Path(__file__).resolve().parents[4] / ".env")
 log = logging.getLogger("engine.importacao.claude")
 
 MODELO = "claude-sonnet-4-6"
+MAX_TOKENS = 16000
 
 # Preços Sonnet 4.6 (USD por 1M tokens)
 _PRECO_INPUT = 3.0
@@ -48,17 +49,38 @@ def _calcular_custo_usd(usage) -> float:
     )
 
 
+def _verificar_truncamento(response) -> None:
+    """Lança ValueError se a resposta foi cortada por limite de tokens."""
+    stop_reason = getattr(response, "stop_reason", None)
+    if stop_reason == "max_tokens":
+        raise ValueError(
+            "Documento muito extenso — a resposta foi truncada antes de completar o JSON. "
+            "Tente dividir em partes menores ou selecionar um período específico."
+        )
+
+
+def _log_uso(label: str, response, custo: float) -> None:
+    u = response.usage
+    cache_read = getattr(u, "cache_read_input_tokens", 0) or 0
+    cache_write = getattr(u, "cache_creation_input_tokens", 0) or 0
+    log.info(
+        f"Claude {label}: {u.input_tokens}in/{u.output_tokens}out "
+        f"cache_read={cache_read} cache_write={cache_write} "
+        f"stop={response.stop_reason} ${custo:.5f}"
+    )
+
+
 def chamar_claude_com_pdf(pdf_bytes: bytes, system_prompt: str, user_prompt: str) -> tuple[str, float]:
     """
     Envia PDF nativo (base64) ao Claude Vision.
     Retorna (texto_resposta, custo_usd).
+    Lança ValueError se truncado ou JSON inválido.
     """
-    import anthropic
     client = _get_client()
     dados_b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
     response = client.messages.create(
         model=MODELO,
-        max_tokens=4096,
+        max_tokens=MAX_TOKENS,
         system=[
             {
                 "type": "text",
@@ -83,9 +105,10 @@ def chamar_claude_com_pdf(pdf_bytes: bytes, system_prompt: str, user_prompt: str
             }
         ],
     )
+    _verificar_truncamento(response)
     texto = response.content[0].text if response.content else ""
     custo = _calcular_custo_usd(response.usage)
-    log.info(f"Claude PDF: {response.usage.input_tokens}in/{response.usage.output_tokens}out, ${custo:.5f}")
+    _log_uso("PDF", response, custo)
     return texto, custo
 
 
@@ -98,7 +121,7 @@ def chamar_claude_com_imagem(image_bytes: bytes, mime_type: str, system_prompt: 
     dados_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
     response = client.messages.create(
         model=MODELO,
-        max_tokens=4096,
+        max_tokens=MAX_TOKENS,
         system=[
             {
                 "type": "text",
@@ -123,9 +146,10 @@ def chamar_claude_com_imagem(image_bytes: bytes, mime_type: str, system_prompt: 
             }
         ],
     )
+    _verificar_truncamento(response)
     texto = response.content[0].text if response.content else ""
     custo = _calcular_custo_usd(response.usage)
-    log.info(f"Claude Imagem: {response.usage.input_tokens}in/{response.usage.output_tokens}out, ${custo:.5f}")
+    _log_uso("Imagem", response, custo)
     return texto, custo
 
 
@@ -137,7 +161,7 @@ def chamar_claude_com_texto(texto_documento: str, system_prompt: str, user_promp
     client = _get_client()
     response = client.messages.create(
         model=MODELO,
-        max_tokens=4096,
+        max_tokens=MAX_TOKENS,
         system=[
             {
                 "type": "text",
@@ -157,7 +181,8 @@ def chamar_claude_com_texto(texto_documento: str, system_prompt: str, user_promp
             }
         ],
     )
+    _verificar_truncamento(response)
     texto = response.content[0].text if response.content else ""
     custo = _calcular_custo_usd(response.usage)
-    log.info(f"Claude Texto: {response.usage.input_tokens}in/{response.usage.output_tokens}out, ${custo:.5f}")
+    _log_uso("Texto", response, custo)
     return texto, custo

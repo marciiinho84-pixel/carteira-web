@@ -37,6 +37,16 @@ def tem_texto_util(texto: str, min_chars: int = 200) -> bool:
     return len(sem_espacos) >= min_chars
 
 
+def contar_paginas_pdf(pdf_bytes: bytes) -> int:
+    """Retorna número de páginas do PDF, ou 0 se não conseguir ler."""
+    try:
+        import pypdf
+        import io
+        return len(pypdf.PdfReader(io.BytesIO(pdf_bytes)).pages)
+    except Exception:
+        return 0
+
+
 def validar_pdf(pdf_bytes: bytes) -> tuple[bool, str]:
     """Valida PDF. Retorna (ok, mensagem_erro)."""
     if len(pdf_bytes) > 32 * 1024 * 1024:

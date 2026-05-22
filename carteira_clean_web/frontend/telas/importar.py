@@ -11,6 +11,14 @@ from carteira_clean_web.frontend.utils import api
 from carteira_clean_web.backend.engine.importacao.detector import TIPOS_DOCUMENTO, TIPO_LABELS
 
 
+class _TipoConflito(Exception):
+    def __init__(self, mensagem: str, tipo_detectado: str, tipo_informado: str):
+        super().__init__(mensagem)
+        self.mensagem = mensagem
+        self.tipo_detectado = tipo_detectado
+        self.tipo_informado = tipo_informado
+
+
 def render():
     st.title("📥 Importar Extrato")
     st.caption("Importe PDFs, imagens ou planilhas de extratos. O Claude extrai os eventos automaticamente.")
@@ -34,15 +42,35 @@ def render():
             tipo_documento = opcoes_tipo[tipo_label_sel]
 
         if arquivo and st.button("🤖 Processar com Claude", type="primary", use_container_width=True):
-            with st.spinner("Enviando para o Claude... (~15-30s)"):
+            with st.spinner("Lendo arquivo e enviando para o Claude... (~15-60s)"):
                 try:
                     resultado = _chamar_upload(arquivo, tipo_documento)
+                    # Mostra alertas pré-processamento (ex: PDF longo)
+                    for alerta in resultado.get("alertas", []):
+                        st.warning(f"⚠️ {alerta}")
                     st.session_state["importacao_preview"] = resultado
                     st.session_state["importacao_eventos_sel"] = {
                         i: not ev.get("duplicata", False)
                         for i, ev in enumerate(resultado.get("eventos", []))
                     }
                     st.rerun()
+                except _TipoConflito as e:
+                    # Divergência detector vs. seleção manual
+                    st.warning(f"⚠️ {e.mensagem}")
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        if st.button(f"Usar tipo detectado: {e.tipo_detectado}", use_container_width=True):
+                            st.session_state["tipo_override"] = e.tipo_detectado
+                            st.rerun()
+                    with col_b:
+                        if st.button(f"Forçar tipo selecionado: {tipo_documento}", use_container_width=True):
+                            with st.spinner("Processando com override..."):
+                                try:
+                                    resultado = _chamar_upload(arquivo, tipo_documento, confirmar_override=True)
+                                    st.session_state["importacao_preview"] = resultado
+                                    st.rerun()
+                                except Exception as e2:
+                                    st.error(f"Erro: {e2}")
                 except Exception as e:
                     st.error(f"Erro: {e}")
 
@@ -55,18 +83,31 @@ def render():
     _render_historico()
 
 
-def _chamar_upload(arquivo, tipo_documento: str) -> dict:
+def _chamar_upload(arquivo, tipo_documento: str, confirmar_override: bool = False) -> dict:
     """Envia arquivo para o endpoint de upload via requests multipart."""
     import requests
     from carteira_clean_web.frontend.utils.api import API_BASE
     url = f"{API_BASE}/importacao/upload"
-    files = {"arquivo": (arquivo.name, arquivo.read(), arquivo.type or "application/octet-stream")}
-    data = {"tipo_documento": tipo_documento}
+    conteudo = arquivo.read() if hasattr(arquivo, "read") else arquivo.getvalue()
+    files = {"arquivo": (arquivo.name, conteudo, arquivo.type or "application/octet-stream")}
+    data = {"tipo_documento": tipo_documento, "confirmar_override": str(confirmar_override).lower()}
     resp = requests.post(url, files=files, data=data, timeout=120)
     if resp.status_code == 409:
-        raise Exception(resp.json().get("detail", "Arquivo já importado anteriormente."))
+        detail = resp.json().get("detail", {})
+        # Verifica se é conflito de tipo ou arquivo duplicado
+        if isinstance(detail, dict) and "tipo_detectado" in detail:
+            raise _TipoConflito(
+                mensagem=detail.get("mensagem", "Tipo de documento divergente"),
+                tipo_detectado=detail["tipo_detectado"],
+                tipo_informado=detail["tipo_informado"],
+            )
+        msg = detail if isinstance(detail, str) else detail.get("mensagem", "Arquivo já importado anteriormente.")
+        raise Exception(msg)
     if not resp.ok:
-        detalhe = resp.json().get("detail", resp.text[:200]) if resp.content else resp.text
+        try:
+            detalhe = resp.json().get("detail", resp.text[:300])
+        except Exception:
+            detalhe = resp.text[:300]
         raise Exception(f"HTTP {resp.status_code}: {detalhe}")
     return resp.json()
 
