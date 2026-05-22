@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 
 TIPOS_DOCUMENTO = [
+    "auto",
     "b3_custodia",
     "b3_movimentacoes",
     "caixa_rv",
@@ -17,6 +18,7 @@ TIPOS_DOCUMENTO = [
 ]
 
 TIPO_LABELS = {
+    "auto": "🔍 Detectar automaticamente",
     "b3_custodia": "B3 — Custódia",
     "b3_movimentacoes": "B3 — Movimentações",
     "caixa_rv": "Caixa — Renda Variável",
@@ -26,6 +28,8 @@ TIPO_LABELS = {
     "caixa_fic_func": "Caixa — FIC FUNC",
     "tesouro_direto": "Tesouro Direto",
 }
+
+CONFIANCA_ICON = {"alta": "🟢", "media": "🟡", "baixa": "🔴"}
 
 _KEYWORDS: dict[str, list[str]] = {
     "b3_custodia": ["B3 S.A.", "Posição em Custódia", "posicao em custodia", "carteira"],

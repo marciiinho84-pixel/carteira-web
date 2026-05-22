@@ -127,15 +127,7 @@ def _processar_eventos(dados: dict) -> list[dict]:
     eventos = []
     for ev in eventos_raw:
         try:
-            data_str = ev.get("data", "")
-            # Normaliza data para YYYY-MM-DD
-            if "/" in str(data_str):
-                partes = str(data_str).split("/")
-                if len(partes) == 3:
-                    if len(partes[2]) == 4:  # DD/MM/YYYY
-                        data_str = f"{partes[2]}-{partes[1]:>02}-{partes[0]:>02}"
-                    else:  # YYYY/MM/DD
-                        data_str = f"{partes[0]}-{partes[1]:>02}-{partes[2]:>02}"
+            data_str = _normalizar_data(ev.get("data", ""))
 
             tipo = str(ev.get("tipo", "")).strip().upper()
             if tipo not in TIPOS_VALIDOS:
@@ -167,6 +159,80 @@ def _processar_eventos(dados: dict) -> list[dict]:
         log.info(f"Observações do Claude: {obs_gerais}")
 
     return eventos
+
+
+def _normalizar_data(data_str: str) -> str:
+    """Converte DD/MM/YYYY ou YYYY/MM/DD para YYYY-MM-DD."""
+    if "/" in str(data_str):
+        partes = str(data_str).split("/")
+        if len(partes) == 3:
+            if len(partes[2]) == 4:
+                return f"{partes[2]}-{partes[1]:>02}-{partes[0]:>02}"
+            return f"{partes[0]}-{partes[1]:>02}-{partes[2]:>02}"
+    return str(data_str)
+
+
+def _parsear_resposta_auto(texto: str) -> tuple[list[dict], dict]:
+    """
+    Interpreta a resposta do prompt mestre de auto-detecção.
+    Retorna (eventos, meta) onde meta = {tipo_identificado, confianca, justificativa}.
+    """
+    texto = texto.strip()
+    if texto.startswith("```"):
+        linhas = texto.splitlines()
+        texto = "\n".join(linhas[1:-1] if linhas[-1].strip() == "```" else linhas[1:])
+
+    try:
+        dados = json.loads(texto)
+    except json.JSONDecodeError as e:
+        try:
+            dados = _reparar_json_truncado(texto)
+        except ValueError:
+            raise ValueError(f"Resposta auto-detecção não é JSON válido: {e}\n\nResposta:\n{texto[:400]}")
+
+    tipo = dados.get("tipo_identificado", "desconhecido")
+    meta = {
+        "tipo_identificado": tipo,
+        "confianca": dados.get("confianca", "baixa"),
+        "justificativa": dados.get("justificativa", ""),
+    }
+
+    if tipo == "funcef":
+        # Schema especial: contribuição do mês em eventos + dados extras
+        eventos = []
+        dados_extras = dados.get("dados_extras", {})
+        funcef_dados = dados_extras.get("funcef", {}) if isinstance(dados_extras, dict) else {}
+
+        contrib_raw = (
+            dados.get("eventos", [{}])[0]
+            if dados.get("eventos")
+            else funcef_dados.get("contribuicao_mes", {})
+        )
+        if contrib_raw and contrib_raw.get("valor"):
+            data_str = _normalizar_data(contrib_raw.get("data", ""))
+            valor = float(contrib_raw.get("valor") or 0)
+            qtd = float(contrib_raw["qtd"]) if contrib_raw.get("qtd") else None
+            obs = contrib_raw.get("obs") or "Contribuição FUNCEF"
+            eventos.append({
+                "data": data_str,
+                "ativo": "FUNCEF",
+                "tipo": "CONTRIBUICAO",
+                "qtd": qtd,
+                "preco": None,
+                "valor": valor,
+                "obs": obs,
+                "hash": calcular_hash_evento(data_str, "FUNCEF", "CONTRIBUICAO", qtd, valor),
+                "_funcef_cota": funcef_dados.get("cota_atual"),
+                "_funcef_saldo": funcef_dados.get("saldo_atual"),
+            })
+    else:
+        eventos = _processar_eventos(dados)
+
+    obs = dados.get("observacoes", "")
+    if obs:
+        log.info(f"Auto-detecção [{tipo}]: {obs}")
+
+    return eventos, meta
 
 
 def _parsear_resposta_funcef(texto: str) -> list[dict]:
@@ -227,12 +293,14 @@ def extrair_eventos(
     arquivo_bytes: bytes,
     nome_arquivo: str,
     tipo_documento: str,
-) -> tuple[list[dict], float]:
+) -> tuple[list[dict], float, dict]:
     """
     Extrai eventos de um arquivo.
 
     Returns:
-        (lista_de_eventos, custo_usd)
+        (lista_de_eventos, custo_usd, meta)
+        meta = {"tipo_identificado": str, "confianca": str, "justificativa": str}
+        Para tipo manual (não "auto"), tipo_identificado == tipo_documento.
     """
     formato = detectar_formato(nome_arquivo)
     system_prompt, user_prompt = get_prompt(tipo_documento)
@@ -243,7 +311,6 @@ def extrair_eventos(
         ok, erro = validar_pdf(arquivo_bytes)
         if not ok:
             raise ValueError(f"PDF inválido: {erro}")
-
         texto_nativo = extrair_texto_pdf(arquivo_bytes)
         if tem_texto_util(texto_nativo):
             log.info("PDF com texto nativo — usando extração por texto")
@@ -271,9 +338,14 @@ def extrair_eventos(
     else:
         raise ValueError(f"Formato '{formato}' não suportado. Use PDF, JPEG, PNG, XLSX ou CSV.")
 
-    if tipo_documento == "funcef":
+    if tipo_documento == "auto":
+        eventos, meta = _parsear_resposta_auto(texto_resposta)
+    elif tipo_documento == "funcef":
         eventos = _parsear_resposta_funcef(texto_resposta)
+        meta = {"tipo_identificado": "funcef", "confianca": None, "justificativa": None}
     else:
         eventos = _parsear_resposta_claude(texto_resposta)
-    log.info(f"  → {len(eventos)} eventos extraídos, custo=${custo:.5f}")
-    return eventos, custo
+        meta = {"tipo_identificado": tipo_documento, "confianca": None, "justificativa": None}
+
+    log.info(f"  → {len(eventos)} eventos | tipo={meta['tipo_identificado']} | custo=${custo:.5f}")
+    return eventos, custo, meta

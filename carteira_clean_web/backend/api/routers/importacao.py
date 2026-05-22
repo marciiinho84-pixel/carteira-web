@@ -57,21 +57,16 @@ def _proximo_linha_excel(db: Session) -> int:
 @router.post("/importacao/upload")
 async def upload_extrato(
     arquivo: UploadFile = File(...),
-    tipo_documento: str = Form(...),
-    confirmar_override: bool = Form(False),
+    tipo_documento: str = Form("auto"),
     db: Session = Depends(get_db),
 ):
     """
-    Recebe arquivo, processa com Claude e retorna preview de eventos.
-    Se o detector automático divergir do tipo informado, retorna 409 para o usuário confirmar.
-    Use confirmar_override=true para forçar o tipo informado mesmo com divergência.
+    Recebe arquivo, chama Claude e retorna preview.
+    - tipo_documento="auto" (default): Claude identifica o tipo automaticamente
+    - tipo_documento=<tipo>: usa o tipo informado diretamente, sem validação prévia
     """
     from carteira_clean_web.backend.engine.importacao.extrator import extrair_eventos
-    from carteira_clean_web.backend.engine.importacao.detector import (
-        TIPOS_DOCUMENTO, TIPO_LABELS, detectar_tipo_documento,
-    )
-    from carteira_clean_web.backend.engine.importacao.processadores.pdf import extrair_texto_pdf
-    from carteira_clean_web.backend.engine.importacao.processadores.planilha import csv_para_texto, xlsx_para_texto
+    from carteira_clean_web.backend.engine.importacao.detector import TIPOS_DOCUMENTO
 
     if tipo_documento not in TIPOS_DOCUMENTO:
         raise HTTPException(400, f"tipo_documento inválido. Use um de: {TIPOS_DOCUMENTO}")
@@ -85,42 +80,6 @@ async def upload_extrato(
     arquivo_hash = _arquivo_hash(conteudo)
     nome_arquivo = arquivo.filename or "documento"
     formato_detectado = nome_arquivo.rsplit(".", 1)[-1].lower() if "." in nome_arquivo else "desconhecido"
-
-    # Detecção automática de tipo — extrai amostra de texto para comparar
-    if not confirmar_override:
-        try:
-            amostra = ""
-            if formato_detectado == "pdf":
-                amostra = extrair_texto_pdf(conteudo)[:2000]
-            elif formato_detectado == "csv":
-                amostra = csv_para_texto(conteudo, max_linhas=20)
-            elif formato_detectado == "xlsx":
-                amostra = xlsx_para_texto(conteudo, max_linhas=20)
-            elif formato_detectado in ("jpg", "jpeg", "png"):
-                amostra = ""  # sem texto para detectar em imagens
-
-            if amostra:
-                tipo_detectado = detectar_tipo_documento(amostra)
-                if tipo_detectado and tipo_detectado != tipo_documento:
-                    label_detectado = TIPO_LABELS.get(tipo_detectado, tipo_detectado)
-                    label_informado = TIPO_LABELS.get(tipo_documento, tipo_documento)
-                    raise HTTPException(
-                        409,
-                        {
-                            "mensagem": (
-                                f"O documento parece ser '{label_detectado}' "
-                                f"mas você selecionou '{label_informado}'. "
-                                f"Confirme o tipo antes de processar."
-                            ),
-                            "tipo_detectado": tipo_detectado,
-                            "tipo_informado": tipo_documento,
-                            "dica": "Reenvie com confirmar_override=true para forçar o tipo selecionado.",
-                        },
-                    )
-        except HTTPException:
-            raise
-        except Exception as e:
-            log.warning(f"Detecção automática falhou (ignorando): {e}")
 
     # Verifica se este arquivo já foi importado antes
     importacao_anterior = db.query(Importacao).filter(
@@ -158,7 +117,7 @@ async def upload_extrato(
 
         # Chama Claude
         log.info(f"Importação #{imp.id}: chamando Claude para {nome_arquivo}...")
-        eventos, custo = extrair_eventos(conteudo, nome_arquivo, tipo_documento)
+        eventos, custo, meta = extrair_eventos(conteudo, nome_arquivo, tipo_documento)
 
         # Detecta duplicatas
         hashes_existentes = _hashes_existentes(db)
@@ -174,7 +133,7 @@ async def upload_extrato(
         except Exception as e:
             log.warning(f"Falha ao arquivar {nome_arquivo}: {e}")
 
-        # Atualiza registro
+        # Atualiza registro com meta de identificação
         n_dup = sum(1 for ev in eventos if ev["duplicata"])
         imp.status = "PREVIEW"
         imp.total_eventos_extraidos = len(eventos)
@@ -182,6 +141,9 @@ async def upload_extrato(
         imp.custo_api_usd = custo
         imp.eventos_extraidos_json = json.dumps(eventos, default=str)
         imp.arquivo_path = str(dest_path)
+        imp.tipo_identificado_ia = meta.get("tipo_identificado")
+        imp.confianca_ia = meta.get("confianca")
+        imp.justificativa_ia = meta.get("justificativa")
         db.commit()
 
         return {
@@ -190,6 +152,9 @@ async def upload_extrato(
             "total_eventos": len(eventos),
             "duplicatas": n_dup,
             "custo_api_usd": round(custo, 6),
+            "tipo_identificado": meta.get("tipo_identificado"),
+            "confianca": meta.get("confianca"),
+            "justificativa": meta.get("justificativa"),
             "eventos": eventos,
             "alertas": alertas_pre,
         }
@@ -298,6 +263,73 @@ def confirmar_importacao(
         "eventos_gravados": gravados,
         "ids_eventos": ids_gravados,
     }
+
+
+@router.post("/importacao/{importacao_id}/reprocessar")
+def reprocessar_importacao(
+    importacao_id: int,
+    body: dict = Body(default={}),
+    db: Session = Depends(get_db),
+):
+    """
+    Reprocessa uma importação PREVIEW com um tipo diferente.
+    Usa o arquivo já arquivado — não precisa fazer novo upload.
+    Body: {"tipo_documento": "funcef"}
+    """
+    from carteira_clean_web.backend.engine.importacao.extrator import extrair_eventos
+    from carteira_clean_web.backend.engine.importacao.detector import TIPOS_DOCUMENTO
+
+    imp = db.query(Importacao).filter(Importacao.id == importacao_id).first()
+    if not imp:
+        raise HTTPException(404, "Importação não encontrada")
+    if imp.status not in ("PREVIEW", "ERROR"):
+        raise HTTPException(400, f"Só é possível reprocessar status PREVIEW ou ERROR (atual: {imp.status})")
+    if not imp.arquivo_path or not Path(imp.arquivo_path).exists():
+        raise HTTPException(400, "Arquivo original não encontrado no arquivo — faça novo upload")
+
+    novo_tipo = body.get("tipo_documento", imp.tipo_documento)
+    if novo_tipo not in TIPOS_DOCUMENTO:
+        raise HTTPException(400, f"tipo_documento inválido: {novo_tipo}")
+
+    conteudo = Path(imp.arquivo_path).read_bytes()
+    imp.status = "PROCESSING"
+    imp.tipo_documento = novo_tipo
+    db.commit()
+
+    try:
+        eventos, custo, meta = extrair_eventos(conteudo, imp.arquivo_nome, novo_tipo)
+        hashes_existentes = _hashes_existentes(db)
+        for ev in eventos:
+            ev["duplicata"] = ev["hash"] in hashes_existentes
+
+        n_dup = sum(1 for ev in eventos if ev["duplicata"])
+        imp.status = "PREVIEW"
+        imp.total_eventos_extraidos = len(eventos)
+        imp.total_eventos_duplicados = n_dup
+        imp.custo_api_usd = (imp.custo_api_usd or 0) + custo
+        imp.eventos_extraidos_json = json.dumps(eventos, default=str)
+        imp.tipo_identificado_ia = meta.get("tipo_identificado")
+        imp.confianca_ia = meta.get("confianca")
+        imp.justificativa_ia = meta.get("justificativa")
+        db.commit()
+
+        return {
+            "importacao_id": imp.id,
+            "status": "PREVIEW",
+            "tipo_documento": novo_tipo,
+            "tipo_identificado": meta.get("tipo_identificado"),
+            "confianca": meta.get("confianca"),
+            "justificativa": meta.get("justificativa"),
+            "total_eventos": len(eventos),
+            "duplicatas": n_dup,
+            "custo_api_usd": round(custo, 6),
+            "eventos": eventos,
+        }
+    except Exception as e:
+        imp.status = "ERROR"
+        imp.erro_mensagem = str(e)[:1000]
+        db.commit()
+        raise HTTPException(500, f"Erro ao reprocessar: {str(e)}")
 
 
 @router.delete("/importacao/{importacao_id}")

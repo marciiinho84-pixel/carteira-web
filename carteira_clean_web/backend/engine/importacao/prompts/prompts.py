@@ -204,8 +204,65 @@ _PROMPT_GENERICO_USER = (
 )
 
 
+def get_prompt_auto() -> tuple[str, str]:
+    """
+    Prompt mestre para detecção automática de tipo + extração em uma única chamada.
+    Claude primeiro identifica o tipo, depois aplica o schema correto.
+    """
+    system = (
+        "Você é um especialista em análise de documentos financeiros brasileiros. "
+        "Você vai identificar o tipo do documento E extrair os dados relevantes em uma única resposta JSON. "
+        "Sempre responda SOMENTE com JSON válido, sem texto antes ou depois."
+    )
+    user = """Analise este documento financeiro e execute em duas etapas:
+
+ETAPA 1 — IDENTIFICAÇÃO:
+Classifique o documento em um destes tipos:
+- "b3_custodia": extrato de posição em custódia da B3
+- "b3_movimentacoes": extrato de movimentações/negociações da B3
+- "caixa_rv": nota de corretagem ou extrato RV da Caixa Econômica
+- "funcef": extrato da FUNCEF (Fundação dos Economiários Federais)
+- "caixa_lci": extrato de LCI da Caixa Econômica
+- "caixa_ouro": extrato de ouro (BM&F/Caixa)
+- "caixa_fic_func": extrato de fundo FIC FUNC da Caixa
+- "tesouro_direto": extrato do Tesouro Direto
+- "desconhecido": nenhum dos anteriores
+
+ETAPA 2 — EXTRAÇÃO:
+Aplique as regras de extração conforme o tipo identificado:
+
+• Para b3_custodia, b3_movimentacoes, caixa_rv, caixa_lci, caixa_ouro, caixa_fic_func, tesouro_direto:
+  Extraia eventos no array "eventos" com campos: data (YYYY-MM-DD), ativo (ticker), tipo, qtd, preco, valor, obs.
+  Tipos válidos: SALDO_INICIAL, COMPRA, VENDA, DIVIDENDO, JCP, RENDIMENTO, AMORTIZACAO, BONIFICACAO, CONTRIBUICAO, APORTE_EXTERNO, RESGATE_EXTERNO, VENCIMENTO
+  Valores monetários: float com ponto decimal. qtd/preco: null se indisponíveis.
+
+• Para funcef (regras especiais):
+  - NÃO extraia contribuições históricas — apenas a do mês mais recente
+  - "eventos": array com 1 evento CONTRIBUICAO consolidando o mês mais recente
+  - "dados_extras.funcef.cota_atual": {data, valor} — cota patrimonial mais recente
+  - "dados_extras.funcef.saldo_atual": {valor_real, quantidade_cotas} — saldo total
+
+• Para desconhecido:
+  - "eventos": tente extrair o que for possível no formato padrão
+  - "dados_extras": {}
+
+RETORNE EXATAMENTE este JSON (preencha os campos conforme o tipo):
+
+{
+  "tipo_identificado": "um dos tipos acima",
+  "confianca": "alta|media|baixa",
+  "justificativa": "1-2 frases explicando a identificação",
+  "eventos": [],
+  "dados_extras": {},
+  "observacoes": "dados ausentes, ambiguidades ou avisos"
+}"""
+    return system, user
+
+
 def get_prompt(tipo_documento: str) -> tuple[str, str]:
     """Retorna (system_prompt, user_prompt) para o tipo dado. Usa genérico se não reconhecido."""
+    if tipo_documento == "auto":
+        return get_prompt_auto()
     fn = PROMPTS.get(tipo_documento)
     if fn:
         return fn()

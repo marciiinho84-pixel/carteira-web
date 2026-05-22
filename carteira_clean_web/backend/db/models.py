@@ -163,7 +163,10 @@ class Importacao(Base):
     arquivo_path = Column(Text)
     arquivo_hash = Column(Text)
     formato = Column(String(10))           # pdf|jpeg|png|xlsx|csv
-    tipo_documento = Column(String(50))    # b3_custodia|b3_movimentacoes|...
+    tipo_documento = Column(String(50))    # b3_custodia|b3_movimentacoes|auto|...
+    tipo_identificado_ia = Column(String(50), nullable=True)   # tipo que o Claude identificou
+    confianca_ia = Column(String(10), nullable=True)           # alta|media|baixa
+    justificativa_ia = Column(Text, nullable=True)             # explicação da classificação
     status = Column(String(20), default="UPLOADED")  # UPLOADED|PROCESSING|PREVIEW|CONFIRMED|CANCELLED|ERROR
     total_eventos_extraidos = Column(Integer, default=0)
     total_eventos_gravados = Column(Integer, default=0)
@@ -191,6 +194,9 @@ class Importacao(Base):
             "arquivo_hash": self.arquivo_hash,
             "formato": self.formato,
             "tipo_documento": self.tipo_documento,
+            "tipo_identificado_ia": self.tipo_identificado_ia,
+            "confianca_ia": self.confianca_ia,
+            "justificativa_ia": self.justificativa_ia,
             "status": self.status,
             "total_eventos_extraidos": self.total_eventos_extraidos,
             "total_eventos_gravados": self.total_eventos_gravados,
