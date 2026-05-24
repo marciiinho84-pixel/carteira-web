@@ -87,53 +87,135 @@ def get_prompt_caixa_rv() -> tuple[str, str]:
 def get_prompt_funcef() -> tuple[str, str]:
     system = (
         "Você é um especialista em análise de extratos da FUNCEF (Fundação dos Economiários Federais). "
-        "Sua tarefa é extrair SOMENTE três informações específicas deste extrato e retorná-las em JSON estruturado. "
+        "Sua tarefa é extrair dados financeiros com precisão absoluta. "
+        "NUNCA invente valores, NUNCA aproxime, NUNCA some linhas — o sistema Python fará as somas. "
+        "Se algum campo não estiver claro no documento, retorne null e explique em observacoes. "
         "Sempre responda SOMENTE com JSON válido, sem texto antes ou depois."
     )
-    user = """Analise este extrato da FUNCEF e extraia EXATAMENTE as seguintes informações:
+    user = """Analise este extrato da FUNCEF seguindo RIGOROSAMENTE as instruções abaixo em ordem.
 
-1. **Cota mais recente** — seção "Valorização da Cota Patrimonial do Plano":
-   - Data e valor da cota do MÊS MAIS RECENTE listado
+═══════════════════════════════════════════
+PASSO 1 — ENUMERAR E FILTRAR COMPETÊNCIAS
+═══════════════════════════════════════════
+1a) Liste TODAS as competências que aparecem na tabela de contribuições. Exemplos: "2026/01", "2026/04", "2026/13".
+    Registre-as em debug.competencias_encontradas.
 
-2. **Saldo atual** — seção "Saldo nas SubContas" ou equivalente:
-   - Valor total em R$ (soma de todas as subcontas)
-   - Quantidade total de cotas
+1b) CLASSIFICAÇÃO OBRIGATÓRIA:
+    ✅ Competência REGULAR: MM está entre 01 e 12 (janeiro a dezembro)
+    ❌ Competência IGNORAR: MM = 13 → décimo-terceiro salário. NÃO É UM MÊS DO CALENDÁRIO.
+       Tratar /13 exatamente como se não existisse. Não mencionar, não referenciar.
 
-3. **Contribuição do mês mais recente** — seção de contribuições/movimentações:
-   - Identificar qual é o mês mais recente com lançamento
-   - Somar TODAS as contribuições daquele único mês (participante + patrocinadora)
-   - Criar 1 único evento consolidado para esse mês
-   - NÃO retornar contribuições de meses anteriores
+1c) Das competências REGULARES (MM ∈ {01..12}), selecione aquela com o MAIOR valor numérico de MM.
+    Se houver empate de MM em anos diferentes, prefira o ano mais recente.
+    Esse é o "competencia_referencia". Converta para formato YYYY-MM.
 
-IMPORTANTE: NÃO extraia histórico de contribuições passadas. O sistema já tem o histórico.
-Retorne SOMENTE o JSON abaixo, preenchido com os dados encontrados:
+    EXEMPLO CORRETO: se o extrato tem 2026/01, 2026/02, 2026/03, 2026/04, 2026/13
+    → competencias_encontradas = ["2026/01","2026/02","2026/03","2026/04","2026/13"]
+    → competencias_regulares   = ["2026/01","2026/02","2026/03","2026/04"]  (13 excluído)
+    → competencia_referencia   = "2026-04"  (MM=04 é o maior entre {01,02,03,04})
+
+═══════════════════════════════════════════
+PASSO 2 — LISTAR LINHAS INDIVIDUAIS (NÃO SOMAR)
+═══════════════════════════════════════════
+Para a competencia_referencia do Passo 1, identifique CADA linha que atenda TODOS estes critérios:
+  ✅ Descrição começa com "Normal -" (ex: "Normal - Participante", "Normal - Patrocinador", "Normal Patrocinador - Excedente")
+  ✅ Valor positivo (maior que zero)
+  ✅ Competência == competencia_referencia exata (não misture outros meses)
+
+IGNORAR obrigatoriamente:
+  ❌ Qualquer linha com competência /13
+  ❌ Linhas com "Acerto de Custeio Administrativo" (qualquer variação)
+  ❌ Linhas com valor negativo ou zero
+  ❌ Linhas de qualquer outra competência
+
+Para CADA linha aprovada, registre UM objeto em "linhas_competencia" com:
+  • "historico": texto exato da coluna Histórico/Descrição
+  • "valor_contribuicao": valor da coluna "Valor da Contribuição" (float)
+  • "credito_subconta": valor da coluna "Crédito na Subconta" (float)
+  • "cotas": valor da coluna "Crédito na Subconta em Cotas" (float)
+
+⛔ PROIBIDO ABSOLUTAMENTE:
+  - Calcular qualquer total (valor_liquido_total, qtd_cotas_total, somas, etc.)
+  - Colocar valores somados no JSON
+  - Fazer qualquer aritmética entre as linhas
+  O sistema Python calculará os totais — você só coleta as linhas individuais com precisão.
+
+═══════════════════════════════════════════
+PASSO 3 — VALOR DA COTA DO MÊS
+═══════════════════════════════════════════
+Na seção "Valorização da Cota Patrimonial do Plano", localize a cota do mês competencia_referencia.
+Registre apenas o valor em validacao.cota_historico. Não calcule cota_calculada — o Python fará isso.
+
+═══════════════════════════════════════════
+PASSO 4 — HISTÓRICO COMPLETO DE COTAS
+═══════════════════════════════════════════
+Na seção "Valorização da Cota Patrimonial do Plano", extraia TODAS as linhas listadas.
+Para cada linha: competência (YYYY-MM), data (YYYY-MM-DD) e valor da cota (float).
+Ordene do mais antigo para o mais recente.
+
+═══════════════════════════════════════════
+PASSO 5 — SALDO ATUAL
+═══════════════════════════════════════════
+Na seção "Saldo nas SubContas" ou equivalente:
+  - valor_real: soma total em R$ de todas as subcontas
+  - quantidade_cotas: total de cotas
+  - data_referencia: data de referência do saldo (YYYY-MM-DD)
+
+═══════════════════════════════════════════
+RETORNE EXATAMENTE este JSON preenchido:
+═══════════════════════════════════════════
 
 {
   "documento": {
     "tipo": "funcef",
-    "titular": "nome do titular se disponível",
-    "competencia": "YYYY-MM"
+    "titular": "nome do titular ou null",
+    "competencia_referencia": "YYYY-MM"
   },
-  "cota_atual": {
-    "data": "YYYY-MM-DD",
-    "valor": 0.0
+  "debug": {
+    "competencias_encontradas": ["2026/01", "2026/04", "2026/13"],
+    "competencias_regulares": ["2026/01", "2026/04"]
   },
+  "historico_cotas_mensais": [
+    {"competencia": "YYYY-MM", "data": "YYYY-MM-DD", "valor_cota": 0.0}
+  ],
   "saldo_atual": {
     "valor_real": 0.0,
-    "quantidade_cotas": 0.0
+    "quantidade_cotas": 0.0,
+    "data_referencia": "YYYY-MM-DD"
   },
-  "contribuicao_mes": {
-    "data": "YYYY-MM-DD",
-    "ativo": "FUNCEF",
-    "tipo": "CONTRIBUICAO",
-    "qtd": 0.0,
-    "valor": 0.0,
-    "obs": "Contribuição consolidada do mês YYYY/MM (participante + patrocinadora)"
+  "contribuicao_mes_corrente": {
+    "competencia": "YYYY-MM",
+    "data_ultimo_dia": "YYYY-MM-DD",
+    "linhas_competencia": [
+      {
+        "historico": "Normal - Participante",
+        "valor_contribuicao": 0.0,
+        "credito_subconta": 0.0,
+        "cotas": 0.0
+      },
+      {
+        "historico": "Normal - Patrocinador",
+        "valor_contribuicao": 0.0,
+        "credito_subconta": 0.0,
+        "cotas": 0.0
+      }
+    ]
   },
-  "observacoes": "campo livre para anotar dúvidas ou dados ausentes"
+  "validacao": {
+    "cota_historico": 0.0,
+    "ok": true,
+    "mensagem": "OK"
+  },
+  "observacoes": "anote aqui qualquer dúvida, dado ausente ou anomalia encontrada"
 }
 
-Se algum campo não estiver disponível no documento, use null."""
+ATENÇÃO FINAL:
+- Todos os valores monetários: float com ponto decimal (não vírgula)
+- Datas: sempre YYYY-MM-DD
+- linhas_competencia: lista TODAS as linhas "Normal -" do mês, uma por uma. Nunca some.
+- Se qualquer campo não for encontrado: use null e explique em observacoes
+- NUNCA some competências de meses diferentes
+- NUNCA inclua /13 em nenhum cálculo"""
     return system, user
 
 
@@ -236,11 +318,17 @@ Aplique as regras de extração conforme o tipo identificado:
   Tipos válidos: SALDO_INICIAL, COMPRA, VENDA, DIVIDENDO, JCP, RENDIMENTO, AMORTIZACAO, BONIFICACAO, CONTRIBUICAO, APORTE_EXTERNO, RESGATE_EXTERNO, VENCIMENTO
   Valores monetários: float com ponto decimal. qtd/preco: null se indisponíveis.
 
-• Para funcef (regras especiais):
-  - NÃO extraia contribuições históricas — apenas a do mês mais recente
-  - "eventos": array com 1 evento CONTRIBUICAO consolidando o mês mais recente
-  - "dados_extras.funcef.cota_atual": {data, valor} — cota patrimonial mais recente
-  - "dados_extras.funcef.saldo_atual": {valor_real, quantidade_cotas} — saldo total
+• Para funcef (regras especiais — leia com atenção):
+  PASSO A: Identifique a competência regular mais recente (MM entre 01 e 12). IGNORE /13 completamente.
+  PASSO B: Para cada linha "Normal -" dessa competência com valor > 0, registre UM objeto em "dados_extras.funcef.linhas_competencia":
+    {"historico": "texto exato", "valor_contribuicao": X, "credito_subconta": Y, "cotas": Z}
+  ⛔ NÃO calcule totais — o Python soma. Apenas liste as linhas individuais.
+  PASSO C: Registre a cota do mês em dados_extras.funcef.validacao.cota_historico.
+  - "eventos": 1 evento CONTRIBUICAO com data=último dia do mês, qtd=null, preco=null, valor=null, obs="Contribuição FUNCEF YYYY/MM"
+  - "dados_extras.funcef.linhas_competencia": lista das linhas individuais (ver PASSO B)
+  - "dados_extras.funcef.historico_cotas_mensais": [{competencia, data, valor_cota}] — TODAS as cotas
+  - "dados_extras.funcef.saldo_atual": {valor_real, quantidade_cotas, data_referencia}
+  - "dados_extras.funcef.validacao": {cota_historico, ok, mensagem}
 
 • Para desconhecido:
   - "eventos": tente extrair o que for possível no formato padrão

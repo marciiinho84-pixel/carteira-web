@@ -21,7 +21,7 @@ def _premissas_default():
 
 def render():
     st.title("⚙️ Configurações")
-    aba = st.tabs(["📋 CAD_ATIVOS", "🎯 Premissas da Meta", "ℹ️ Sistema"])
+    aba = st.tabs(["📋 CAD_ATIVOS", "🎯 Premissas da Meta", "📊 Preços Manuais", "ℹ️ Sistema"])
 
     # ─── Aba 1: Edição de Ativos ──────────────────────────────────
     with aba[0]:
@@ -274,8 +274,120 @@ def render():
             }
             st.success("✅ Premissas salvas! Acesse Meta Patrimônio para ver o novo cenário.")
 
-    # ─── Aba 3: Informações do Sistema ───────────────────────────
+    # ─── Aba 3: Preços Manuais ────────────────────────────────────
     with aba[2]:
+        st.subheader("📊 Preços Manuais")
+        st.warning(
+            "⚠️ Ativos como **FUNCEF**, **CAIXA FIC FUNC**, **CAIXA LCI** e **CAIXA OURO** "
+            "não têm cotação automática. A cota mensal precisa ser atualizada manualmente "
+            "via extrato PDF (📥 Importar Extrato) ou diretamente aqui."
+        )
+
+        precos_raw = api.get("precos-manuais") or []
+        if not precos_raw:
+            st.info("Nenhum preço manual cadastrado.")
+        else:
+            df_pm = pd.DataFrame(precos_raw)
+            df_pm["data"] = pd.to_datetime(df_pm["data"]).dt.date
+
+            # ── Filtros ───────────────────────────────────────────
+            tickers_disponiveis = sorted(df_pm["ticker"].unique().tolist())
+            fc1, fc2, fc3 = st.columns([2, 2, 2])
+            with fc1:
+                ticker_filtro = st.selectbox(
+                    "Filtrar por ticker",
+                    options=["Todos"] + tickers_disponiveis,
+                    key="pm_ticker_filtro",
+                )
+            with fc2:
+                data_ini = st.date_input(
+                    "Data inicial",
+                    value=df_pm["data"].min(),
+                    format="DD/MM/YYYY",
+                    key="pm_data_ini",
+                )
+            with fc3:
+                data_fim = st.date_input(
+                    "Data final",
+                    value=df_pm["data"].max(),
+                    format="DD/MM/YYYY",
+                    key="pm_data_fim",
+                )
+
+            df_view = df_pm.copy()
+            if ticker_filtro != "Todos":
+                df_view = df_view[df_view["ticker"] == ticker_filtro]
+            df_view = df_view[
+                (df_view["data"] >= data_ini) & (df_view["data"] <= data_fim)
+            ].sort_values(["ticker", "data"], ascending=[True, False]).reset_index(drop=True)
+
+            st.caption(f"{len(df_view)} entrada(s) encontrada(s)")
+            st.dataframe(
+                df_view[["ticker", "data", "valor", "fonte"]].rename(columns={
+                    "ticker": "Ticker", "data": "Data", "valor": "Valor (R$)", "fonte": "Fonte",
+                }),
+                use_container_width=True,
+                hide_index=True,
+                height=min(400, 38 + len(df_view) * 35),
+                column_config={
+                    "Valor (R$)": st.column_config.NumberColumn(format="%.8f"),
+                    "Data": st.column_config.DateColumn(format="DD/MM/YYYY"),
+                },
+            )
+
+        st.divider()
+
+        # ── Formulário: adicionar / atualizar entrada ─────────────
+        with st.expander("✏️ Adicionar ou atualizar entrada", expanded=False):
+            st.caption(
+                "Se já existir uma entrada com o mesmo Ticker + Data, o valor será atualizado."
+            )
+            pe1, pe2 = st.columns(2)
+            with pe1:
+                pm_ticker = st.text_input(
+                    "Ticker *", placeholder="Ex: FUNCEF",
+                    key="pm_novo_ticker",
+                ).upper().strip()
+                pm_data = st.date_input(
+                    "Data *", format="DD/MM/YYYY",
+                    key="pm_nova_data",
+                )
+            with pe2:
+                pm_valor = st.number_input(
+                    "Valor (R$) *",
+                    min_value=0.000001,
+                    format="%.8f",
+                    key="pm_novo_valor",
+                )
+                pm_fonte = st.text_input(
+                    "Fonte (opcional)", placeholder="Ex: Extrato FUNCEF abr/2026",
+                    key="pm_nova_fonte",
+                )
+
+            if st.button(
+                "💾 Salvar entrada",
+                type="primary",
+                disabled=not pm_ticker,
+                key="btn_pm_salvar",
+            ):
+                payload = {
+                    "ticker": pm_ticker,
+                    "data": str(pm_data),
+                    "valor": pm_valor,
+                    "fonte": pm_fonte or None,
+                }
+                res = api.post("precos-manuais", data=payload)
+                if res is not None:
+                    st.success(
+                        f"✅ **{pm_ticker}** em {pm_data.strftime('%d/%m/%Y')} = "
+                        f"R$ {pm_valor:.8f} salvo!"
+                    )
+                    st.rerun()
+                else:
+                    st.error("❌ Erro ao salvar. Verifique os campos.")
+
+    # ─── Aba 4: Informações do Sistema ────────────────────────────
+    with aba[3]:
         st.subheader("Informações do Sistema")
 
         status = api.get("status")

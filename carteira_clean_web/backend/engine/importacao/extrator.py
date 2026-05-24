@@ -198,33 +198,59 @@ def _parsear_resposta_auto(texto: str) -> tuple[list[dict], dict]:
     }
 
     if tipo == "funcef":
-        # Schema especial: contribuição do mês em eventos + dados extras
-        eventos = []
+        # FUNCEF via auto-detect: soma linhas_competencia no Python (nunca confia em totais da IA)
         dados_extras = dados.get("dados_extras", {})
-        funcef_dados = dados_extras.get("funcef", {}) if isinstance(dados_extras, dict) else {}
+        funcef_meta = dados_extras.get("funcef", {}) if isinstance(dados_extras, dict) else {}
+        validacao_auto = funcef_meta.get("validacao", {})
 
-        contrib_raw = (
-            dados.get("eventos", [{}])[0]
-            if dados.get("eventos")
-            else funcef_dados.get("contribuicao_mes", {})
+        # Busca linhas_competencia em múltiplos locais
+        linhas_auto = (
+            funcef_meta.get("linhas_competencia")
+            or dados.get("linhas_competencia")
         )
-        if contrib_raw and contrib_raw.get("valor"):
-            data_str = _normalizar_data(contrib_raw.get("data", ""))
-            valor = float(contrib_raw.get("valor") or 0)
-            qtd = float(contrib_raw["qtd"]) if contrib_raw.get("qtd") else None
-            obs = contrib_raw.get("obs") or "Contribuição FUNCEF"
-            eventos.append({
-                "data": data_str,
-                "ativo": "FUNCEF",
-                "tipo": "CONTRIBUICAO",
-                "qtd": qtd,
-                "preco": None,
-                "valor": valor,
-                "obs": obs,
-                "hash": calcular_hash_evento(data_str, "FUNCEF", "CONTRIBUICAO", qtd, valor),
-                "_funcef_cota": funcef_dados.get("cota_atual"),
-                "_funcef_saldo": funcef_dados.get("saldo_atual"),
-            })
+
+        if linhas_auto:
+            try:
+                valor_liquido = round(sum(float(l.get("credito_subconta", 0)) for l in linhas_auto), 2)
+                qtd_cotas = round(sum(float(l.get("cotas", 0)) for l in linhas_auto), 2)
+                valor_bruto_auto = round(sum(float(l.get("valor_contribuicao", 0)) for l in linhas_auto), 2)
+                preco_cota = round(valor_liquido / qtd_cotas, 10) if qtd_cotas > 0 else None
+
+                # Data: tenta ler do primeiro evento ou da competencia_referencia
+                ev_raw = (dados.get("eventos") or [{}])[0]
+                data_str = _normalizar_data(ev_raw.get("data", ""))
+                if not data_str or data_str == "None":
+                    comp = dados.get("documento", {}).get("competencia_referencia", "")
+                    if comp and len(comp) == 7:
+                        import calendar
+                        ano, mes = int(comp[:4]), int(comp[5:7])
+                        data_str = f"{ano}-{mes:02d}-{calendar.monthrange(ano, mes)[1]:02d}"
+
+                historico_cotas = funcef_meta.get("historico_cotas_mensais", [])
+                saldo = funcef_meta.get("saldo_atual")
+                obs = ev_raw.get("obs") or "Contribuição FUNCEF (auto)"
+
+                log.info(f"FUNCEF auto: soma Python — valor={valor_liquido} qtd={qtd_cotas} ({len(linhas_auto)} linhas)")
+                eventos = [{
+                    "data": data_str,
+                    "ativo": "FUNCEF",
+                    "tipo": "CONTRIBUICAO",
+                    "qtd": qtd_cotas,
+                    "preco": preco_cota,
+                    "valor": valor_liquido,
+                    "obs": obs,
+                    "hash": calcular_hash_evento(data_str, "FUNCEF", "CONTRIBUICAO", qtd_cotas, valor_liquido),
+                    "_funcef_historico_cotas": historico_cotas,
+                    "_funcef_saldo": saldo,
+                    "_funcef_validacao": validacao_auto,
+                    "_funcef_valor_bruto": valor_bruto_auto,
+                }]
+            except Exception as e:
+                log.error(f"FUNCEF auto: erro ao somar linhas: {e}")
+                eventos = []
+        else:
+            log.warning("FUNCEF auto: linhas_competencia ausente — sem eventos gerados")
+            eventos = []
     else:
         eventos = _processar_eventos(dados)
 
@@ -237,9 +263,22 @@ def _parsear_resposta_auto(texto: str) -> tuple[list[dict], dict]:
 
 def _parsear_resposta_funcef(texto: str) -> list[dict]:
     """
-    Interpreta o schema especial de retorno do prompt FUNCEF.
-    Produz até 2 eventos: CONTRIBUICAO do mês + registro de cota (para precos_manuais).
+    Interpreta o schema do prompt FUNCEF v3 (linhas_competencia individuais).
+
+    Schema esperado:
+      contribuicao_mes_corrente.linhas_competencia: [{historico, valor_contribuicao, credito_subconta, cotas}]
+      historico_cotas_mensais: [{competencia, data, valor_cota}]
+      saldo_atual: {valor_real, quantidade_cotas, data_referencia}
+      validacao: {cota_historico, ok, mensagem}
+
+    O parser soma credito_subconta e cotas em Python — nunca confia nos totais da IA.
+    Produz 1 evento CONTRIBUICAO + metadados _funcef_*.
     """
+    # LOG DE DEBUG — imprime o JSON bruto antes de qualquer parse
+    log.info("=== FUNCEF RAW RESPONSE (primeiros 2000 chars) ===")
+    log.info(texto[:2000])
+    log.info("=== FIM RAW RESPONSE ===")
+
     texto = texto.strip()
     if texto.startswith("```"):
         linhas = texto.splitlines()
@@ -250,43 +289,155 @@ def _parsear_resposta_funcef(texto: str) -> list[dict]:
     except json.JSONDecodeError as e:
         raise ValueError(f"Resposta FUNCEF não é JSON válido: {e}\n\nResposta:\n{texto[:400]}")
 
-    eventos = []
-
-    # Evento de contribuição do mês
-    contrib = dados.get("contribuicao_mes")
-    if contrib and contrib.get("valor"):
-        try:
-            data_str = contrib.get("data", "")
-            if "/" in str(data_str):
-                partes = str(data_str).split("/")
-                if len(partes[2]) == 4:
-                    data_str = f"{partes[2]}-{partes[1]:>02}-{partes[0]:>02}"
-            valor = float(contrib.get("valor") or 0)
-            qtd = float(contrib["qtd"]) if contrib.get("qtd") else None
-            obs = contrib.get("obs") or "Contribuição FUNCEF"
-            eventos.append({
-                "data": data_str,
-                "ativo": "FUNCEF",
-                "tipo": "CONTRIBUICAO",
-                "qtd": qtd,
-                "preco": None,
-                "valor": valor,
-                "obs": obs,
-                "hash": calcular_hash_evento(data_str, "FUNCEF", "CONTRIBUICAO", qtd, valor),
-                "_funcef_cota": dados.get("cota_atual"),
-                "_funcef_saldo": dados.get("saldo_atual"),
-            })
-        except Exception as e:
-            log.warning(f"FUNCEF: contribuição não parseada: {e}")
+    # DEBUG — mostra estrutura do JSON recebido antes de qualquer processamento
+    print("DEBUG FUNCEF SCHEMA KEYS:", list(dados.keys()))
+    print("DEBUG CONTRIBUICAO_MES_CORRENTE:", dados.get("contribuicao_mes_corrente"))
+    print("DEBUG CONTRIBUICAO_MES (schema antigo):", dados.get("contribuicao_mes"))
+    print("DEBUG HISTORICO_COTAS (primeiros 2):", dados.get("historico_cotas_mensais", [])[:2])
+    print("DEBUG SALDO_ATUAL:", dados.get("saldo_atual"))
+    print("DEBUG VALIDACAO:", dados.get("validacao"))
+    print("DEBUG DOCUMENTO:", dados.get("documento"))
 
     obs_gerais = dados.get("observacoes", "")
     if obs_gerais:
         log.info(f"Observações FUNCEF: {obs_gerais}")
 
-    if not eventos:
-        log.warning("FUNCEF: nenhum evento extraído — verifique o documento")
+    # Verificar resultado da validação interna do Claude
+    validacao = dados.get("validacao", {})
+    if validacao and validacao.get("ok") is False:
+        msg = validacao.get("mensagem", "Divergência de cota detectada")
+        diferenca = validacao.get("diferenca_pct", 0)
+        raise ValueError(
+            f"FUNCEF: validação interna falhou — {msg} "
+            f"(divergência: {diferenca:.2f}%). "
+            f"Verifique o documento e reprocesse."
+        )
 
-    return eventos
+    # Extrair subestrutura dados_extras.funcef (schema auto) quando presente
+    dados_extras = dados.get("dados_extras", {})
+    funcef_extras = dados_extras.get("funcef", {}) if isinstance(dados_extras, dict) else {}
+
+    print("DEBUG DADOS_EXTRAS.FUNCEF keys:", list(funcef_extras.keys()) if isinstance(funcef_extras, dict) else "ausente")
+
+    # Extrair contribuição do mês corrente (referência para data, obs, competência)
+    contrib = dados.get("contribuicao_mes_corrente")
+    if not contrib:
+        contrib = dados.get("contribuicao_mes")  # retrocompatibilidade
+    if not contrib:
+        contrib = {}
+
+    try:
+        # DATA — lê de contrib, deriva do competencia_referencia se ausente
+        data_str = _normalizar_data(contrib.get("data_ultimo_dia") or contrib.get("data") or "")
+        if not data_str or data_str == "None":
+            competencia = (
+                contrib.get("competencia")
+                or dados.get("documento", {}).get("competencia_referencia", "")
+            )
+            if competencia and len(competencia) == 7:
+                import calendar
+                ano, mes = int(competencia[:4]), int(competencia[5:7])
+                ultimo_dia = calendar.monthrange(ano, mes)[1]
+                data_str = f"{ano}-{mes:02d}-{ultimo_dia:02d}"
+
+        if not data_str or data_str == "None":
+            log.warning("FUNCEF: não foi possível determinar a data do evento")
+            return []
+
+        # LINHAS INDIVIDUAIS — busca em múltiplos locais possíveis do JSON
+        # O Python soma; a IA nunca calcula totais.
+        def _encontrar_linhas():
+            # 1. contribuicao_mes_corrente.linhas_competencia  (schema v3, lugar canônico)
+            linhas = contrib.get("linhas_competencia")
+            if linhas:
+                return linhas, "contribuicao_mes_corrente.linhas_competencia"
+            # 2. dados_extras.funcef.linhas_competencia
+            linhas = funcef_extras.get("linhas_competencia") if isinstance(funcef_extras, dict) else None
+            if linhas:
+                return linhas, "dados_extras.funcef.linhas_competencia"
+            # 3. dados_extras.funcef.validacao.linhas_somadas
+            fv = funcef_extras.get("validacao", {}) if isinstance(funcef_extras, dict) else {}
+            linhas = fv.get("linhas_somadas") if isinstance(fv, dict) else None
+            if linhas:
+                return linhas, "dados_extras.funcef.validacao.linhas_somadas"
+            campos_contrib = list(contrib.keys()) if contrib else []
+            campos_extras = list(funcef_extras.keys()) if isinstance(funcef_extras, dict) else []
+            raise ValueError(
+                f"linhas_competencia não encontrado no JSON. "
+                f"contribuicao_mes_corrente: {campos_contrib} | "
+                f"dados_extras.funcef: {campos_extras}"
+            )
+
+        linhas, linhas_fonte = _encontrar_linhas()
+        log.info(f"FUNCEF: linhas_competencia encontradas ({linhas_fonte}): {len(linhas)} linha(s)")
+        print(f"DEBUG LINHAS ({linhas_fonte}): {linhas}")
+
+        # Somas calculadas pelo Python — nunca pela IA
+        valor_liquido = round(sum(float(l.get("credito_subconta", 0)) for l in linhas), 2)
+        qtd_cotas = round(sum(float(l.get("cotas", 0)) for l in linhas), 2)
+        valor_bruto = round(sum(float(l.get("valor_contribuicao", 0)) for l in linhas), 2) or valor_liquido
+
+        # Validações de sanidade
+        if valor_liquido < 100 or valor_liquido > 50000:
+            raise ValueError(f"Valor suspeito após soma Python: R${valor_liquido:.2f}")
+        if qtd_cotas <= 0:
+            raise ValueError(f"Cotas inválidas após soma Python: {qtd_cotas}")
+
+        log.info(f"FUNCEF: soma Python — valor={valor_liquido} qtd={qtd_cotas} bruto={valor_bruto}")
+        print(f"DEBUG SOMA PYTHON: valor={valor_liquido} qtd={qtd_cotas} bruto={valor_bruto}")
+
+        # PRECO POR COTA — calcula diretamente dos totais (mais confiável que cota_historico)
+        if qtd_cotas and qtd_cotas > 0:
+            preco_cota = round(valor_liquido / qtd_cotas, 10)
+        elif validacao and validacao.get("cota_historico"):
+            preco_cota = float(validacao["cota_historico"])
+        else:
+            preco_cota = None
+
+        competencia = (
+            contrib.get("competencia")
+            or dados.get("documento", {}).get("competencia_referencia", "")
+        )
+        obs_contrib = contrib.get("obs") or f"Contribuição FUNCEF {competencia} (participante + patrocinadora)"
+
+        # HISTORICO E SALDO — lê de dados_extras.funcef ou top-level
+        historico_cotas = (
+            funcef_extras.get("historico_cotas_mensais")
+            or dados.get("historico_cotas_mensais", [])
+        )
+        saldo = (
+            funcef_extras.get("saldo_atual")
+            or dados.get("saldo_atual")
+        )
+
+        print(f"DEBUG EVENTO FINAL: data={data_str} qtd={qtd_cotas} valor={valor_liquido} preco={preco_cota} bruto={valor_bruto}")
+
+        evento = {
+            "data": data_str,
+            "ativo": "FUNCEF",
+            "tipo": "CONTRIBUICAO",
+            "qtd": qtd_cotas,
+            "preco": preco_cota,
+            "valor": valor_liquido,
+            "obs": obs_contrib,
+            "hash": calcular_hash_evento(data_str, "FUNCEF", "CONTRIBUICAO", qtd_cotas, valor_liquido),
+            # Metadados passados para o endpoint /confirmar (não gravados como campos do evento)
+            "_funcef_historico_cotas": historico_cotas,
+            "_funcef_saldo": saldo,
+            "_funcef_validacao": validacao,
+            "_funcef_valor_bruto": valor_bruto,
+            "_funcef_competencia": competencia,
+        }
+
+        log.info(
+            f"FUNCEF: competência={competencia} | bruto=R${valor_bruto:.2f} | "
+            f"líquido=R${valor_liquido:.2f} | cotas={qtd_cotas} | cota={preco_cota}"
+        )
+        return [evento]
+
+    except Exception as e:
+        log.error(f"FUNCEF: erro ao parsear contribuição: {e} — dados: {contrib}")
+        raise ValueError(f"FUNCEF: não foi possível parsear a contribuição: {e}")
 
 
 def extrair_eventos(
@@ -346,6 +497,13 @@ def extrair_eventos(
     else:
         eventos = _parsear_resposta_claude(texto_resposta)
         meta = {"tipo_identificado": tipo_documento, "confianca": None, "justificativa": None}
+
+    # Sempre inclui a resposta bruta no meta para auditoria e debug no dry_run
+    meta["raw_claude_response"] = texto_resposta
+
+    # DEBUG — confirma que meta foi populado corretamente
+    print("DEBUG META KEYS:", list(meta.keys()))
+    print("DEBUG RAW_CLAUDE_RESPONSE (primeiros 200):", meta.get("raw_claude_response", "AUSENTE")[:200])
 
     log.info(f"  → {len(eventos)} eventos | tipo={meta['tipo_identificado']} | custo=${custo:.5f}")
     return eventos, custo, meta

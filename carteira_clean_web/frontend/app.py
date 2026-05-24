@@ -2,6 +2,7 @@
 Carteira Clean — aplicação Streamlit principal.
 """
 
+import importlib
 import streamlit as st
 
 from carteira_clean_web.frontend.utils import api
@@ -21,6 +22,12 @@ from carteira_clean_web.frontend.telas import (
     configuracoes,
     importar,
 )
+
+# Força reload dos módulos de tela para que edições em desenvolvimento
+# sejam sempre refletidas sem reiniciar o processo Streamlit.
+for _mod in [carteira_rv, novo_evento, dashboard, posicoes, vendas, meta,
+             evolucao, proventos, diario, correlacao, whatif, configuracoes, importar]:
+    importlib.reload(_mod)
 
 # Backup automático: uma vez por dia, não bloqueia se falhar
 if "backup_hoje_feito" not in st.session_state:

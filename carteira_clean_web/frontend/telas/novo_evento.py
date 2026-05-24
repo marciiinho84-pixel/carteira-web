@@ -98,6 +98,24 @@ def _form_novo_evento(tickers, ativos_info):
                             placeholder="Ex: IRRF: R$ 12,50 | nota fiscal 1234",
                             max_chars=200, key="ne_obs")
 
+        # ── FIC FUNC auto-liquidação ──────────────────────────────────────────
+        fic_func_ticker = "CAIXA FIC FUNC"
+        fic_func_disponivel = fic_func_ticker in ativos_info
+        criar_fic_func = False
+        if tipo_sel in {"COMPRA", "VENDA"} and ticker_sel != fic_func_ticker and fic_func_disponivel:
+            tipo_fic = "RESGATE" if tipo_sel == "COMPRA" else "APORTE"
+            label_fic = (
+                f"☑ Debitar do {fic_func_ticker} automaticamente (RESGATE)"
+                if tipo_sel == "COMPRA"
+                else f"☑ Creditar no {fic_func_ticker} automaticamente (APORTE)"
+            )
+            criar_fic_func = st.checkbox(label_fic, value=True, key="ne_fic_func")
+            if criar_fic_func:
+                st.caption(
+                    f"💡 Será criado: **{tipo_fic}** de **{fic_func_ticker}** "
+                    f"em {data_sel.strftime('%d/%m/%Y')} — valor: a preencher após salvar"
+                )
+
         st.divider()
 
         erros = []
@@ -114,12 +132,20 @@ def _form_novo_evento(tickers, ativos_info):
             st.warning(f"⚠️ {a}")
 
         with st.expander("👁️ Preview do evento antes de salvar"):
-            st.json({
+            preview = {
                 "data": str(data_sel), "ativo": ticker_sel, "tipo": tipo_sel,
                 "qtd": qtd if qtd and qtd > 0 else None,
                 "preco": preco if preco and preco > 0 else None,
                 "valor": round(valor, 2), "obs": obs or None,
-            })
+            }
+            if criar_fic_func:
+                tipo_fic_prev = "RESGATE" if tipo_sel == "COMPRA" else "APORTE"
+                preview["_fic_func_auto"] = {
+                    "ativo": fic_func_ticker, "tipo": tipo_fic_prev,
+                    "valor": round(valor, 2),
+                    "obs": f"Auto: liquidação {tipo_sel} {ticker_sel} {data_sel}",
+                }
+            st.json(preview)
 
         pode_salvar = not erros and valor > 0
         salvar = st.button("💾 Salvar e Recalcular", type="primary",
@@ -141,6 +167,30 @@ def _form_novo_evento(tickers, ativos_info):
                     f"✅ Evento salvo! **{tipo_sel}** de **{ticker_sel}** "
                     f"em {data_sel.strftime('%d/%m/%Y')} — {fmt.moeda(valor)}"
                 )
+                # Auto-criar evento FIC FUNC se checkbox marcado
+                if criar_fic_func and valor > 0:
+                    tipo_fic = "RESGATE" if tipo_sel == "COMPRA" else "APORTE"
+                    # Busca preço atual do FIC FUNC para calcular qtd
+                    pos_lista = api.get("posicoes") or []
+                    fic_pos = next((p for p in pos_lista if p["ticker"] == fic_func_ticker), None)
+                    preco_fic = fic_pos["preco_atual"] if fic_pos and fic_pos.get("preco_atual") else None
+                    qtd_fic = round(valor / preco_fic, 6) if preco_fic else None
+                    payload_fic = {
+                        "data": str(data_sel),
+                        "ativo": fic_func_ticker,
+                        "tipo": tipo_fic,
+                        "qtd": qtd_fic,
+                        "preco": preco_fic,
+                        "valor": round(valor, 2),
+                        "obs": f"Auto: liquidação {tipo_sel} {ticker_sel} {data_sel}",
+                    }
+                    res_fic = api.post("eventos", data=payload_fic)
+                    if res_fic is not None:
+                        st.success(
+                            f"✅ {tipo_fic} de **{fic_func_ticker}** criado automaticamente — {fmt.moeda(valor)}"
+                        )
+                    else:
+                        st.warning(f"⚠️ Evento principal salvo, mas falha ao criar {tipo_fic} FIC FUNC.")
                 recalc = api.post("calcular", params={"no_api": "true"})
                 if recalc and recalc.get("ok"):
                     st.session_state["calculado_em"] = recalc.get("calculado_em", "")

@@ -77,7 +77,7 @@ class Evento(Base):
         CheckConstraint(
             "tipo IN ('SALDO_INICIAL','COMPRA','VENDA','DIVIDENDO','JCP',"
             "'RENDIMENTO','AMORTIZACAO','BONIFICACAO','CONTRIBUICAO',"
-            "'APORTE_EXTERNO','RESGATE_EXTERNO','VENCIMENTO')",
+            "'APORTE_EXTERNO','RESGATE_EXTERNO','VENCIMENTO','RESGATE','APORTE')",
             name="ck_tipo_evento",
         ),
         Index("ix_eventos_data", "data"),
@@ -167,6 +167,8 @@ class Importacao(Base):
     tipo_identificado_ia = Column(String(50), nullable=True)   # tipo que o Claude identificou
     confianca_ia = Column(String(10), nullable=True)           # alta|media|baixa
     justificativa_ia = Column(Text, nullable=True)             # explicação da classificação
+    modo_teste = Column(Boolean, default=False)                # dry_run — não grava no DB
+    raw_json_ia = Column(Text, nullable=True)                  # resposta bruta do Claude
     status = Column(String(20), default="UPLOADED")  # UPLOADED|PROCESSING|PREVIEW|CONFIRMED|CANCELLED|ERROR
     total_eventos_extraidos = Column(Integer, default=0)
     total_eventos_gravados = Column(Integer, default=0)

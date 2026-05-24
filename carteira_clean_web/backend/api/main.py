@@ -7,7 +7,9 @@ Executa com:
     uvicorn carteira_clean_web.backend.api.main:app --reload
 """
 
+import logging
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -20,15 +22,39 @@ from carteira_clean_web.backend.api.routers import (
     ativos, eventos, precos_manuais, calcular, resultados, backup, decisoes, importacao,
 )
 
+log = logging.getLogger("api.main")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Startup: carrega o último resultado do cache em disco.
+    Se o cache não existir (primeira execução), recalcula localmente.
+    Assim cotações buscadas via API persistem entre restarts.
+    """
+    from carteira_clean_web.backend.api import cache as engine_cache
+    if engine_cache.carregar_disco():
+        log.info("Startup: cache carregado do disco — pronto imediatamente")
+    else:
+        log.info("Startup: sem cache em disco, recalculando localmente...")
+        try:
+            engine_cache.recalcular(no_api=True)
+            log.info("Startup: engine calculado e salvo em disco")
+        except Exception as e:
+            log.warning(f"Startup engine falhou (não crítico): {e}")
+    yield
+
+
 app = FastAPI(
     title="Carteira Clean API",
     description=(
         "API REST do projeto Carteira Clean. "
-        "Chame POST /api/v1/calcular antes de acessar os endpoints de resultados."
+        "O engine é inicializado automaticamente na startup."
     ),
-    version="2.5.0",
+    version="2.5.1",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

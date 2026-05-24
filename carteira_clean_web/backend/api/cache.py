@@ -1,17 +1,23 @@
 """
-cache.py — Estado compartilhado do engine na memória.
+cache.py — Estado compartilhado do engine na memória + persistência em disco.
 
-Armazena o último resultado calculado pelo engine.
-Recalcular é síncrono no MVP; após POST/PATCH/DELETE em /eventos,
-o endpoint chama `recalcular()` automaticamente.
+Fluxo:
+  - POST /calcular → recalcular() → salva resultado em RAM + arquivo pickle
+  - Restart do servidor → lifespan carrega o pickle (sem refazer cálculo)
+  - Dados mudam (novo evento, preço) → recalcular() automaticamente após cada mutação
 
-O estado é um singleton (módulo-level) — sem banco de cache,
-sem Redis, sem complexidade desnecessária no MVP.
+O pickle garante que cotações buscadas via API (yfinance/BCB) sobrevivam ao restart.
 """
 
+import logging
+import pickle
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+
+log = logging.getLogger("api.cache")
+
+_CACHE_FILE = Path(__file__).resolve().parents[2] / "cache_engine.pkl"
 
 _estado: dict = {}
 _calculado_em: Optional[datetime] = None
@@ -30,20 +36,61 @@ def get_erro() -> Optional[str]:
     return _erro
 
 
+def esta_calculado() -> bool:
+    return bool(_estado)
+
+
+def _salvar_disco() -> None:
+    """Persiste o estado atual em pickle para sobreviver ao restart."""
+    try:
+        payload = {"estado": _estado, "calculado_em": _calculado_em}
+        _CACHE_FILE.write_bytes(pickle.dumps(payload))
+        log.debug(f"Cache salvo em {_CACHE_FILE}")
+    except Exception as e:
+        log.warning(f"Não foi possível salvar cache em disco: {e}")
+
+
+def carregar_disco() -> bool:
+    """
+    Carrega o último resultado do pickle. Retorna True se bem-sucedido.
+    Chamado na startup; evita recalcular quando o servidor reinicia.
+    """
+    global _estado, _calculado_em
+    if not _CACHE_FILE.exists():
+        return False
+    try:
+        payload = pickle.loads(_CACHE_FILE.read_bytes())
+        _estado = payload["estado"]
+        _calculado_em = payload.get("calculado_em")
+        log.info(
+            f"Cache carregado do disco (calculado em {_calculado_em})"
+            if _calculado_em
+            else "Cache carregado do disco"
+        )
+        return bool(_estado)
+    except Exception as e:
+        log.warning(f"Cache em disco inválido, ignorando: {e}")
+        return False
+
+
 def recalcular(db_path: Path = None, no_api: bool = False) -> dict:
-    """Executa o engine completo e armazena o resultado no cache."""
+    """Executa o engine completo, atualiza RAM e persiste em disco."""
     global _estado, _calculado_em, _erro
     try:
         from carteira_clean_web.backend.engine.run import run
-        resultado = run(db_path=db_path, no_api=no_api)
+        # Preserve yfinance prices already in cache when recalculating without API
+        precos_externos = None
+        if no_api and _estado:
+            precos_externos = {
+                "precos_publicos": _estado.get("precos_publicos", {}),
+                "benchmarks": _estado.get("benchmarks", {}),
+            }
+        resultado = run(db_path=db_path, no_api=no_api, precos_externos=precos_externos)
         _estado = resultado
         _calculado_em = datetime.now()
         _erro = None
+        _salvar_disco()
         return resultado
     except Exception as e:
         _erro = str(e)
         raise
-
-
-def esta_calculado() -> bool:
-    return bool(_estado)

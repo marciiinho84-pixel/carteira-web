@@ -41,8 +41,18 @@ def setup_logging(verbose=False):
 log = logging.getLogger("engine")
 
 
-def run(db_path: Path = None, no_api: bool = False, verbose: bool = False) -> dict:
+def run(
+    db_path: Path = None,
+    no_api: bool = False,
+    verbose: bool = False,
+    precos_externos: dict = None,
+) -> dict:
     """Executa o engine completo e retorna resultados.
+
+    Args:
+        precos_externos: dict com chaves 'precos_publicos' e 'benchmarks' já fetchados.
+                         Quando fornecido, pula o download externo mesmo que no_api=False.
+                         Usado para preservar cotações entre recálculos automáticos.
 
     Returns dict com chaves:
       ativos, eventos, precos_manuais, posicoes, vendas_rv, vendas_rf,
@@ -63,8 +73,14 @@ def run(db_path: Path = None, no_api: bool = False, verbose: bool = False) -> di
     hoje = date.today()
     from carteira_clean_web.backend.engine.constantes import DATA_INICIO
     tickers_pub = [t for t, info in ativos.items() if info.get("familia") in COTIZADO_PUBLICO]
-    precos_publicos = baixar_precos_publicos(tickers_pub, DATA_INICIO, hoje, no_api)
-    benchmarks = baixar_benchmarks(DATA_INICIO, hoje, no_api)
+
+    if precos_externos:
+        precos_publicos = precos_externos.get("precos_publicos", {})
+        benchmarks = precos_externos.get("benchmarks", {})
+        log.info("  • Usando preços externos cacheados (sem download)")
+    else:
+        precos_publicos = baixar_precos_publicos(tickers_pub, DATA_INICIO, hoje, no_api)
+        benchmarks = baixar_benchmarks(DATA_INICIO, hoje, no_api)
 
     # Injeta PUs do Tesouro Direto em precos_manuais (sem alterar o banco)
     precos_td = baixar_precos_tesouro(ativos, no_api)
