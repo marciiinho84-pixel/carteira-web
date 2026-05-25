@@ -112,6 +112,108 @@ def baixar_benchmarks(
     return out
 
 
+_URL_CVM_BASE = (
+    "https://dados.cvm.gov.br/dados/FI/DOC/INF_DIARIO/DADOS/inf_diario_fi_{ano_mes}.zip"
+)
+_CVM_HEADERS = {"User-Agent": "curl/7.68.0"}
+
+
+def baixar_precos_cvm(
+    cnpj_map: dict,
+    data_inicio: date,
+    data_fim: date,
+    no_api: bool = False,
+) -> dict:
+    """
+    Baixa cotas de fundos CVM para os CNPJs em cnpj_map.
+
+    Args:
+        cnpj_map: {ticker: cnpj} — e.g. {"CAIXA OURO": "16.916.060/0001-99"}
+        data_inicio, data_fim: intervalo de datas
+        no_api: se True, retorna {} sem baixar
+
+    Returns:
+        {ticker: {date: float}} — mesmo formato de precos_manuais
+    """
+    if no_api or not HAS_NETWORK or not cnpj_map:
+        return {}
+
+    import io as _io
+    import zipfile
+
+    log.info(f"Baixando cotas CVM ({len(cnpj_map)} fundo(s))…")
+
+    # Meses a baixar
+    meses = []
+    cur = date(data_inicio.year, data_inicio.month, 1)
+    while cur <= data_fim:
+        meses.append(cur.strftime("%Y%m"))
+        if cur.month == 12:
+            cur = date(cur.year + 1, 1, 1)
+        else:
+            cur = date(cur.year, cur.month + 1, 1)
+
+    cnpj_invertido = {v: k for k, v in cnpj_map.items()}
+    out = {ticker: {} for ticker in cnpj_map}
+
+    for ano_mes in meses:
+        url = _URL_CVM_BASE.format(ano_mes=ano_mes)
+        content = None
+        for tentativa in range(2):
+            try:
+                r = requests.get(url, headers=_CVM_HEADERS, timeout=30)
+                if r.status_code == 404:
+                    log.debug(f"  CVM {ano_mes}: ainda não disponível (404)")
+                    break
+                r.raise_for_status()
+                content = r.content
+                break
+            except Exception as e:
+                if tentativa == 1:
+                    log.warning(f"  CVM {ano_mes}: erro após 2 tentativas — {e}")
+        if content is None:
+            continue
+
+        try:
+            with zipfile.ZipFile(_io.BytesIO(content)) as z:
+                csv_name = z.namelist()[0]
+                with z.open(csv_name) as f:
+                    df = pd.read_csv(f, sep=";", dtype=str)
+        except Exception as e:
+            log.warning(f"  CVM {ano_mes}: erro ao extrair ZIP — {e}")
+            continue
+
+        col_cnpj = "CNPJ_FUNDO_CLASSE" if "CNPJ_FUNDO_CLASSE" in df.columns else "CNPJ_FUNDO"
+        df_filtrado = df[df[col_cnpj].isin(cnpj_invertido)]
+        if df_filtrado.empty:
+            log.debug(f"  CVM {ano_mes}: nenhum CNPJ encontrado")
+            continue
+
+        for _, row in df_filtrado.iterrows():
+            cnpj = row[col_cnpj]
+            ticker = cnpj_invertido.get(cnpj)
+            if not ticker:
+                continue
+            try:
+                dt = datetime.strptime(row["DT_COMPTC"], "%Y-%m-%d").date()
+                cota = float(row["VL_QUOTA"].replace(",", ".") if isinstance(row["VL_QUOTA"], str) else row["VL_QUOTA"])
+                if data_inicio <= dt <= data_fim:
+                    out[ticker][dt] = cota
+            except Exception:
+                continue
+
+        n_dias = sum(len(v) for v in out.values())
+        log.debug(f"  CVM {ano_mes}: {n_dias} cotas acumuladas")
+
+    for ticker, serie in out.items():
+        if serie:
+            log.info(f"  ✓ {ticker}: {len(serie)} dias (última cota: {serie[max(serie.keys())]:.8f})")
+        else:
+            log.warning(f"  ✗ {ticker}: sem cotas encontradas")
+
+    return out
+
+
 _URL_TESOURO_CSV = (
     "https://www.tesourotransparente.gov.br/ckan/dataset/"
     "df56aa42-484a-4a59-8184-7676580c81e3/resource/"

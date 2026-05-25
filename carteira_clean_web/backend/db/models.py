@@ -37,6 +37,7 @@ class Ativo(Base):
     composite = Column(String(20), nullable=False, default="Gerida")
     observacao = Column(Text)
     data_vencimento = Column(Date, nullable=True)
+    cnpj_cvm = Column(String(20), nullable=True)
 
     __table_args__ = (
         CheckConstraint("composite IN ('Gerida', 'FUNCEF')", name="ck_composite"),
@@ -55,6 +56,7 @@ class Ativo(Base):
             "composite": self.composite,
             "observacao": self.observacao,
             "data_vencimento": self.data_vencimento,
+            "cnpj_cvm": self.cnpj_cvm,
         }
 
 

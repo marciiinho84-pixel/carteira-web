@@ -21,7 +21,7 @@ sys.path.insert(0, str(ROOT))
 
 from carteira_clean_web.backend.engine.io import carregar_dados
 from carteira_clean_web.backend.engine.constantes import COTIZADO_PUBLICO
-from carteira_clean_web.backend.engine.precos import baixar_precos_publicos, baixar_benchmarks, baixar_precos_tesouro
+from carteira_clean_web.backend.engine.precos import baixar_precos_publicos, baixar_benchmarks, baixar_precos_tesouro, baixar_precos_cvm
 from carteira_clean_web.backend.engine.posicoes import calc_posicoes_e_vendas
 from carteira_clean_web.backend.engine.inferencia import inferir_fluxos_externos_retroativos
 from carteira_clean_web.backend.engine.twr import calc_evolucao_diaria, calc_twr_e_benchmarks
@@ -89,6 +89,16 @@ def run(
             if tkr not in precos_manuais:
                 precos_manuais[tkr] = {}
             precos_manuais[tkr].update(serie)
+
+    # Injeta cotas CVM (fundos com cnpj_cvm preenchido) — CVM preenche, manual tem prioridade
+    cnpj_map = {t: info["cnpj_cvm"] for t, info in ativos.items() if info.get("cnpj_cvm")}
+    if cnpj_map and not precos_externos:
+        precos_cvm = baixar_precos_cvm(cnpj_map, DATA_INICIO, hoje, no_api)
+        for tkr, serie in precos_cvm.items():
+            if tkr not in precos_manuais:
+                precos_manuais[tkr] = {}
+            for dt, v in serie.items():
+                precos_manuais[tkr].setdefault(dt, v)  # manual tem prioridade
 
     log.info("\n[3/6] Calculando posições e vendas (PEPS)...")
     posicoes, vendas_rv, vendas_rf, proventos = calc_posicoes_e_vendas(eventos, ativos)
