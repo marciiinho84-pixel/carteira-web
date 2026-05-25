@@ -21,7 +21,7 @@ sys.path.insert(0, str(ROOT))
 
 from carteira_clean_web.backend.engine.io import carregar_dados
 from carteira_clean_web.backend.engine.constantes import COTIZADO_PUBLICO
-from carteira_clean_web.backend.engine.precos import baixar_precos_publicos, baixar_benchmarks, baixar_precos_tesouro, baixar_precos_cvm
+from carteira_clean_web.backend.engine.precos import baixar_precos_publicos, baixar_benchmarks, baixar_precos_tesouro, baixar_precos_cvm, calcular_saldo_lci
 from carteira_clean_web.backend.engine.posicoes import calc_posicoes_e_vendas
 from carteira_clean_web.backend.engine.inferencia import inferir_fluxos_externos_retroativos
 from carteira_clean_web.backend.engine.twr import calc_evolucao_diaria, calc_twr_e_benchmarks
@@ -99,6 +99,23 @@ def run(
                 precos_manuais[tkr] = {}
             for dt, v in serie.items():
                 precos_manuais[tkr].setdefault(dt, v)  # manual tem prioridade
+
+    # Calcula saldo diário de LCIs com taxa CDI em eventos COMPRA (obs="CDI:xx.x")
+    from carteira_clean_web.backend.engine.constantes import AGREGADO_PRIVADO
+    lci_tickers = {
+        ev["ativo"]
+        for ev in eventos
+        if ev.get("tipo") == "COMPRA" and str(ev.get("obs") or "").startswith("CDI:")
+        and ativos.get(ev["ativo"], {}).get("familia") in AGREGADO_PRIVADO
+    }
+    if lci_tickers and not precos_externos:
+        for tkr in lci_tickers:
+            saldos = calcular_saldo_lci(tkr, eventos, hoje, no_api)
+            if saldos:
+                if tkr not in precos_manuais:
+                    precos_manuais[tkr] = {}
+                for dt, v in saldos.items():
+                    precos_manuais[tkr].setdefault(dt, v)  # extrato DB tem prioridade
 
     log.info("\n[3/6] Calculando posições e vendas (PEPS)...")
     posicoes, vendas_rv, vendas_rf, proventos = calc_posicoes_e_vendas(eventos, ativos)

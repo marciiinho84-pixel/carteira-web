@@ -214,6 +214,95 @@ def baixar_precos_cvm(
     return out
 
 
+def calcular_saldo_lci(
+    ticker: str,
+    eventos: list,
+    data_fim: date = None,
+    no_api: bool = False,
+) -> dict:
+    """
+    Calcula saldo diário de LCI/LCA a partir de eventos COMPRA com obs='CDI:XX.X'.
+
+    Baixa a série CDI do BCB desde a data do contrato mais antigo.
+    Retorna {date: saldo_total} para todos os dias úteis até data_fim.
+    """
+    if no_api or not HAS_NETWORK:
+        return {}
+
+    contratos = []
+    for ev in eventos:
+        if ev.get("ativo") != ticker or ev.get("tipo") != "COMPRA":
+            continue
+        obs = str(ev.get("obs") or "")
+        import re as _re
+        m = _re.match(r"CDI:([\d.]+)", obs)
+        if not m:
+            continue
+        taxa_pct = float(m.group(1)) / 100
+        dt_inicio = ev["data"]
+        if hasattr(dt_inicio, "date"):
+            dt_inicio = dt_inicio.date()
+        contratos.append({
+            "data_inicio": dt_inicio,
+            "principal": abs(ev.get("valor") or 0),
+            "taxa_pct": taxa_pct,
+        })
+
+    if not contratos:
+        return {}
+
+    data_inicio_cdi = min(c["data_inicio"] for c in contratos)
+    data_fim = data_fim or date.today()
+
+    try:
+        url = (
+            f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.12/dados"
+            f"?formato=json"
+            f"&dataInicial={data_inicio_cdi.strftime('%d/%m/%Y')}"
+            f"&dataFinal={data_fim.strftime('%d/%m/%Y')}"
+        )
+        r = requests.get(url, timeout=15)
+        r.raise_for_status()
+        df_cdi = pd.DataFrame(r.json())
+        df_cdi["data"] = pd.to_datetime(df_cdi["data"], format="%d/%m/%Y").dt.date
+        df_cdi["valor"] = df_cdi["valor"].astype(float) / 100
+        cdi_serie = dict(zip(df_cdi["data"], df_cdi["valor"]))
+    except Exception as e:
+        log.warning(f"  calcular_saldo_lci {ticker}: erro CDI BCB — {e}")
+        return {}
+
+    if not cdi_serie:
+        return {}
+
+    dias = sorted(cdi_serie.keys())
+    running = {i: None for i in range(len(contratos))}
+    resultado = {}
+
+    for dt in dias:
+        cdi_d = cdi_serie[dt]
+        saldo_total = 0.0
+        for i, c in enumerate(contratos):
+            if dt < c["data_inicio"]:
+                continue
+            if dt == c["data_inicio"]:
+                running[i] = c["principal"]
+            else:
+                if running[i] is None:
+                    running[i] = c["principal"]
+                running[i] *= (1 + cdi_d * c["taxa_pct"])
+            saldo_total += running[i]
+        if saldo_total > 0:
+            resultado[dt] = round(saldo_total, 2)
+
+    if resultado:
+        ult_dt = max(resultado.keys())
+        log.info(
+            f"  ✓ {ticker}: {len(resultado)} dias CDI calculados"
+            f" (saldo em {ult_dt}: R$ {resultado[ult_dt]:,.2f})"
+        )
+    return resultado
+
+
 _URL_TESOURO_CSV = (
     "https://www.tesourotransparente.gov.br/ckan/dataset/"
     "df56aa42-484a-4a59-8184-7676580c81e3/resource/"
