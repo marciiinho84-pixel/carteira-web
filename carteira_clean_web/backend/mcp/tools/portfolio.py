@@ -1,9 +1,10 @@
 """
-MCP Tool 1: obter_posicoes
+MCP Tools: obter_posicoes, obter_performance
 
-Lê do cache em memória (sem recalcular) e retorna posições ativas
-com P&L, alocação percentual e alertas de concentração.
+Lêem do cache em memória (sem recalcular).
 """
+
+from datetime import timedelta
 
 import pandas as pd
 from collections import defaultdict
@@ -13,6 +14,7 @@ from carteira_clean_web.backend.engine.constantes import COTIZADO_PUBLICO, AGREG
 from carteira_clean_web.backend.engine.utils import preco_em
 from carteira_clean_web.backend.mcp.schemas import (
     PorClasse, Resumo, Posicao, ResultadoPosicoes,
+    RetornoBenchmark, Risco, ResultadoPerformance,
 )
 
 
@@ -179,5 +181,145 @@ def fn_obter_posicoes() -> dict:
         resumo=resumo,
         posicoes=posicoes_out,
         alertas=alertas,
+    )
+    return resultado.model_dump()
+
+
+# ── TOOL 2 ────────────────────────────────────────────────────────
+
+_PERIODOS_VALIDOS = {"ytd", "1m", "3m", "6m", "1a"}
+
+
+def fn_obter_performance(periodo: str = "ytd", benchmark: str = "ambos") -> dict:
+    """Retorna performance da carteira no período comparada com benchmarks."""
+    # Normalizar inputs
+    periodo = periodo.lower().strip()
+    benchmark = benchmark.upper().strip()
+    if periodo not in _PERIODOS_VALIDOS:
+        return {"erro": f"Período inválido: '{periodo}'. Use: ytd, 1m, 3m, 6m, 1a"}
+
+    # Garantir cache carregado
+    if not engine_cache.esta_calculado():
+        engine_cache.carregar_disco()
+    if not engine_cache.esta_calculado():
+        return {"erro": "Cache vazio. Clique em Recalcular antes de usar o assistente."}
+
+    estado = engine_cache.get_estado()
+    df_evo = estado["df_evo"]
+    if df_evo.empty:
+        return {"erro": "Série de evolução vazia — recalcule a carteira."}
+
+    hoje = estado["hoje"]
+
+    # ── Determinar data de início desejada ────────────────────────
+    if periodo == "ytd":
+        data_ini_desejada = df_evo["data"].iloc[0]  # primeiro dia disponível
+    elif periodo == "1m":
+        data_ini_desejada = hoje - timedelta(days=30)
+    elif periodo == "3m":
+        data_ini_desejada = hoje - timedelta(days=90)
+    elif periodo == "6m":
+        data_ini_desejada = hoje - timedelta(days=180)
+    else:  # "1a"
+        data_ini_desejada = hoje - timedelta(days=365)
+
+    # Ajustar para o dia útil mais próximo disponível na série
+    datas_disponiveis = list(df_evo["data"])
+    datas_disponiveis_sorted = sorted(datas_disponiveis)
+
+    if periodo == "ytd":
+        # YTD sempre usa o início da série — sem ajuste
+        data_inicio_real = datas_disponiveis_sorted[0]
+        periodo_efetivo = "ytd"
+    elif data_ini_desejada <= datas_disponiveis_sorted[0]:
+        # Período maior que dados disponíveis — usar o máximo disponível
+        data_inicio_real = datas_disponiveis_sorted[0]
+        periodo_efetivo = f"máximo disponível ({datas_disponiveis_sorted[0]} até {data_fim_real})"
+    else:
+        # Encontrar data mais próxima disponível (anterior ou igual à desejada)
+        candidatos = [d for d in datas_disponiveis_sorted if d <= data_ini_desejada]
+        data_inicio_real = candidatos[-1] if candidatos else datas_disponiveis_sorted[0]
+        periodo_efetivo = periodo
+
+    data_fim_real = datas_disponiveis_sorted[-1]
+
+    # ── Filtrar série para o período ──────────────────────────────
+    mask = (df_evo["data"] >= data_inicio_real) & (df_evo["data"] <= data_fim_real)
+    df_periodo = df_evo[mask].copy()
+
+    if df_periodo.empty or len(df_periodo) < 2:
+        return {"erro": "Dados insuficientes para o período solicitado."}
+
+    # ── Cálculo TWR sub-período ───────────────────────────────────
+    # twr_cum é acumulado desde o início da série. Para sub-período:
+    # twr_subp = (1 + twr_cum_fim) / (1 + twr_cum_inicio_anterior) - 1
+    # Usamos a linha ANTERIOR ao início do período como base
+    idx_inicio = df_evo[df_evo["data"] == data_inicio_real].index[0]
+
+    if idx_inicio > 0:
+        row_base = df_evo.loc[idx_inicio - 1]
+    else:
+        # Início da série — base é 0
+        row_base = None
+
+    row_fim = df_periodo.iloc[-1]
+
+    def _retorno_subperiodo(col_cum: str) -> float:
+        v_fim = float(row_fim[col_cum])
+        if row_base is not None:
+            v_base = float(row_base[col_cum])
+            return (1 + v_fim) / (1 + v_base) - 1
+        return v_fim
+
+    twr_gerida = _retorno_subperiodo("twr_gerida")
+    cdi_subp = _retorno_subperiodo("cdi_acum")
+    ibov_subp = _retorno_subperiodo("ibov_acum")
+
+    # ── Dias positivos / negativos (baseado no patrimônio_gerida) ─
+    pat = df_periodo["patrimonio_gerida"]
+    retornos_diarios = pat.pct_change().dropna()
+    dias_positivos = int((retornos_diarios > 0).sum())
+    dias_negativos = int((retornos_diarios < 0).sum())
+    dias_uteis = len(df_periodo)
+
+    # ── Drawdown máximo no período ────────────────────────────────
+    drawdown_max = float(df_periodo["drawdown"].min()) if "drawdown" in df_periodo.columns else 0.0
+
+    # ── Benchmarks solicitados ────────────────────────────────────
+    benchmarks_out = {}
+    incluir_cdi = benchmark in ("CDI", "AMBOS")
+    incluir_ibov = benchmark in ("IBOV", "AMBOS")
+
+    if incluir_cdi and cdi_subp != 0:
+        benchmarks_out["CDI"] = RetornoBenchmark(
+            retorno_pct=round(cdi_subp * 100, 4),
+            alpha_pct=round((twr_gerida - cdi_subp) * 100, 4),
+            ganhando=twr_gerida > cdi_subp,
+        )
+    elif incluir_cdi:
+        benchmarks_out["CDI"] = RetornoBenchmark(
+            retorno_pct=0.0, alpha_pct=0.0, ganhando=False
+        )
+
+    if incluir_ibov:
+        benchmarks_out["IBOV"] = RetornoBenchmark(
+            retorno_pct=round(ibov_subp * 100, 4),
+            alpha_pct=round((twr_gerida - ibov_subp) * 100, 4),
+            ganhando=twr_gerida > ibov_subp,
+        )
+
+    resultado = ResultadoPerformance(
+        periodo=periodo,
+        periodo_efetivo=periodo_efetivo,
+        data_inicio=str(data_inicio_real),
+        data_fim=str(data_fim_real),
+        dias_uteis=dias_uteis,
+        twr_gerida_pct=round(twr_gerida * 100, 4),
+        benchmarks=benchmarks_out,
+        risco=Risco(
+            drawdown_max_pct=round(drawdown_max * 100, 4),
+            dias_positivos=dias_positivos,
+            dias_negativos=dias_negativos,
+        ),
     )
     return resultado.model_dump()

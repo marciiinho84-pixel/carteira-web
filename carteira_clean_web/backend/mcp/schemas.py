@@ -36,3 +36,26 @@ class ResultadoPosicoes(BaseModel):
     resumo: Resumo
     posicoes: list[Posicao]
     alertas: list[str]
+
+
+class RetornoBenchmark(BaseModel):
+    retorno_pct: float
+    alpha_pct: float
+    ganhando: bool
+
+
+class Risco(BaseModel):
+    drawdown_max_pct: float
+    dias_positivos: int
+    dias_negativos: int
+
+
+class ResultadoPerformance(BaseModel):
+    periodo: str
+    periodo_efetivo: str
+    data_inicio: str
+    data_fim: str
+    dias_uteis: int
+    twr_gerida_pct: float
+    benchmarks: dict[str, RetornoBenchmark]
+    risco: Risco

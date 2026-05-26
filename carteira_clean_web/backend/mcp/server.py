@@ -9,7 +9,7 @@ Uso:
 """
 
 from fastmcp import FastMCP
-from carteira_clean_web.backend.mcp.tools.portfolio import fn_obter_posicoes
+from carteira_clean_web.backend.mcp.tools.portfolio import fn_obter_posicoes, fn_obter_performance
 
 mcp = FastMCP(
     name="Carteira Clean",
@@ -38,6 +38,25 @@ mcp = FastMCP(
 )
 def obter_posicoes() -> dict:
     return fn_obter_posicoes()
+
+
+@mcp.tool(
+    description="""
+    Retorna a performance (rentabilidade) da carteira no
+    período solicitado, comparada com CDI e IBOV.
+
+    Parâmetros:
+    - periodo: "ytd" (ano atual), "1m", "3m", "6m", "1a"
+    - benchmark: "CDI", "IBOV" ou "ambos" (padrão)
+
+    Use quando o usuário perguntar sobre:
+    rentabilidade, performance, retorno, quanto rendeu,
+    estou ganhando do CDI, comparação com mercado,
+    drawdown, dias positivos, resultado do período.
+    """
+)
+def obter_performance(periodo: str = "ytd", benchmark: str = "ambos") -> dict:
+    return fn_obter_performance(periodo, benchmark)
 
 
 if __name__ == "__main__":

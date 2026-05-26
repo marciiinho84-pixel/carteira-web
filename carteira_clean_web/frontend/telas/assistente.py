@@ -40,7 +40,7 @@ DIRETRIZES:
 - Perguntas fora do escopo financeiro: responda brevemente \
 e redirecione para o portfólio"""
 
-# Definição do tool para a Anthropic API
+# Definição das tools para a Anthropic API
 TOOLS = [
     {
         "name": "obter_posicoes",
@@ -53,16 +53,47 @@ TOOLS = [
             "maior posição, P&L, patrimônio."
         ),
         "input_schema": {"type": "object", "properties": {}, "required": []},
-    }
+    },
+    {
+        "name": "obter_performance",
+        "description": (
+            "Retorna a performance (rentabilidade) da carteira no período "
+            "solicitado, comparada com CDI e IBOV. "
+            "Use quando o usuário perguntar sobre: rentabilidade, performance, "
+            "retorno, quanto rendeu, estou ganhando do CDI, comparação com mercado, "
+            "drawdown, dias positivos, resultado do período, como foi meu ano."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "periodo": {
+                    "type": "string",
+                    "description": "Período de análise: 'ytd' (ano atual), '1m', '3m', '6m', '1a'",
+                    "enum": ["ytd", "1m", "3m", "6m", "1a"],
+                },
+                "benchmark": {
+                    "type": "string",
+                    "description": "Benchmark para comparação: 'CDI', 'IBOV' ou 'ambos'",
+                    "enum": ["CDI", "IBOV", "ambos"],
+                },
+            },
+            "required": [],
+        },
+    },
 ]
 
 
-def _executar_tool(nome: str, _entrada: dict) -> str:
+def _executar_tool(nome: str, entrada: dict) -> str:
+    from carteira_clean_web.backend.mcp.tools.portfolio import fn_obter_posicoes, fn_obter_performance
     if nome == "obter_posicoes":
-        from carteira_clean_web.backend.mcp.tools.portfolio import fn_obter_posicoes
         resultado = fn_obter_posicoes()
-        return json.dumps(resultado, ensure_ascii=False, default=str)
-    return json.dumps({"erro": f"Tool desconhecida: {nome}"})
+    elif nome == "obter_performance":
+        periodo = entrada.get("periodo", "ytd")
+        benchmark = entrada.get("benchmark", "ambos")
+        resultado = fn_obter_performance(periodo, benchmark)
+    else:
+        resultado = {"erro": f"Tool desconhecida: {nome}"}
+    return json.dumps(resultado, ensure_ascii=False, default=str)
 
 
 def _get_client():
