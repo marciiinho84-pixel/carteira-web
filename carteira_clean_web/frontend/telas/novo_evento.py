@@ -36,7 +36,11 @@ def _form_novo_evento(tickers, ativos_info):
             key="ne_ticker",
         )
 
-        if ticker_sel and ticker_sel in ativos_info:
+        if ticker_sel and ticker_sel not in ativos_info:
+            st.warning(
+                "⚠️ Ticker não cadastrado. Cadastre em ⚙️ Configurações antes de registrar eventos."
+            )
+        elif ticker_sel:
             info = ativos_info[ticker_sel]
             st.caption(
                 f"📌 {info.get('familia', '—')} · {info.get('setor', '—')} · "

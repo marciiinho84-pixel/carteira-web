@@ -77,13 +77,28 @@ def render():
     st.subheader("2. Calendário de Liquidações D+2 / D+1")
     pendentes = rv.get("pendentes", [])
     if pendentes:
+        from datetime import date as _date
+        hoje_rv = _date.today()
         rows = []
         for p in pendentes:
             impacto = p["impacto"]
             cor_imp = "🟢" if impacto > 0 else "🔴"
             prazo = p.get("prazo", "D+2")
+            try:
+                liq_date = _date.fromisoformat(p["liquidacao"])
+                du_restantes = max(0, len(pd.bdate_range(start=hoje_rv, end=liq_date)) - 1)
+                if liq_date < hoje_rv:
+                    vencidos = max(0, len(pd.bdate_range(start=liq_date, end=hoje_rv)) - 1)
+                    dias_label = f"🔴 vencida há {vencidos}d"
+                elif liq_date == hoje_rv:
+                    dias_label = "hoje"
+                else:
+                    dias_label = f"em {du_restantes} dia{'s' if du_restantes != 1 else ''} útil{'s' if du_restantes != 1 else ''}"
+            except Exception:
+                dias_label = "—"
             rows.append({
                 "Liquidação": p["liquidacao"],
+                "Dias": dias_label,
                 "Trade": p["trade"],
                 "Op": p["tipo"],
                 "Ativo": p["ativo"],

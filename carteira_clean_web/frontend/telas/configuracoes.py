@@ -77,11 +77,11 @@ def render():
                 else:
                     novo_vencimento = None
 
-            pode_cadastrar = bool(novo_ticker and novo_setor)
-            if not novo_ticker:
-                st.warning("⚠️ Ticker obrigatório.")
-            if not novo_setor:
-                st.warning("⚠️ Setor obrigatório.")
+            tickers_existentes = {a["ticker"] for a in (api.get("ativos") or [])}
+            ticker_duplicado = bool(novo_ticker and novo_ticker in tickers_existentes)
+            pode_cadastrar = bool(novo_ticker and novo_setor and not ticker_duplicado)
+            if ticker_duplicado:
+                st.warning(f"⚠️ Ticker **{novo_ticker}** já está cadastrado. Edite na tabela abaixo.")
 
             if st.button("💾 Cadastrar Ativo", type="primary",
                          disabled=not pode_cadastrar, key="cfg_btn_cadastrar"):
