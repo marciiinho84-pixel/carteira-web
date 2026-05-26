@@ -21,12 +21,13 @@ from carteira_clean_web.frontend.telas import (
     whatif,
     configuracoes,
     importar,
+    assistente,
 )
 
 # Força reload dos módulos de tela para que edições em desenvolvimento
 # sejam sempre refletidas sem reiniciar o processo Streamlit.
 for _mod in [carteira_rv, novo_evento, dashboard, posicoes, vendas, meta,
-             evolucao, proventos, diario, correlacao, whatif, configuracoes, importar]:
+             evolucao, proventos, diario, correlacao, whatif, configuracoes, importar, assistente]:
     importlib.reload(_mod)
 
 # Backup automático: uma vez por dia, não bloqueia se falhar
@@ -98,6 +99,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 PAGINAS = {
+    "🤖 Assistente": assistente,
     "📊 Carteira RV": carteira_rv,
     "➕ Novo Evento": novo_evento,
     "📥 Importar Extrato": importar,
