@@ -38,6 +38,31 @@ class ResultadoPosicoes(BaseModel):
     alertas: list[str]
 
 
+class MinhaPosicao(BaseModel):
+    tenho: bool
+    qtd: float = 0.0
+    custo_medio: Optional[float] = None
+    valor_atual: float = 0.0
+    pl_pct: Optional[float] = None
+    pct_carteira: float = 0.0
+
+
+class ResultadoCotacao(BaseModel):
+    ticker: str
+    ticker_yfinance: str
+    nome: str
+    preco_atual: float
+    variacao_dia_pct: float
+    variacao_dia_reais: float
+    minimo_52s: float
+    maximo_52s: float
+    volume_dia: int
+    mercado_aberto: bool
+    minha_posicao: MinhaPosicao
+    cache_idade_minutos: int
+    erro: Optional[str] = None
+
+
 class RetornoBenchmark(BaseModel):
     retorno_pct: float
     alpha_pct: float

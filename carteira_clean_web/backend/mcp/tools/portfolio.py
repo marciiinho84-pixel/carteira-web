@@ -1,13 +1,15 @@
 """
-MCP Tools: obter_posicoes, obter_performance
+MCP Tools: obter_posicoes, obter_performance, obter_cotacao
 
 Lêem do cache em memória (sem recalcular).
+obter_cotacao busca dados ao vivo via yfinance com cache local de 15 min.
 """
 
-from datetime import timedelta
+import re
+from collections import defaultdict
+from datetime import datetime, timedelta
 
 import pandas as pd
-from collections import defaultdict
 
 from carteira_clean_web.backend.api import cache as engine_cache
 from carteira_clean_web.backend.engine.constantes import COTIZADO_PUBLICO, AGREGADO_PRIVADO
@@ -15,7 +17,44 @@ from carteira_clean_web.backend.engine.utils import preco_em
 from carteira_clean_web.backend.mcp.schemas import (
     PorClasse, Resumo, Posicao, ResultadoPosicoes,
     RetornoBenchmark, Risco, ResultadoPerformance,
+    MinhaPosicao, ResultadoCotacao,
 )
+
+# ── Cache local de cotações (module-level, TTL = 15 min) ──────────
+_cache_cotacoes: dict = {}
+CACHE_TTL_MINUTOS = 15
+
+
+def _obter_do_cache(ticker: str) -> dict | None:
+    if ticker not in _cache_cotacoes:
+        return None
+    entrada = _cache_cotacoes[ticker]
+    idade_s = (datetime.now() - entrada["timestamp"]).total_seconds()
+    if idade_s > CACHE_TTL_MINUTOS * 60:
+        return None
+    return entrada
+
+
+def _salvar_no_cache(ticker: str, dados: dict):
+    _cache_cotacoes[ticker] = {"dados": dados, "timestamp": datetime.now()}
+
+
+def _formatar_ticker_yfinance(ticker: str) -> str:
+    """
+    WEGE3   → WEGE3.SA   (ação B3: letras + números)
+    MSFT34  → MSFT34.SA  (BDR: letras + 34/11/etc.)
+    WEGE3.SA → WEGE3.SA  (já formatado)
+    MSFT    → MSFT       (ativo US: só letras)
+    ^BVSP   → ^BVSP      (índice)
+    """
+    ticker = ticker.upper().strip()
+    if ticker.endswith(".SA") or ticker.startswith("^"):
+        return ticker
+    # padrão B3: 3-5 letras seguidas de 1-2 dígitos
+    if re.match(r"^[A-Z]{3,5}\d{1,2}$", ticker):
+        return f"{ticker}.SA"
+    # parece ativo internacional (só letras ou padrão não-B3)
+    return ticker
 
 
 def fn_obter_posicoes() -> dict:
@@ -321,5 +360,99 @@ def fn_obter_performance(periodo: str = "ytd", benchmark: str = "ambos") -> dict
             dias_positivos=dias_positivos,
             dias_negativos=dias_negativos,
         ),
+    )
+    return resultado.model_dump()
+
+
+# ── TOOL 3 ────────────────────────────────────────────────────────
+
+def fn_obter_cotacao(ticker: str) -> dict:
+    """Busca cotação ao vivo via yfinance e cruza com posição na carteira."""
+    ticker_original = ticker.upper().strip()
+    ticker_yf = _formatar_ticker_yfinance(ticker_original)
+
+    # Verificar cache
+    cache_entry = _obter_do_cache(ticker_yf)
+    cache_idade = 0
+
+    if cache_entry:
+        dados_mercado = cache_entry["dados"]
+        cache_idade = int((datetime.now() - cache_entry["timestamp"]).total_seconds() / 60)
+    else:
+        try:
+            import yfinance as yf
+            ativo = yf.Ticker(ticker_yf)
+            info = ativo.info
+
+            preco = info.get("regularMarketPrice") or info.get("currentPrice")
+            if not preco:
+                return {
+                    "ticker": ticker_original,
+                    "ticker_yfinance": ticker_yf,
+                    "erro": (
+                        f"Ticker '{ticker_original}' não encontrado ou sem cotação disponível. "
+                        f"Verifique se é um ativo negociado em bolsa."
+                    ),
+                }
+
+            preco_anterior = info.get("previousClose") or preco
+            variacao = preco - preco_anterior
+            variacao_pct = (variacao / preco_anterior * 100) if preco_anterior else 0.0
+
+            dados_mercado = {
+                "nome": info.get("longName") or info.get("shortName") or ticker_original,
+                "preco_atual": round(float(preco), 2),
+                "variacao_dia_pct": round(float(variacao_pct), 2),
+                "variacao_dia_reais": round(float(variacao), 2),
+                "minimo_52s": round(float(info.get("fiftyTwoWeekLow") or 0), 2),
+                "maximo_52s": round(float(info.get("fiftyTwoWeekHigh") or 0), 2),
+                "volume_dia": int(info.get("regularMarketVolume") or 0),
+                "mercado_aberto": info.get("marketState") == "REGULAR",
+            }
+            _salvar_no_cache(ticker_yf, dados_mercado)
+
+        except Exception as e:
+            return {
+                "ticker": ticker_original,
+                "ticker_yfinance": ticker_yf,
+                "erro": f"Erro ao buscar cotação: {e}",
+            }
+
+    # Cruzar com posições da carteira
+    posicoes_resultado = fn_obter_posicoes()
+    minha_pos = MinhaPosicao(tenho=False)
+
+    if "posicoes" in posicoes_resultado:
+        for pos in posicoes_resultado["posicoes"]:
+            if pos["ticker"].upper() == ticker_original:
+                cm = pos.get("custo_medio")
+                preco_atual = dados_mercado["preco_atual"]
+                pl_pct = None
+                if cm and cm > 0:
+                    pl_pct = round((preco_atual - cm) / cm * 100, 2)
+                qtd = pos["qtd"]
+                minha_pos = MinhaPosicao(
+                    tenho=True,
+                    qtd=round(qtd, 6),
+                    custo_medio=round(cm, 4) if cm else None,
+                    valor_atual=round(qtd * preco_atual, 2),
+                    pl_pct=pl_pct,
+                    pct_carteira=pos["pct_carteira"],
+                )
+                break
+
+    resultado = ResultadoCotacao(
+        ticker=ticker_original,
+        ticker_yfinance=ticker_yf,
+        nome=dados_mercado["nome"],
+        preco_atual=dados_mercado["preco_atual"],
+        variacao_dia_pct=dados_mercado["variacao_dia_pct"],
+        variacao_dia_reais=dados_mercado["variacao_dia_reais"],
+        minimo_52s=dados_mercado["minimo_52s"],
+        maximo_52s=dados_mercado["maximo_52s"],
+        volume_dia=dados_mercado["volume_dia"],
+        mercado_aberto=dados_mercado["mercado_aberto"],
+        minha_posicao=minha_pos,
+        cache_idade_minutos=cache_idade,
     )
     return resultado.model_dump()

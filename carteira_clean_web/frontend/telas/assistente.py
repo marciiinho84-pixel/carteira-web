@@ -80,17 +80,43 @@ TOOLS = [
             "required": [],
         },
     },
+    {
+        "name": "obter_cotacao",
+        "description": (
+            "Busca a cotação atual de qualquer ativo financeiro e cruza com a posição "
+            "do usuário na carteira. "
+            "Para ativos B3 e BDRs use o código sem .SA (ex: 'WEGE3', 'MSFT34'). "
+            "Para ativos americanos originais use o ticker em inglês (ex: 'MSFT'). "
+            "Use quando o usuário perguntar sobre: cotação, preço atual, quanto está "
+            "valendo, variação do dia, quanto rendeu hoje, máxima/mínima do ano, "
+            "está acima ou abaixo do preço médio."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "ticker": {
+                    "type": "string",
+                    "description": "Código do ativo (ex: 'WEGE3', 'MSFT34', 'MSFT')",
+                },
+            },
+            "required": ["ticker"],
+        },
+    },
 ]
 
 
 def _executar_tool(nome: str, entrada: dict) -> str:
-    from carteira_clean_web.backend.mcp.tools.portfolio import fn_obter_posicoes, fn_obter_performance
+    from carteira_clean_web.backend.mcp.tools.portfolio import (
+        fn_obter_posicoes, fn_obter_performance, fn_obter_cotacao,
+    )
     if nome == "obter_posicoes":
         resultado = fn_obter_posicoes()
     elif nome == "obter_performance":
         periodo = entrada.get("periodo", "ytd")
         benchmark = entrada.get("benchmark", "ambos")
         resultado = fn_obter_performance(periodo, benchmark)
+    elif nome == "obter_cotacao":
+        resultado = fn_obter_cotacao(entrada.get("ticker", ""))
     else:
         resultado = {"erro": f"Tool desconhecida: {nome}"}
     return json.dumps(resultado, ensure_ascii=False, default=str)

@@ -9,7 +9,9 @@ Uso:
 """
 
 from fastmcp import FastMCP
-from carteira_clean_web.backend.mcp.tools.portfolio import fn_obter_posicoes, fn_obter_performance
+from carteira_clean_web.backend.mcp.tools.portfolio import (
+    fn_obter_posicoes, fn_obter_performance, fn_obter_cotacao,
+)
 
 mcp = FastMCP(
     name="Carteira Clean",
@@ -57,6 +59,29 @@ def obter_posicoes() -> dict:
 )
 def obter_performance(periodo: str = "ytd", benchmark: str = "ambos") -> dict:
     return fn_obter_performance(periodo, benchmark)
+
+
+@mcp.tool(
+    description="""
+    Busca a cotação atual de qualquer ativo financeiro e
+    cruza com a posição do usuário na carteira.
+
+    Parâmetro:
+    - ticker: código do ativo (ex: "WEGE3", "MSFT34",
+      "BURA39", "MSFT" para o ativo americano original)
+
+    Para ativos brasileiros e BDRs, use o código sem .SA
+    (ex: "WEGE3", não "WEGE3.SA"). Para ativos americanos
+    originais, use o código em inglês (ex: "MSFT").
+
+    Use quando o usuário perguntar sobre:
+    cotação, preço atual, quanto está valendo, variação
+    do dia, quanto rendeu hoje, máxima/mínima do ano,
+    está acima/abaixo do meu preço médio.
+    """
+)
+def obter_cotacao(ticker: str) -> dict:
+    return fn_obter_cotacao(ticker)
 
 
 if __name__ == "__main__":
