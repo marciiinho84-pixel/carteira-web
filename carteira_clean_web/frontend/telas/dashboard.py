@@ -3,27 +3,95 @@ Página: Dashboard — KPIs executivos + gráfico TWR vs benchmarks.
 """
 
 import streamlit as st
+import streamlit.components.v1 as components
 import plotly.graph_objects as go
 import pandas as pd
 
 from carteira_clean_web.frontend.utils import api, fmt
+from carteira_clean_web.frontend.components.kpi_card import kpi_card_html
+from carteira_clean_web.frontend.components.tv_chart import tv_dual_chart_html
+from carteira_clean_web.frontend.components.donut_chart import donut_alocacao_html
+
+# ─── Design System (TradingView-inspired) ──────────────────────
+_CSS = """<style>
+.main .block-container { padding-top: 1rem; max-width: 1200px; }
+[data-testid="stHorizontalBlock"] { gap: 8px !important; }
+[data-testid="column"] { padding: 0 2px !important; }
+[data-testid="metric-container"] {
+    background: #1C2333; border: 1px solid #252D3D;
+    border-radius: 8px; padding: 12px;
+}
+[data-testid="metric-container"] label {
+    color: #787B86 !important; font-size: 0.7rem !important;
+    text-transform: uppercase; letter-spacing: 0.08em;
+}
+[data-testid="metric-container"] [data-testid="metric-value"] {
+    color: #D1D4DC !important; font-size: 2rem !important;
+    font-weight: 700 !important;
+}
+</style>"""
+
+_POS   = "#26A69A"
+_NEG   = "#EF5350"
+_NEUT  = "#6366F1"
+_ALERT = "#F59E0B"
+_INFO  = "#3B82F6"
+_BG2   = "#1C2333"
+_BG3   = "#252D3D"
+_TXT   = "#D1D4DC"
+_TXT2  = "#787B86"
+
+
+def _plotly_base(**kwargs) -> dict:
+    base = dict(
+        template="plotly_dark",
+        paper_bgcolor="#0F1117",
+        plot_bgcolor="#0F1117",
+        font=dict(family="Inter,system-ui,sans-serif", color=_TXT, size=12),
+        margin=dict(l=40, r=20, t=10, b=40),
+        legend=dict(bgcolor="rgba(28,35,51,0.8)", bordercolor=_BG3, borderwidth=1),
+        xaxis=dict(gridcolor=_BG2, linecolor=_BG3, tickfont=dict(color=_TXT2)),
+        yaxis=dict(gridcolor=_BG2, linecolor=_BG3, tickfont=dict(color=_TXT2)),
+        hoverlabel=dict(bgcolor=_BG2, bordercolor=_BG3, font_color=_TXT),
+    )
+    base.update(kwargs)
+    return base
+
+
+def _kpi(titulo: str, valor: str, delta: str = "",
+         cor: str = _NEUT, delta_cor: str = _TXT2, min_h: str = "96px") -> None:
+    d = (f'<div style="color:{delta_cor};font-size:0.9rem;margin-top:4px">{delta}</div>'
+         if delta else "")
+    st.markdown(
+        f'<div style="background:{_BG2};padding:12px;border-radius:8px;border-left:3px solid {cor};'
+        f'margin-bottom:8px;min-height:{min_h};box-sizing:border-box">'
+        f'<div style="color:{_TXT2};font-size:0.7rem;text-transform:uppercase;'
+        f'letter-spacing:0.08em;margin-bottom:5px">{titulo}</div>'
+        f'<div style="color:{_TXT};font-size:2rem;font-weight:700;line-height:1.1">{valor}</div>'
+        f'{d}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def render():
+    st.markdown(_CSS, unsafe_allow_html=True)
     st.title("🏠 Dashboard")
 
     if not api.garantir_calculado():
         st.warning("Não foi possível calcular a carteira.")
         return
 
-    dash = api.get("dashboard")
-    evo_data = api.get("evolucao")
-    ir_data = api.get("ir-mensal") or []
+    dash      = api.get("dashboard")
+    evo_data  = api.get("evolucao")
+    ir_data   = api.get("ir-mensal") or []
+    pos_data  = api.get("posicoes") or []
+    prov_data = api.get("proventos-projetados") or {}
+    pendentes = api.get("decisoes/pendentes") or []
 
     if dash is None:
         return
 
-    # ─── Alerta DARF (se houver IR a pagar este mês) ─────────────
+    # ─── Alerta DARF ────────────────────────────────────────────
     if ir_data:
         mes_atual = pd.Timestamp.today().strftime("%Y-%m")
         ir_mes = next((r for r in ir_data if r["mes"] == mes_atual and r["gera_darf"]), None)
@@ -36,260 +104,273 @@ def render():
                 f"Vence em **{venc_fmt}** (último dia útil do mês seguinte)"
             )
 
-    # ─── Variação no dia (KPI destaque) ──────────────────────────
-    var_dia = dash.get("var_dia")
+    # ─── Variação no dia ─────────────────────────────────────────
+    var_dia     = dash.get("var_dia")
     var_dia_pct = dash.get("var_dia_pct")
     if var_dia is not None:
-        seta = "↑" if var_dia >= 0 else "↓"
-        cor_var = "#2ecc71" if var_dia >= 0 else "#e74c3c"
-        var_texto = f"{seta} {fmt.moeda(abs(var_dia), sinal=False)} ({fmt.pct(abs(var_dia_pct), casas=2)})"
+        seta    = "▲" if var_dia >= 0 else "▼"
+        cor_var = _POS if var_dia >= 0 else _NEG
         st.markdown(
-            f"<div style='background: linear-gradient(135deg,rgba(30,34,50,0.9),rgba(20,24,38,0.9));"
-            f"border-left:4px solid {cor_var};padding:12px 20px;border-radius:8px;margin-bottom:16px;'>"
-            f"<span style='color:#aaa;font-size:0.85em;'>VARIAÇÃO HOJE (D-1 → D)</span><br>"
-            f"<span style='color:{cor_var};font-size:1.5em;font-weight:700;'>{var_texto}</span>"
-            f"</div>",
+            f"<div style='background:{_BG2};border-left:3px solid {cor_var};"
+            f"padding:10px 18px;border-radius:8px;margin-bottom:12px;"
+            f"display:flex;align-items:center;gap:20px'>"
+            f"<span style='color:{_TXT2};font-size:0.72rem;text-transform:uppercase;"
+            f"letter-spacing:0.06em'>VARIAÇÃO HOJE (D-1→D)</span>"
+            f"<span style='color:{cor_var};font-size:1.25rem;font-weight:700'>"
+            f"{seta} {fmt.moeda(abs(var_dia))} ({fmt.pct(abs(var_dia_pct), casas=2)})"
+            f"</span></div>",
             unsafe_allow_html=True,
         )
     else:
         st.info("ℹ️ Variação diária indisponível (modo sem preços de mercado ou 1º cálculo).")
 
-    # ─── KPIs principais ─────────────────────────────────────────
-    st.subheader("Patrimônio & Performance")
-    c1, c2, c3, c4, c5 = st.columns(5)
+    # ─── LINHA 1 — KPI Cards (Investidor10 style) ───────────────
+    twr   = dash["twr_gerida_ytd"]
+    exc   = dash["excesso_cdi"]
+    pnl   = dash["pnl_vendas_rv"]
+    shp   = dash["sharpe"]
+
+    c1, c2, c3, c4 = st.columns([3, 2, 2, 2])
     with c1:
-        fmt.card_kpi("Patrimônio Total", fmt.moeda(dash["patrimonio_total"]))
+        components.html(kpi_card_html(
+            "PATRIMÔNIO TOTAL",
+            fmt.moeda(dash["patrimonio_total"]),
+            badge_text=fmt.pct(twr),
+            badge_positive=twr >= 0,
+            subtitle=f"vs CDI {fmt.pct(dash['cdi_ytd'])}",
+        ), height=108)
     with c2:
-        cor = "#2ecc71" if dash["twr_gerida_ytd"] >= 0 else "#e74c3c"
-        fmt.card_kpi(
-            "TWR Gerida (YTD)",
-            fmt.pct(dash["twr_gerida_ytd"]),
-            delta=f"CDI: {fmt.pct(dash['cdi_ytd'])}",
-            cor_delta=cor,
-        )
+        components.html(kpi_card_html(
+            "TWR GERIDA YTD",
+            fmt.pct(twr),
+            badge_text=f"exc. {fmt.pct(exc, sinal=True)}",
+            badge_positive=exc >= 0,
+            subtitle="sobre o CDI",
+        ), height=108)
     with c3:
-        excesso = dash["excesso_cdi"]
-        cor = "#2ecc71" if excesso >= 0 else "#e74c3c"
-        fmt.card_kpi(
-            "Excesso s/ CDI",
-            fmt.pct(excesso, sinal=True),
-            cor_delta=cor,
-        )
+        interp = "Defensivo" if shp < 0.5 else ("Bom" if shp < 1.5 else "Excelente")
+        components.html(kpi_card_html(
+            "SHARPE YTD",
+            f"{shp:.2f}",
+            badge_text=interp,
+            badge_neutral=True,
+            subtitle="risco/retorno ajustado",
+        ), height=108)
     with c4:
-        fmt.card_kpi("Sharpe", f"{dash['sharpe']:.2f}")
-    with c5:
-        pnl = dash["pnl_vendas_rv"]
-        cor = "#2ecc71" if pnl >= 0 else "#e74c3c"
-        fmt.card_kpi("P&L Vendas RV", fmt.moeda(pnl, sinal=True), cor_delta=cor)
+        components.html(kpi_card_html(
+            "P&L VENDAS RV",
+            fmt.moeda(pnl, sinal=True),
+            badge_text="Lucro" if pnl >= 0 else "Prejuízo",
+            badge_positive=pnl >= 0,
+            subtitle="ganhos realizados YTD",
+        ), height=108)
 
     st.divider()
 
-    # ─── KPIs secundários ────────────────────────────────────────
-    st.subheader("Composição do Patrimônio")
-    d1, d2, d3, d4 = st.columns(4)
-    with d1:
-        fmt.card_kpi("Carteira Gerida", fmt.moeda(dash["patrimonio_gerida"]))
-    with d2:
-        fmt.card_kpi("FUNCEF", fmt.moeda(dash["patrimonio_funcef"]))
-    with d3:
-        fmt.card_kpi("Sub-portfolio RV", fmt.moeda(dash["patrimonio_rv"]))
-    with d4:
-        pct_funcef = dash["patrimonio_funcef"] / dash["patrimonio_total"] if dash["patrimonio_total"] > 0 else 0
-        fmt.card_kpi("% FUNCEF", fmt.pct(pct_funcef, casas=1))
+    # ─── LINHA 2 — TV Chart (70%) + Donut ECharts (30%) ────────
+    col_chart, col_donut = st.columns([7, 3])
 
-    st.divider()
+    with col_chart:
+        if evo_data:
+            patrimonio_series = [
+                {"time": r["data"], "value": float(r["patrimonio_total"])}
+                for r in evo_data if (r.get("patrimonio_total") or 0) > 0
+            ]
+            twr_series = [
+                {"time": r["data"], "value": round(float(r["twr_gerida"]) * 100, 4)}
+                for r in evo_data
+            ]
+            cdi_series = [
+                {"time": r["data"], "value": round(float(r["cdi_acum"]) * 100, 4)}
+                for r in evo_data
+            ]
+            ibov_series = [
+                {"time": r["data"], "value": round(float(r["ibov_acum"]) * 100, 4)}
+                for r in evo_data
+            ]
+            components.html(
+                tv_dual_chart_html(patrimonio_series, twr_series, cdi_series, ibov_series),
+                height=510,
+            )
+        else:
+            st.info("Dados de evolução indisponíveis.")
 
-    # ─── Gráfico TWR vs Benchmarks ────────────────────────────────
-    st.subheader("Evolução TWR vs Benchmarks (YTD)")
-
-    if evo_data:
-        df = pd.DataFrame(evo_data)
-        df["data"] = pd.to_datetime(df["data"])
-
-        fig = go.Figure()
-
-        traces = [
-            ("twr_gerida", "TWR Gerida", "#1a5fad", "solid", 2.5),
-            ("twr_rv", "TWR RV", "#4a9eff", "dot", 1.8),
-            ("cdi_acum", "CDI", "#2ecc71", "dash", 1.5),
-            ("ibov_acum", "IBOV", "#f39c12", "dashdot", 1.5),
-            ("sp500_brl_acum", "S&P500 BRL", "#95a5a6", "longdash", 1.5),
-        ]
-
-        for col, nome, cor, dash_style, width in traces:
-            if col in df.columns:
-                fig.add_trace(go.Scatter(
-                    x=df["data"],
-                    y=df[col] * 100,
-                    name=nome,
-                    line=dict(color=cor, dash=dash_style, width=width),
-                    hovertemplate=f"<b>{nome}</b><br>%{{x|%d/%m/%Y}}<br>%{{y:+.2f}}%<extra></extra>",
-                ))
-
-        _gc = "rgba(255,255,255,0.08)" if fmt._dark() else "rgba(0,0,0,0.10)"
-        fig.add_hline(y=0, line_dash="solid", line_color="rgba(150,150,150,0.3)", line_width=1)
-        fig.update_layout(
-            height=420,
-            **fmt.plotly_theme(),
-            xaxis=dict(gridcolor=_gc, title=""),
-            yaxis=dict(gridcolor=_gc, title="Retorno Acumulado (%)", ticksuffix="%"),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            hovermode="x unified",
-            margin=dict(t=10, b=40, l=60, r=20),
+    with col_donut:
+        st.markdown(
+            f'<div style="color:#787B86;font-size:0.65rem;text-transform:uppercase;'
+            f'letter-spacing:0.12em;font-weight:500;margin-bottom:4px">Alocação Gerida</div>',
+            unsafe_allow_html=True,
         )
-        st.plotly_chart(fig, use_container_width=True, config={'responsive': True})
+        gerida_classe: dict = {}
+        for p in pos_data:
+            if p.get("composite") == "Gerida":
+                classe = p.get("classe", "Outros")
+                gerida_classe[classe] = (
+                    gerida_classe.get(classe, 0) + (p.get("valor_atual") or 0)
+                )
+        if gerida_classe:
+            total_gerida = sum(gerida_classe.values())
+            components.html(
+                donut_alocacao_html(gerida_classe, total_gerida),
+                height=490,
+            )
+        else:
+            st.info("Sem posições na carteira gerida.")
 
     st.divider()
 
-    # ─── Benchmarks lado a lado ───────────────────────────────────
-    st.subheader("Benchmarks YTD")
+    # ─── Benchmarks YTD (linha compacta) ────────────────────────
     b1, b2, b3, b4 = st.columns(4)
     with b1:
-        fmt.card_kpi("CDI", fmt.pct(dash["cdi_ytd"]))
+        _kpi("CDI YTD", fmt.pct(dash["cdi_ytd"]), cor=_TXT2)
     with b2:
-        cor = "#2ecc71" if dash["ibov_ytd"] >= 0 else "#e74c3c"
-        fmt.card_kpi("IBOV", fmt.pct(dash["ibov_ytd"]), cor_delta=cor)
+        v = dash["ibov_ytd"]
+        _kpi("IBOV YTD", fmt.pct(v), cor=_POS if v >= 0 else _NEG)
     with b3:
-        cor = "#2ecc71" if dash["sp500_brl_ytd"] >= 0 else "#e74c3c"
-        fmt.card_kpi("S&P500 BRL", fmt.pct(dash["sp500_brl_ytd"]), cor_delta=cor)
+        v = dash["sp500_brl_ytd"]
+        _kpi("S&P500 BRL YTD", fmt.pct(v), cor=_POS if v >= 0 else _NEG)
     with b4:
-        twr_rv = dash.get("twr_rv_ytd", 0)
-        cor = "#2ecc71" if twr_rv >= 0 else "#e74c3c"
-        fmt.card_kpi("TWR RV", fmt.pct(twr_rv), cor_delta=cor)
+        v = dash.get("twr_rv_ytd", 0)
+        _kpi("TWR RV YTD", fmt.pct(v), cor=_POS if v >= 0 else _NEG)
 
     st.divider()
 
-    # ─── Métricas de risco e retorno ─────────────────────────────
-    st.subheader("Risco e Retorno")
+    # ─── LINHA 3 — Risco & Rendimento + Próximos Proventos ───────
+    st.subheader("Risco & Rendimento")
     r1, r2, r3, r4 = st.columns(4)
 
     with r1:
-        dd = dash.get("drawdown_max")
+        dd      = dash.get("drawdown_max")
         dd_data = dash.get("drawdown_max_data")
         if dd is not None:
             dt_str = pd.to_datetime(dd_data).strftime("%d/%m/%Y") if dd_data else ""
-            cor_dd = "#e74c3c"
-            fmt.card_kpi(
-                "Drawdown Máx. YTD",
-                fmt.pct(dd, casas=2),
-                delta=dt_str,
-                cor_delta="#aaa",
-            )
+            _kpi("Drawdown Máx. YTD", fmt.pct(dd, casas=2),
+                 delta=dt_str, cor=_NEG, delta_cor=_TXT2)
         else:
-            fmt.card_kpi("Drawdown Máx. YTD", "—")
+            _kpi("Drawdown Máx. YTD", "—", cor=_TXT2)
 
     with r2:
         vol = dash.get("vol_anualizada")
-        fmt.card_kpi(
-            "Volatilidade a.a.",
-            fmt.pct(vol, casas=1) if vol is not None else "—",
-            delta="IBOV ~25% típico",
-            cor_delta="#aaa",
-        )
+        _kpi("Volatilidade a.a.",
+             fmt.pct(vol, casas=1) if vol is not None else "—",
+             delta="Ref. IBOV ~25%", cor=_NEUT, delta_cor=_TXT2)
 
     with r3:
         beta = dash.get("beta_ibov")
         if beta is not None:
-            if beta < 0.5:
-                interp = "Defensiva"
-            elif beta < 0.8:
-                interp = "Moderada"
-            elif beta < 1.2:
-                interp = "Alinhada"
-            else:
-                interp = "Agressiva"
-            fmt.card_kpi("Beta vs IBOV", f"{beta:.2f}", delta=interp, cor_delta="#aaa")
+            interp = (
+                "Defensiva" if beta < 0.5 else
+                "Moderada"  if beta < 0.8 else
+                "Alinhada"  if beta < 1.2 else "Agressiva"
+            )
+            _kpi("Beta vs IBOV", f"{beta:.2f}",
+                 delta=interp, cor=_NEUT, delta_cor=_TXT2)
         else:
-            fmt.card_kpi("Beta vs IBOV", "—", delta="< 20 obs.", cor_delta="#aaa")
+            _kpi("Beta vs IBOV", "—", delta="< 20 obs.", cor=_TXT2)
 
     with r4:
-        yield_12m = dash.get("yield_12m")
-        yield_12m_gerida = dash.get("yield_12m_gerida")
-        renda_anual = dash.get("renda_anual_est", 0) or 0
-        if yield_12m is not None:
-            renda_mes = renda_anual / 12
-            fmt.card_kpi(
-                "Yield Projetado 12m",
-                fmt.pct(yield_12m, casas=2),
-                delta=f"Gerida: {fmt.pct(yield_12m_gerida, casas=2)} · ~{fmt.moeda(renda_mes)}/mês",
-                cor_delta="#2ecc71",
-            )
+        hoje     = pd.Timestamp.today().normalize()
+        limite   = hoje + pd.Timedelta(days=30)
+        projecao = prov_data.get("projecao", [])
+        proximos = [
+            p for p in projecao
+            if hoje <= pd.Timestamp(p["data"]) <= limite
+        ]
+        if proximos:
+            total_30d = sum(p["valor"] for p in proximos)
+            n = len(proximos)
+            _kpi("Próximos Proventos",
+                 fmt.moeda(total_30d),
+                 delta=f"{n} evento{'s' if n > 1 else ''} nos próximos 30 dias",
+                 cor=_POS, delta_cor=_TXT2)
         else:
-            fmt.card_kpi("Yield Projetado 12m", "—")
+            historico = prov_data.get("historico", [])
+            recentes  = historico[:5]
+            if recentes:
+                total_rec = sum(p["valor"] for p in recentes)
+                _kpi("Últimos Proventos",
+                     fmt.moeda(total_rec),
+                     delta="histórico — sem previsão disponível",
+                     cor=_TXT2, delta_cor=_ALERT)
+            else:
+                _kpi("Próximos Proventos", "—", cor=_TXT2)
 
     st.divider()
 
-    # ─── Vencimentos RF ───────────────────────────────────────────
-    venc_rf = dash.get("vencimentos_rf", [])
-    proventos_30d = dash.get("proventos_30d", 0) or 0
-    if venc_rf or proventos_30d > 0:
-        st.subheader("Renda Fixa & Proventos")
-        vc1, vc2 = st.columns(2)
+    # ─── LINHA 4 — Alertas (esq.) + Decisões (dir.) ─────────────
+    col_alertas, col_decisoes = st.columns(2)
 
-        with vc1:
-            if venc_rf:
-                linhas = []
-                for v in venc_rf:
-                    anos = v["dias_restantes"] // 365
-                    dias_r = v["dias_restantes"] % 365
-                    periodo_str = f"{anos}a {dias_r}d" if anos > 0 else f"{v['dias_restantes']}d"
-                    dt_fmt = pd.to_datetime(v["data_vencimento"]).strftime("%d/%m/%Y")
-                    val_str = fmt.moeda(v["valor_atual"]) if v.get("valor_atual") else "—"
-                    cor_al = "#e74c3c" if v["alerta"] == "CRITICO" else (
-                        "#f39c12" if v["alerta"] == "ATENCAO" else "#2ecc71"
-                    )
-                    linhas.append(
-                        f"<tr><td><b>{v['ticker']}</b></td>"
-                        f"<td style='color:{cor_al}'>{periodo_str}</td>"
-                        f"<td>{dt_fmt}</td>"
-                        f"<td>{val_str}</td></tr>"
-                    )
-                st.markdown(
-                    "<div style='background:#1e2130;padding:14px 18px;border-radius:10px;"
-                    "border-left:4px solid #4a9eff;'>"
-                    "<div style='color:#aaa;font-size:0.78rem;text-transform:uppercase;"
-                    "letter-spacing:0.05em;margin-bottom:8px'>PRÓXIMOS VENCIMENTOS RF</div>"
-                    "<table style='width:100%;font-size:0.9rem;border-collapse:collapse'>"
-                    "<tr style='color:#888;font-size:0.75rem'>"
-                    "<th align='left'>Ativo</th><th align='left'>Prazo</th>"
-                    "<th align='left'>Vencimento</th><th align='left'>Valor Bruto</th></tr>"
-                    + "".join(linhas) + "</table></div>",
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.info("Nenhum ativo RF com vencimento cadastrado.")
-
-        with vc2:
-            fmt.card_kpi(
-                "Renda estimada (30 dias)",
-                fmt.moeda(proventos_30d),
-                delta="Projeção histórica — sem garantia",
-                cor_delta="#aaa",
+    with col_alertas:
+        alertas = dash.get("alertas", [])
+        st.subheader(f"🔔 Alertas ({len(alertas)})")
+        if alertas:
+            for a in alertas:
+                nivel = a["nivel"]
+                msg   = f"**{a['ativo']}**: {a['mensagem']}"
+                if nivel == "ERRO":
+                    st.error(f"🔴 {msg}")
+                elif nivel == "AVISO":
+                    st.warning(f"🟡 {msg}")
+                else:
+                    st.info(f"🔵 {msg}")
+        else:
+            st.markdown(
+                f"<div style='color:{_TXT2};font-size:0.9rem;padding:8px 0'>"
+                f"Nenhum alerta ativo.</div>",
+                unsafe_allow_html=True,
             )
 
+    with col_decisoes:
+        st.subheader(f"📓 Decisões ({len(pendentes)})")
+        if pendentes:
+            for d in pendentes:
+                ativo = d.get("ativo", "")
+                acao  = d.get("acao", "")
+                rev   = d.get("revisao_em", "?")
+                st.info(f"**{ativo}** — {acao} · revisão em {rev}")
+        else:
+            st.markdown(
+                f"<div style='color:{_TXT2};font-size:0.9rem;padding:8px 0'>"
+                f"Nenhuma decisão pendente.</div>",
+                unsafe_allow_html=True,
+            )
+
+    # ─── LINHA 5 — Vencimentos RF ────────────────────────────────
+    venc_rf = dash.get("vencimentos_rf", [])
+    if venc_rf:
         st.divider()
-
-    # ─── Diário: decisões aguardando revisão ─────────────────────
-    pendentes_dec = api.get("decisoes/pendentes") or []
-    if pendentes_dec:
-        n = len(pendentes_dec)
-        st.info(
-            f"📓 **{n} decisão/ões aguardam revisão no Diário** — "
-            f"mais antiga: {pendentes_dec[0].get('ativo', '')} "
-            f"({pendentes_dec[0].get('acao', '')}) prevista para "
-            f"{pendentes_dec[0].get('revisao_em', '?')}"
+        st.subheader("Vencimentos Renda Fixa")
+        linhas = []
+        for v in venc_rf:
+            anos   = v["dias_restantes"] // 365
+            dias_r = v["dias_restantes"] % 365
+            prazo  = f"{anos}a {dias_r}d" if anos > 0 else f"{v['dias_restantes']}d"
+            dt_fmt = pd.to_datetime(v["data_vencimento"]).strftime("%d/%m/%Y")
+            val_str = fmt.moeda(v["valor_atual"]) if v.get("valor_atual") else "—"
+            cor_al = (
+                _NEG   if v["alerta"] == "CRITICO" else
+                _ALERT if v["alerta"] == "ATENCAO" else _POS
+            )
+            linhas.append(
+                f"<tr>"
+                f"<td style='padding:6px 10px'><b style='color:{_TXT}'>{v['ticker']}</b></td>"
+                f"<td style='padding:6px 10px;color:{cor_al}'>{prazo}</td>"
+                f"<td style='padding:6px 10px;color:{_TXT2}'>{dt_fmt}</td>"
+                f"<td style='padding:6px 10px;color:{_TXT}'>{val_str}</td>"
+                f"</tr>"
+            )
+        st.markdown(
+            f"<div style='background:{_BG2};padding:14px 18px;border-radius:10px;"
+            f"border-left:3px solid {_INFO}'>"
+            f"<table style='width:100%;font-size:0.88rem;border-collapse:collapse'>"
+            f"<tr style='color:{_TXT2};font-size:0.72rem;text-transform:uppercase;"
+            f"letter-spacing:0.05em;border-bottom:1px solid {_BG3}'>"
+            f"<th style='padding:4px 10px;text-align:left'>Ativo</th>"
+            f"<th style='padding:4px 10px;text-align:left'>Prazo</th>"
+            f"<th style='padding:4px 10px;text-align:left'>Vencimento</th>"
+            f"<th style='padding:4px 10px;text-align:left'>Valor Bruto</th>"
+            f"</tr>"
+            + "".join(linhas)
+            + "</table></div>",
+            unsafe_allow_html=True,
         )
-
-    # ─── Alertas ativos ───────────────────────────────────────────
-    alertas = dash.get("alertas", [])
-    if alertas:
-        st.subheader(f"🔔 Alertas ({len(alertas)})")
-        for a in alertas:
-            nivel = a["nivel"]
-            msg = f"**{a['ativo']}**: {a['mensagem']}"
-            if nivel == "ERRO":
-                st.error(f"🔴 {msg}")
-            elif nivel == "AVISO":
-                st.warning(f"🟡 {msg}")
-            else:
-                st.info(f"🔵 {msg}")

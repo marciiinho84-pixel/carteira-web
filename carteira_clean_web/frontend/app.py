@@ -4,6 +4,7 @@ Carteira Clean — aplicação Streamlit principal.
 
 import importlib
 import streamlit as st
+from streamlit_option_menu import option_menu
 
 from carteira_clean_web.frontend.utils import api
 from carteira_clean_web.backend.scripts.backup import backup_se_necessario
@@ -42,7 +43,7 @@ st.set_page_config(
     page_title="Carteira Clean",
     page_icon="💼",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # ─── Tema ────────────────────────────────────────────────────────────────────
@@ -51,24 +52,33 @@ if "dark_mode" not in st.session_state:
 
 _DARK = st.session_state["dark_mode"]
 
-# CSS: responsividade mobile + tema dinâmico
 _LIGHT_OVERRIDES = """
     [data-testid="stAppViewContainer"] > div:first-child {
         background-color: #f4f6fb !important;
     }
-    [data-testid="stSidebar"] > div:first-child {
-        background-color: #e8ecf4 !important;
-    }
-    [data-testid="stSidebar"] * { color: #1a1a2e !important; }
     .block-container { background-color: #f4f6fb !important; }
     h1, h2, h3, h4, p, span, label { color: #1a1a2e !important; }
     [data-testid="stDataFrame"] { background: #fff; }
     [data-testid="metric-container"] { background: #e8ecf4 !important; border-radius: 8px; }
 """ if not _DARK else ""
 
+# ─── CSS Global ──────────────────────────────────────────────────────────────
 st.markdown(f"""
 <style>
+/* Esconder sidebar e botão de colapso */
+[data-testid="stSidebar"] {{ display: none !important; }}
+[data-testid="collapsedControl"] {{ display: none !important; }}
+
+/* Conteúdo principal — sem padding excessivo */
+.main .block-container {{
+    padding-top: 0.5rem !important;
+    max-width: 1400px !important;
+    padding-left: 1.5rem !important;
+    padding-right: 1.5rem !important;
+}}
+
 {_LIGHT_OVERRIDES}
+
 @media (max-width: 640px) {{
     div[data-testid="column"] {{
         width: 100% !important;
@@ -88,8 +98,8 @@ st.markdown(f"""
         overflow-x: auto !important;
     }}
     .block-container {{
-        padding-left: 1rem !important;
-        padding-right: 1rem !important;
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
     }}
     div[data-testid="metric-container"] {{
         min-width: 0 !important;
@@ -98,61 +108,101 @@ st.markdown(f"""
 </style>
 """, unsafe_allow_html=True)
 
+# ─── Mapeamento de páginas (ordem da navbar) ─────────────────────────────────
 PAGINAS = {
-    "🤖 Assistente": assistente,
-    "📊 Carteira RV": carteira_rv,
-    "➕ Novo Evento": novo_evento,
+    "🏠 Dashboard":        dashboard,
+    "🤖 Assistente":       assistente,
+    "📊 Carteira RV":      carteira_rv,
+    "📋 Posições":         posicoes,
+    "💰 Proventos":        proventos,
+    "📈 Evolução":         evolucao,
+    "🎯 Meta":             meta,
+    "🔗 Correlação":       correlacao,
+    "🔮 What-If":          whatif,
+    "➕ Novo Evento":       novo_evento,
     "📥 Importar Extrato": importar,
-    "🏠 Dashboard": dashboard,
-    "📋 Posições": posicoes,
-    "💰 Vendas": vendas,
-    "🎯 Meta": meta,
-    "📈 Evolução": evolucao,
-    "📅 Proventos": proventos,
-    "📓 Diário": diario,
-    "🔗 Correlação": correlacao,
-    "🔮 What-If": whatif,
-    "⚙️ Configurações": configuracoes,
+    "📓 Diário":           diario,
+    "⚙️ Configurações":    configuracoes,
 }
 
-with st.sidebar:
-    st.title("💼 Carteira Clean")
+# ─── Navbar horizontal ───────────────────────────────────────────────────────
+pagina_sel = option_menu(
+    menu_title=None,
+    options=list(PAGINAS.keys()),
+    icons=[""] * len(PAGINAS),
+    menu_icon=None,
+    default_index=0,
+    orientation="horizontal",
+    styles={
+        "container": {
+            "padding": "0",
+            "background-color": "#0F1117",
+            "border-bottom": "1px solid #252D3D",
+            "margin-bottom": "0",
+        },
+        "nav": {
+            "background-color": "#0F1117",
+            "flex-wrap": "nowrap",
+            "overflow-x": "auto",
+        },
+        "icon": {
+            "display": "none",
+            "font-size": "0",
+        },
+        "nav-link": {
+            "font-size": "0.76rem",
+            "color": "#787B86",
+            "padding": "10px 8px",
+            "border-radius": "0",
+            "white-space": "nowrap",
+            "--hover-color": "#252D3D",
+        },
+        "nav-link-selected": {
+            "background-color": "transparent",
+            "color": "#6366F1",
+            "border-bottom": "2px solid #6366F1",
+            "font-weight": "600",
+        },
+    },
+)
 
-    # ─── Toggle dark/light mode ───────────────────────────────
-    _label = "☀️ Modo Claro" if _DARK else "🌙 Modo Escuro"
-    if st.button(_label, use_container_width=True, key="btn_tema"):
-        st.session_state["dark_mode"] = not _DARK
-        st.rerun()
+# ─── Barra de status compacta ────────────────────────────────────────────────
+col_status, col_btn1, col_btn2, col_tema = st.columns([6, 1.2, 1.8, 0.7])
 
-    st.divider()
-
-    pagina_sel = st.radio(
-        "Navegação",
-        list(PAGINAS.keys()),
-        label_visibility="collapsed",
+with col_status:
+    ultima = api.tempo_desde_calculo()
+    label_st = f"🕒 Última atualização: {ultima}" if ultima else "⚠️ Engine não calculado"
+    st.markdown(
+        f'<div style="padding:5px 0 2px 0;font-size:0.78rem;color:#787B86">{label_st}</div>',
+        unsafe_allow_html=True,
     )
 
-    st.divider()
-
-    # Indicador de última atualização
-    ultima = api.tempo_desde_calculo()
-    if ultima:
-        st.caption(f"🕒 Última atualização: {ultima}")
-    else:
-        st.caption("⚠️ Engine não calculado")
-
-    if st.button("🔄 Recalcular", use_container_width=True, help="Recalcula sem buscar cotações (rápido)"):
+with col_btn1:
+    if st.button("🔄 Recalcular", use_container_width=True,
+                 help="Recalcula sem buscar cotações (rápido)"):
         with st.spinner("Calculando..."):
             res = api.post("calcular", params={"no_api": "true"})
         if res and res.get("ok"):
             st.success("✅ Atualizado!")
             st.rerun()
 
-    if st.button("🌐 Atualizar cotações", use_container_width=True, help="Baixa preços do dia via internet (~30s)"):
-        with st.spinner("Baixando cotações e recalculando... (~30s)"):
+with col_btn2:
+    if st.button("📡 Atualizar cotações", use_container_width=True,
+                 help="Baixa preços do dia via internet (~30s)"):
+        with st.spinner("Baixando cotações... (~30s)"):
             res = api.post("calcular", params={"no_api": "false"})
         if res and res.get("ok"):
             st.success("✅ Cotações atualizadas!")
             st.rerun()
 
+with col_tema:
+    _icone = "☀️" if _DARK else "🌙"
+    if st.button(_icone, use_container_width=True,
+                 help="Alternar modo claro/escuro"):
+        st.session_state["dark_mode"] = not _DARK
+        st.rerun()
+
+st.divider()
+
+# ─── Renderizar página selecionada ───────────────────────────────────────────
 PAGINAS[pagina_sel].render()

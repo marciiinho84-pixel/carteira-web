@@ -4,7 +4,9 @@ engine/validacao.py — Validação ativa (7 tipos de alertas).
 Lógica copiada de validar() em atualizar_carteira.py. Sem alteração.
 """
 
+import re
 import pandas as pd
+from datetime import date
 from collections import defaultdict
 
 from .constantes import COTIZADO_PUBLICO
@@ -39,10 +41,25 @@ def validar(posicoes: dict, eventos: list, ativos: dict, df_evo: pd.DataFrame) -
                 if pct > 0.15:
                     alertas.append(("AVISO", tkr, f"Concentração {pct*100:.1f}% > 15% na Carteira Gerida"))
 
+    hoje = date.today()
     for ev in eventos:
-        if "PENDENTE LIQUIDAÇÃO" in (ev.get("obs") or ""):
-            alertas.append(("INFO", ev["ativo"], f"Evento de {ev['data']} pendente liquidação"))
-        if "AGREGADO maio" in (ev.get("obs") or ""):
+        obs = ev.get("obs") or ""
+        if "PENDENTE LIQUIDAÇÃO" in obs:
+            # Extrair data de liquidação do formato "→ DD/MM" e só alertar se ainda não venceu
+            m = re.search(r"→\s*(\d{2}/\d{2})", obs)
+            if m:
+                dia, mes = map(int, m.group(1).split("/"))
+                ano = hoje.year if (mes, dia) >= (hoje.month, hoje.day) else hoje.year
+                try:
+                    data_liq = date(ano, mes, dia)
+                    if hoje <= data_liq:
+                        alertas.append(("INFO", ev["ativo"], f"Evento de {ev['data']} pendente liquidação"))
+                except ValueError:
+                    pass  # data inválida — ignorar
+            else:
+                # sem data explícita: alertar sempre
+                alertas.append(("INFO", ev["ativo"], f"Evento de {ev['data']} pendente liquidação"))
+        if "AGREGADO" in obs:
             alertas.append(("INFO", ev["ativo"], "Evento agregado provisório"))
 
     return alertas

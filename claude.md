@@ -93,3 +93,21 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 | `COMPRA` | qualquer | transferência interna (sem efeito no fluxo externo) |
 
 **Regra chave:** `FLUXOS_EXTERNOS = {"CONTRIBUICAO", "RESGATE_EXTERNO", "APORTE_EXTERNO"}` — processados diretamente em `twr.py` linhas 115-122, independente de qualquer cutoff de data em `inferencia.py`.
+
+---
+
+## 6. Visão de longo prazo — inspirado em produtos do mercado
+
+### Roadmap pós-MCP (Fase 5+)
+- IRPF: DARF, isentômetro, declaração pronta para Receita
+- Agenda visual de proventos com previsão de renda passiva
+- Comparador interno: ativos lado a lado com fundamentos
+- Rebalanceamento inteligente baseado em alocação alvo
+- PWA mobile: instalável, offline-first
+
+### Diferenciais a preservar
+- TWR GIPS com CAIXA central (FIC FUNC)
+- FUNCEF e ativos sem cotação pública
+- Privacidade total (100% local, self-hosted)
+- Assistente IA com tools sobre dados pessoais reais
+- Open source — usuário é dono dos dados
