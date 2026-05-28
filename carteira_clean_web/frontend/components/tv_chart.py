@@ -9,25 +9,24 @@ import json
 
 def tv_chart_rv_html(performance_serie: list, markers: list = None) -> str:
     """
-    Gráfico único RV: linhas TWR_RV + IBOV + CDI com marcadores de compra/venda.
+    Gráfico RV: área TWR_RV + linhas IBOV + CDI com marcadores de compra/venda.
     performance_serie: [{"time": "YYYY-MM-DD", "twr_rv": float, "ibov": float, "cdi": float}]
     markers: [{"time": "YYYY-MM-DD", "tipo": "COMPRA"|"VENDA", "label": "WEGE3"}]
     Valores em % acumulado (ex: 11.04 = +11,04%).
     """
-    twr_json = json.dumps([{"time": r["time"], "value": r["twr_rv"]} for r in performance_serie])
-    ibov_json = json.dumps([{"time": r["time"], "value": r["ibov"]} for r in performance_serie])
-    cdi_json = json.dumps([{"time": r["time"], "value": r["cdi"]} for r in performance_serie])
+    twr_json  = json.dumps([{"time": r["time"], "value": r["twr_rv"]} for r in performance_serie])
+    ibov_json = json.dumps([{"time": r["time"], "value": r["ibov"]}   for r in performance_serie])
+    cdi_json  = json.dumps([{"time": r["time"], "value": r["cdi"]}    for r in performance_serie])
 
-    # Montar marcadores LightweightCharts
     lc_markers = []
     for m in (markers or []):
         lc_markers.append({
-            "time": m["time"],
+            "time":     m["time"],
             "position": "belowBar" if m["tipo"] == "COMPRA" else "aboveBar",
-            "color": "#26A69A" if m["tipo"] == "COMPRA" else "#EF5350",
-            "shape": "arrowUp" if m["tipo"] == "COMPRA" else "arrowDown",
-            "text": ("C " if m["tipo"] == "COMPRA" else "V ") + m.get("label", ""),
-            "size": 0.8,
+            "color":    "#26A69A"  if m["tipo"] == "COMPRA" else "#EF5350",
+            "shape":    "arrowUp"  if m["tipo"] == "COMPRA" else "arrowDown",
+            "text":     ("C " if m["tipo"] == "COMPRA" else "V ") + m.get("label", ""),
+            "size": 0.9,
         })
     markers_json = json.dumps(lc_markers)
 
@@ -36,46 +35,48 @@ def tv_chart_rv_html(performance_serie: list, markers: list = None) -> str:
 <head>
 <meta charset="utf-8">
 <style>
-  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+  * {{ margin:0; padding:0; box-sizing:border-box; }}
   body {{
-    background: #0F1117;
-    font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
-    overflow: hidden;
+    background:#0F1117;
+    font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+    overflow:hidden;
   }}
   #wrapper {{
-    background: #0F1117;
-    border: 1px solid #1C2333;
-    border-radius: 10px;
-    padding: 10px 14px 6px;
+    background:#0F1117;
+    border:1px solid #1C2333;
+    border-radius:12px;
+    padding:14px 16px 8px;
   }}
   #legend {{
-    display: flex;
-    gap: 14px;
-    align-items: center;
-    margin-bottom: 8px;
+    display:flex; gap:18px; align-items:center; margin-bottom:10px;
   }}
   .leg-item {{
-    display: flex; align-items: center; gap: 5px;
-    font-size: 0.63rem; color: #9CA3AF; white-space: nowrap;
+    display:flex; align-items:center; gap:6px;
+    font-size:0.7rem; color:#9CA3AF; white-space:nowrap;
+    letter-spacing:0.03em;
   }}
-  .leg-dot {{ width: 8px; height: 2px; border-radius: 1px; }}
-  #chart-rv {{ width: 100%; height: 200px; }}
+  .leg-line {{ width:20px; height:2px; border-radius:1px; flex-shrink:0; }}
+  #chart-rv {{ width:100%; height:260px; }}
 </style>
 </head>
 <body>
 <div id="wrapper">
   <div id="legend">
     <div class="leg-item">
-      <div class="leg-dot" style="background:#6366F1;height:2px"></div>
-      <span>TWR RV</span>
+      <div class="leg-line" style="background:#6366F1"></div>
+      <span style="font-weight:600;color:#D1D4DC">TWR RV</span>
     </div>
     <div class="leg-item">
-      <div class="leg-dot" style="background:#F59E0B"></div>
+      <div class="leg-line" style="background:#F59E0B"></div>
       <span>IBOV</span>
     </div>
     <div class="leg-item">
-      <div class="leg-dot" style="background:#787B86;height:1px;border-top:1px dashed #787B86"></div>
+      <div class="leg-line" style="background:none;border-top:2px dashed #787B86;height:0"></div>
       <span>CDI</span>
+    </div>
+    <div class="leg-item" style="margin-left:auto;gap:10px">
+      <span style="color:#26A69A;font-size:0.65rem">▲ compra</span>
+      <span style="color:#EF5350;font-size:0.65rem">▼ venda</span>
     </div>
   </div>
   <div id="chart-rv"></div>
@@ -83,64 +84,82 @@ def tv_chart_rv_html(performance_serie: list, markers: list = None) -> str:
 <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
 <script>
 (function() {{
-  const pctFmt = {{ type: 'custom', formatter: v => (v >= 0 ? '+' : '') + v.toFixed(2).replace('.', ',') + '%' }};
+  const H = 260;
+  const pctFmt = {{
+    type: 'custom',
+    formatter: v => (v >= 0 ? '+' : '') + v.toFixed(2).replace('.', ',') + '%'
+  }};
   const OPTS = {{
     layout: {{
       background: {{ color: '#0F1117' }},
-      textColor: '#9CA3AF',
-      fontSize: 11,
+      textColor:  '#787B86',
+      fontSize:   11,
+      fontFamily: 'Inter, -apple-system, sans-serif',
     }},
     grid: {{
-      vertLines: {{ color: '#1a2030' }},
-      horzLines: {{ color: '#1a2030' }},
+      vertLines: {{ color: '#161C2A' }},
+      horzLines: {{ color: '#161C2A' }},
     }},
     rightPriceScale: {{
-      borderColor: '#1C2333',
-      scaleMargins: {{ top: 0.08, bottom: 0.08 }},
+      borderColor:  '#1C2333',
+      scaleMargins: {{ top: 0.10, bottom: 0.10 }},
     }},
     timeScale: {{
-      borderColor: '#1C2333',
-      timeVisible: true,
-      secondsVisible: false,
+      borderColor:     '#1C2333',
+      timeVisible:     true,
+      secondsVisible:  false,
+      fixLeftEdge:     true,
+      fixRightEdge:    true,
     }},
     crosshair: {{ mode: 1 }},
     handleScroll: true,
-    handleScale: true,
+    handleScale:  true,
   }};
 
   const chart = LightweightCharts.createChart(
     document.getElementById('chart-rv'),
     Object.assign({{}}, OPTS, {{
-      width: document.getElementById('chart-rv').clientWidth,
-      height: 200,
+      width:  document.getElementById('chart-rv').clientWidth,
+      height: H,
     }})
   );
 
-  const twrLine = chart.addLineSeries({{
-    color: '#6366F1', lineWidth: 2, priceFormat: pctFmt, title: 'TWR RV',
+  // Área TWR
+  const twrArea = chart.addAreaSeries({{
+    lineColor:   '#6366F1',
+    topColor:    'rgba(99,102,241,0.18)',
+    bottomColor: 'rgba(99,102,241,0.00)',
+    lineWidth:   2,
+    priceFormat: pctFmt,
+    title:       'TWR RV',
   }});
-  twrLine.setData({twr_json});
+  twrArea.setData({twr_json});
 
-  const markers = {markers_json};
-  if (markers.length > 0) {{
-    twrLine.setMarkers(markers);
-  }}
+  const mks = {markers_json};
+  if (mks.length > 0) twrArea.setMarkers(mks);
 
+  // Linha IBOV
   chart.addLineSeries({{
-    color: '#F59E0B', lineWidth: 1.5, priceFormat: pctFmt, title: 'IBOV',
+    color:       '#F59E0B',
+    lineWidth:   1.5,
+    priceFormat: pctFmt,
+    title:       'IBOV',
   }}).setData({ibov_json});
 
+  // Linha CDI tracejada
   chart.addLineSeries({{
-    color: '#787B86', lineWidth: 1,
-    lineStyle: LightweightCharts.LineStyle.Dashed,
-    priceFormat: pctFmt, title: 'CDI',
+    color:       '#4B5563',
+    lineWidth:   1,
+    lineStyle:   LightweightCharts.LineStyle.Dashed,
+    priceFormat: pctFmt,
+    title:       'CDI',
   }}).setData({cdi_json});
 
   chart.timeScale().fitContent();
 
   const ro = new ResizeObserver(() => {{
-    const w = document.getElementById('wrapper').clientWidth - 28;
-    chart.resize(w, 200);
+    const w = document.getElementById('wrapper').clientWidth - 32;
+    chart.resize(w, H);
   }});
   ro.observe(document.getElementById('wrapper'));
 }})();

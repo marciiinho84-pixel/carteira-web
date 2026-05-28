@@ -1,14 +1,18 @@
 """
 Carteira RV — Central de Decisões de Renda Variável.
 
-Responde 3 perguntas na ordem do investidor:
-  1. O QUE ACONTECEU? → Bloco A (Pulso) + Bloco B (Heatmap 3 modos)
-  2. ONDE ESTOU?      → Bloco C (Concentração) + Bloco D (Agenda)
-  3. O QUE FAZER?     → Bloco E (Alertas + Ranking P&L)
-  + Blocos F/G/H     → Performance + Caixa + Análise Setorial
+Layout v3:
+  A  — Pulso do dia (4 KPIs)
+  B  — Heatmap treemap (3 modos)
+  C  — Concentração  |  Ranking P&L
+  E+G — Alertas      |  Caixa operacional
+  F  — Performance RV vs benchmarks (largura total)
+  H  — Análise setorial treemap
+  Placeholders: Sinais técnicos / Watchlist
+  Diário
 """
 
-from datetime import date, timedelta
+from datetime import date
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -20,187 +24,189 @@ from carteira_clean_web.frontend.components.ranking_pnl import ranking_pnl_html
 from carteira_clean_web.frontend.components.treemap_setorial import treemap_setorial_html
 from carteira_clean_web.frontend.components.tv_chart import tv_chart_rv_html
 
-_BG = "rgba(20,25,35,0.7)"
-_BORDER = "rgba(37,45,61,0.5)"
-_TXT = "#D1D4DC"
-_TXT2 = "#6B7280"
-_FONT = "-apple-system, BlinkMacSystemFont, 'Inter', sans-serif"
-_ALERTA = "#F59E0B"
+# ── Design tokens ──────────────────────────────────────────────────
+_BG      = "#161B27"
+_CARD    = "#1C2333"
+_BORDER  = "#252D3D"
+_TXT     = "#D1D4DC"
+_TXT2    = "#787B86"
+_FONT    = "Inter, -apple-system, BlinkMacSystemFont, sans-serif"
+_OK      = "#26A69A"
 _CRITICO = "#EF5350"
-_OK = "#26A69A"
+_ALERTA  = "#F59E0B"
+_INDIGO  = "#6366F1"
 
-_TIPOS_AGENDA = ["EX_DIV", "BALANCO", "DIVIDENDO", "PROVENTOS", "OUTRO"]
-_LABEL_TIPO = {
-    "EX_DIV": "Ex-Dividendo",
-    "BALANCO": "Balanço",
-    "DIVIDENDO": "Dividendo",
-    "PROVENTOS": "Proventos",
-    "OUTRO": "Outro",
-}
+_SECTION_LABEL = (
+    "font-size:0.62rem;font-weight:600;letter-spacing:0.14em;"
+    f"text-transform:uppercase;color:{_TXT2};margin-bottom:10px"
+)
+
+_DIVIDER = (
+    '<hr style="border:none;border-top:1px solid #1C2333;margin:20px 0 16px">'
+)
+
+_CORES_SETOR = [
+    "#6366F1", "#26A69A", "#F59E0B", "#EC4899",
+    "#3B82F6", "#8B5CF6", "#10B981", "#F97316",
+]
 
 
-# ─── Helpers HTML ─────────────────────────────────────────────────
+def _hex_rgb(h: str) -> str:
+    h = h.lstrip("#")
+    return f"{int(h[0:2],16)},{int(h[2:4],16)},{int(h[4:6],16)}"
+
+
+# ── HTML helpers ───────────────────────────────────────────────────
 
 def _card_alerta(ticker: str, pnl_pct: float, pnl_rs: float, critico: bool) -> str:
-    cor = _CRITICO if critico else _ALERTA
-    label = "⚠️ CRÍTICO" if critico else "⚠️ ATENÇÃO"
+    cor   = _CRITICO if critico else _ALERTA
+    badge = "CRÍTICO" if critico else "ATENÇÃO"
+    sinal_label = fmt.pct(pnl_pct)
+    rs_label    = fmt.moeda(abs(pnl_rs))
     return (
-        f'<div style="background:rgba(20,25,35,0.6);border-left:3px solid {cor};'
-        f'border-radius:6px;padding:8px 12px;margin-bottom:6px;font-family:{_FONT}">'
-        f'<div style="display:flex;justify-content:space-between;align-items:center">'
-        f'<span style="color:{_TXT};font-weight:600;font-size:14px">{ticker}</span>'
-        f'<span style="background:rgba({_hex_to_rgb(cor)},0.18);color:{cor};font-size:11px;'
-        f'padding:2px 7px;border-radius:4px">{label}</span></div>'
-        f'<div style="color:{_CRITICO};font-size:13px;margin-top:2px">'
-        f'{fmt.pct(pnl_pct)} &nbsp;·&nbsp; {fmt.moeda(pnl_rs, sinal=True)}</div>'
+        f'<div style="background:rgba({_hex_rgb(cor)},0.08);border-left:3px solid {cor};'
+        f'border-radius:0 8px 8px 0;padding:10px 14px;margin-bottom:8px;'
+        f'font-family:{_FONT}">'
+        f'<div style="display:flex;justify-content:space-between;align-items:center;'
+        f'margin-bottom:4px">'
+        f'<span style="color:{_TXT};font-weight:700;font-size:14px;'
+        f'letter-spacing:0.02em">{ticker}</span>'
+        f'<span style="background:rgba({_hex_rgb(cor)},0.20);color:{cor};font-size:10px;'
+        f'font-weight:600;padding:2px 8px;border-radius:4px;letter-spacing:0.05em">'
+        f'{badge}</span></div>'
+        f'<span style="color:{cor};font-size:13px;font-weight:600">{sinal_label}</span>'
+        f'<span style="color:{_TXT2};font-size:12px"> · -{rs_label}</span>'
         f'</div>'
     )
 
 
-def _hex_to_rgb(hex_color: str) -> str:
-    h = hex_color.lstrip("#")
-    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-    return f"{r},{g},{b}"
-
-
-def _concentracao_html(setores: list, top_ativos: list, valor_total: float) -> str:
-    cores = [
-        '#6366F1', '#26A69A', '#F59E0B', '#EC4899',
-        '#3B82F6', '#8B5CF6', '#10B981', '#EF4444',
-    ]
-    linhas = ""
+def _concentracao_html(setores: list, top_ativos: list) -> str:
+    barras = ""
     for i, s in enumerate(setores[:8]):
         pct = round(s["pct_rv"] * 100, 1)
-        cor = cores[i % len(cores)]
+        cor = _CORES_SETOR[i % len(_CORES_SETOR)]
         bar_w = max(2, min(100, pct * 5))
-        linhas += (
-            f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
-            f'<div style="width:90px;font-size:11px;color:{_TXT2};white-space:nowrap;overflow:hidden;'
-            f'text-overflow:ellipsis">{s["nome"]}</div>'
-            f'<div style="flex:1;background:#1C2333;border-radius:3px;height:8px">'
-            f'<div style="width:{bar_w}%;background:{cor};height:100%;border-radius:3px"></div></div>'
-            f'<div style="width:38px;text-align:right;font-size:11px;color:{_TXT};font-weight:600">'
-            f'{pct}%</div></div>'
+        barras += (
+            f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
+            f'<div style="width:96px;font-size:11px;color:{_TXT2};white-space:nowrap;'
+            f'overflow:hidden;text-overflow:ellipsis;flex-shrink:0">{s["nome"]}</div>'
+            f'<div style="flex:1;background:#1C2333;border-radius:3px;height:6px">'
+            f'<div style="width:{bar_w}%;background:{cor};height:100%;border-radius:3px;'
+            f'transition:width 0.3s ease"></div></div>'
+            f'<div style="width:34px;text-align:right;font-size:11px;color:{_TXT};'
+            f'font-weight:600;flex-shrink:0">{pct}%</div></div>'
         )
 
-    top_html = ""
+    top_rows = ""
     for p in top_ativos[:5]:
         pct = round(p["pct_rv"] * 100, 1)
         cor = _ALERTA if pct > 15 else _TXT
-        top_html += (
-            f'<div style="display:flex;justify-content:space-between;'
-            f'padding:3px 0;border-bottom:1px solid #1C2333;font-size:12px">'
-            f'<span style="color:{_TXT}">{p["ticker"]}</span>'
-            f'<span style="color:{cor};font-weight:600">{pct}%</span></div>'
+        badge = (
+            f'<span style="font-size:9px;background:rgba({_hex_rgb(_ALERTA)},0.18);'
+            f'color:{_ALERTA};padding:1px 5px;border-radius:3px;margin-left:4px">▲</span>'
+            if pct > 15 else ""
         )
-
-    return (
-        f'<div style="background:{_BG};border:1px solid {_BORDER};border-radius:10px;'
-        f'padding:14px 16px;font-family:{_FONT}">'
-        f'<div style="color:{_TXT2};font-size:0.6rem;text-transform:uppercase;'
-        f'letter-spacing:0.12em;margin-bottom:12px">Por Setor</div>'
-        f'{linhas}'
-        f'<div style="color:{_TXT2};font-size:0.6rem;text-transform:uppercase;'
-        f'letter-spacing:0.12em;margin:12px 0 8px">Top 5 Posições Individuais</div>'
-        f'{top_html}</div>'
-    )
-
-
-def _agenda_html(eventos: list) -> str:
-    if not eventos:
-        return (
-            f'<div style="color:{_TXT2};font-size:13px;font-family:{_FONT};'
-            f'padding:20px;text-align:center">Nenhum evento cadastrado nos próximos 30 dias.'
-            f'<br/><small>Use o formulário abaixo para adicionar.</small></div>'
-        )
-
-    hoje = date.today()
-    em_7d = hoje + timedelta(days=7)
-    linhas = ""
-    for ev in eventos:
-        ev_date = date.fromisoformat(ev["data"]) if isinstance(ev["data"], str) else ev["data"]
-        urgente = ev_date <= em_7d
-        dias_r = (ev_date - hoje).days
-        dias_label = "hoje" if dias_r == 0 else f"em {dias_r}d"
-        cor_data = _ALERTA if urgente else _TXT2
-        tipo_label = _LABEL_TIPO.get(ev["tipo"], ev["tipo"])
-        desc_html = (f'<br/><span style="color:{_TXT2};font-size:11px">{ev["descricao"]}</span>'
-                     if ev.get("descricao") else "")
-        urgente_html = (f'<span style="background:rgba(245,158,11,0.18);color:{_ALERTA};'
-                        f'font-size:10px;padding:1px 6px;border-radius:4px">7d</span>'
-                        if urgente else "")
-        linhas += (
-            f'<div style="display:flex;align-items:center;gap:10px;padding:7px 0;'
-            f'border-bottom:1px solid #1C2333;font-family:{_FONT}">'
-            f'<div style="min-width:72px">'
-            f'<div style="color:{cor_data};font-size:12px;font-weight:600">'
-            f'{ev_date.strftime("%d/%m")}</div>'
-            f'<div style="color:{_TXT2};font-size:10px">{dias_label}</div></div>'
-            f'<div style="flex:1">'
-            f'<span style="color:{_TXT};font-size:13px;font-weight:600">{ev["ativo"]}</span>'
-            f' <span style="color:{_TXT2};font-size:11px">· {tipo_label}</span>'
-            f'{desc_html}</div>'
-            f'{urgente_html}'
+        top_rows += (
+            f'<div style="display:flex;justify-content:space-between;align-items:center;'
+            f'padding:5px 0;border-bottom:1px solid #1C2333">'
+            f'<span style="color:{_TXT};font-size:12px;font-weight:500">'
+            f'{p["ticker"]}{badge}</span>'
+            f'<span style="color:{cor};font-size:12px;font-weight:700">{pct}%</span>'
             f'</div>'
         )
 
     return (
-        f'<div style="background:{_BG};border:1px solid {_BORDER};border-radius:10px;'
-        f'padding:14px 16px">{linhas}</div>'
+        f'<div style="font-family:{_FONT}">'
+        f'<div style="{_SECTION_LABEL}">Por Setor</div>'
+        f'{barras}'
+        f'<div style="{_SECTION_LABEL};margin-top:14px">Top 5 Individuais</div>'
+        f'{top_rows}</div>'
     )
 
 
 def _caixa_html(caixa: dict) -> str:
-    saldo = caixa["projetado"]
-    cor_saldo = _OK if saldo >= 0 else _CRITICO
-    poder_compra = fmt.moeda(abs(saldo)) + (" disponível" if saldo >= 0 else " déficit")
+    saldo   = caixa["projetado"]
+    cor_sal = _OK if saldo >= 0 else _CRITICO
+    label_pc = ("disponível" if saldo >= 0 else "déficit")
 
     def _row(label, valor, cor=_TXT, bold=False):
         fw = "700" if bold else "400"
         return (
-            f'<tr><td style="color:{_TXT2};padding:4px 0;font-size:13px">{label}</td>'
-            f'<td style="text-align:right;color:{cor};padding:4px 0;font-size:13px;'
-            f'font-weight:{fw}">{valor}</td></tr>'
+            f'<div style="display:flex;justify-content:space-between;align-items:center;'
+            f'padding:7px 0;border-bottom:1px solid #1C2333">'
+            f'<span style="color:{_TXT2};font-size:13px">{label}</span>'
+            f'<span style="color:{cor};font-size:13px;font-weight:{fw}">{valor}</span>'
+            f'</div>'
         )
 
     return (
-        f'<div style="background:{_BG};border:1px solid {_BORDER};border-radius:10px;'
-        f'padding:14px 18px;font-family:{_FONT}">'
-        f'<table style="width:100%;border-collapse:collapse">'
-        + _row("Caixa FIC FUNC", fmt.moeda(caixa["atual"]))
+        f'<div style="font-family:{_FONT}">'
+        + _row("Caixa FIC FUNC",  fmt.moeda(caixa["atual"]))
         + _row("Entrando D+2", "+" + fmt.moeda(caixa["entrando_d2"]), _OK)
-        + _row("Saindo D+2", "−" + fmt.moeda(caixa["saindo_d2"]), _CRITICO)
-        + f'<tr style="border-top:1px solid #1C2333"><td style="padding-top:8px;color:{_TXT};'
-        f'font-size:13px;font-weight:700">Saldo projetado</td>'
-        f'<td style="text-align:right;padding-top:8px;color:{cor_saldo};font-size:13px;'
-        f'font-weight:700">{fmt.moeda(abs(saldo))}</td></tr>'
-        + '</table>'
-        + f'<div style="margin-top:10px;padding-top:8px;border-top:1px solid #1C2333;'
-        f'color:{_TXT2};font-size:11px">Poder de compra: '
-        f'<span style="color:{cor_saldo};font-weight:600">{poder_compra}</span></div>'
+        + _row("Saindo D+2",   "−" + fmt.moeda(caixa["saindo_d2"]),  _CRITICO)
+        + f'<div style="display:flex;justify-content:space-between;align-items:center;'
+          f'padding:10px 0 4px">'
+          f'<span style="color:{_TXT};font-size:13px;font-weight:700">Saldo projetado</span>'
+          f'<span style="color:{cor_sal};font-size:14px;font-weight:700">'
+          f'{fmt.moeda(abs(saldo))}</span></div>'
+        + f'<div style="margin-top:8px;padding:8px 10px;border-radius:6px;'
+          f'background:rgba({_hex_rgb(cor_sal)},0.10);'
+          f'color:{cor_sal};font-size:12px;font-weight:500">'
+          f'Poder de compra: <strong>{fmt.moeda(abs(saldo))}</strong> {label_pc}</div>'
         + '</div>'
     )
 
 
 def _diario_card_html(e: dict) -> str:
     ativo = e.get("ativo", "")
-    acao = e.get("acao", "")
-    tese = e.get("tese", "")
+    acao  = e.get("acao", "")
+    tese  = e.get("tese", "")
     data_d = e.get("data_decisao", "")
+    cor_acao = _OK if "COMPRA" in acao.upper() else (_CRITICO if "VENDA" in acao.upper() else _TXT2)
     return (
-        f'<div style="background:rgba(20,25,35,0.6);border:1px solid {_BORDER};'
-        f'border-radius:8px;padding:10px 14px;margin-bottom:6px;font-family:{_FONT};'
-        f'color:{_TXT};font-size:13px">'
+        f'<div style="background:rgba(28,35,51,0.5);border:1px solid {_BORDER};'
+        f'border-radius:8px;padding:12px 16px;margin-bottom:8px;font-family:{_FONT}">'
+        f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">'
         f'<span style="color:{_TXT2};font-size:11px">{data_d}</span>'
-        f' · <b>{ativo}</b> · {acao}'
-        f'<div style="margin-top:4px;font-size:12px;color:#9CA3AF">'
-        f'{tese[:140]}{"…" if len(tese) > 140 else ""}</div></div>'
+        f'<span style="color:{_TXT};font-weight:700;font-size:13px">{ativo}</span>'
+        f'<span style="color:{cor_acao};font-size:11px;font-weight:600;'
+        f'background:rgba({_hex_rgb(cor_acao)},0.15);padding:1px 7px;border-radius:4px">'
+        f'{acao}</span></div>'
+        f'<div style="color:#9CA3AF;font-size:12px;line-height:1.5">'
+        f'{tese[:160]}{"…" if len(tese) > 160 else ""}</div>'
+        f'</div>'
     )
 
 
-# ─── Render principal ─────────────────────────────────────────────
+def _placeholder_html(linha1: str, linha2: str) -> str:
+    return (
+        f'<div style="background:rgba(20,25,35,0.4);'
+        f'border:1px dashed rgba(99,102,241,0.25);border-radius:10px;'
+        f'padding:36px 24px;text-align:center;font-family:{_FONT}">'
+        f'<div style="color:{_TXT2};font-size:12px;margin-bottom:4px">{linha1}</div>'
+        f'<div style="color:{_INDIGO};font-size:11px;opacity:0.7">{linha2}</div>'
+        f'</div>'
+    )
+
+
+# ── CSS global ─────────────────────────────────────────────────────
+_CSS = """
+<style>
+.main .block-container { padding-top: 0.5rem; }
+[data-testid="stTabs"] [data-baseweb="tab"] {
+    font-size: 0.82rem; font-weight: 500; color: #787B86;
+    padding: 6px 16px;
+}
+[data-testid="stTabs"] [aria-selected="true"] { color: #6366F1; }
+[data-testid="stExpander"] { border: 1px solid #252D3D; border-radius: 8px; }
+</style>
+"""
+
+
+# ── Render principal ───────────────────────────────────────────────
 
 def render():
+    st.markdown(_CSS, unsafe_allow_html=True)
     st.title("📈 Carteira RV")
 
     if not api.garantir_calculado():
@@ -213,15 +219,13 @@ def render():
 
     posicoes = dados["posicoes"]
     valor_rv = dados["valor_atual"]
+    var_pct  = dados["variacao_dia_pct"]
+    var_rs   = dados["variacao_dia_valor"]
 
-    # ─── BLOCO A — PULSO DO DIA ──────────────────────────────────
-    var_pct = dados["variacao_dia_pct"]
-    var_rs = dados["variacao_dia_valor"]
-
-    # Banner de atenção se var > 3%
-    movers_extremos = [p for p in posicoes if abs(p.get("variacao_dia_pct", 0)) > 0.05]
-    if movers_extremos:
-        nomes = ", ".join(p["ticker"] for p in movers_extremos[:3])
+    # ── A — PULSO DO DIA ─────────────────────────────────────────
+    movers_ext = [p for p in posicoes if abs(p.get("variacao_dia_pct", 0)) > 0.05]
+    if movers_ext:
+        nomes = ", ".join(p["ticker"] for p in movers_ext[:3])
         st.warning(f"⚡ Movimento expressivo hoje (>5%): **{nomes}**")
 
     cols = st.columns(4)
@@ -254,155 +258,150 @@ def render():
             subtitle=fmt.pct(m["pct"]) + " no dia",
         ), height=110)
 
-    # ─── BLOCO B — HEATMAP (3 abas) ──────────────────────────────
+    # ── B — HEATMAP (3 abas) ─────────────────────────────────────
+    st.markdown(_DIVIDER, unsafe_allow_html=True)
     st.markdown(
-        "##### Mapa de Posições"
-        "<br><small style='color:#6B7280'>Selecione a dimensão de análise</small>",
+        f'<div style="font-size:1rem;font-weight:700;color:{_TXT};margin-bottom:2px">'
+        f'Mapa de Posições</div>'
+        f'<div style="font-size:0.78rem;color:{_TXT2};margin-bottom:10px">'
+        f'Selecione a dimensão de análise</div>',
         unsafe_allow_html=True,
     )
     tab_dia, tab_pnl, tab_peso = st.tabs(["📅 Variação Hoje", "💰 P&L Total", "📊 Concentração"])
-
     with tab_dia:
-        components.html(heatmap_posicoes_html(posicoes, mode="dia"), height=320)
+        components.html(heatmap_posicoes_html(posicoes, mode="dia"), height=340)
     with tab_pnl:
-        components.html(heatmap_posicoes_html(posicoes, mode="pnl"), height=320)
+        components.html(heatmap_posicoes_html(posicoes, mode="pnl"), height=340)
     with tab_peso:
-        components.html(heatmap_posicoes_html(posicoes, mode="tamanho"), height=320)
+        components.html(heatmap_posicoes_html(posicoes, mode="tamanho"), height=340)
 
-    # ─── BLOCOS C + D — CONCENTRAÇÃO | AGENDA ────────────────────
-    col_conc, col_agenda = st.columns([2, 3])
+    # ── C — CONCENTRAÇÃO | RANKING P&L ───────────────────────────
+    st.markdown(_DIVIDER, unsafe_allow_html=True)
+    col_conc, col_rank = st.columns([2, 3])
 
     with col_conc:
-        st.markdown("##### Concentração")
         st.markdown(
-            _concentracao_html(dados["setores"], dados["top_concentracao"], valor_rv),
+            f'<div style="font-size:1rem;font-weight:700;color:{_TXT};margin-bottom:12px">'
+            f'Concentração</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            _concentracao_html(dados["setores"], dados["top_concentracao"]),
             unsafe_allow_html=True,
         )
 
-    with col_agenda:
-        st.markdown("##### Agenda — próximos 30 dias")
-        eventos_agenda = api.get_agenda_eventos(dias=30)
-        st.markdown(_agenda_html(eventos_agenda), unsafe_allow_html=True)
+    with col_rank:
+        n_pos = len(posicoes)
+        top_n = min(5, n_pos // 2) if n_pos >= 4 else 2
+        ht_rank = (top_n * 2 + 1) * 30 + 50
+        st.markdown(
+            f'<div style="font-size:1rem;font-weight:700;color:{_TXT};margin-bottom:4px">'
+            f'Ranking P&L</div>'
+            f'<div style="font-size:0.78rem;color:{_TXT2};margin-bottom:8px">'
+            f'Top {top_n} winners · top {top_n} losers — acumulado</div>',
+            unsafe_allow_html=True,
+        )
+        components.html(ranking_pnl_html(posicoes, top_n=top_n), height=ht_rank)
 
-        with st.expander("➕ Adicionar evento"):
-            rv_tickers = sorted({p["ticker"] for p in posicoes})
-            c1, c2, c3 = st.columns([2, 2, 1])
-            with c1:
-                ag_ativo = st.selectbox("Ativo", rv_tickers, key="ag_ativo")
-                ag_tipo = st.selectbox("Tipo", _TIPOS_AGENDA, key="ag_tipo",
-                                       format_func=lambda x: _LABEL_TIPO.get(x, x))
-            with c2:
-                ag_data = st.date_input("Data", value=date.today() + timedelta(days=7),
-                                        format="DD/MM/YYYY", key="ag_data")
-                ag_desc = st.text_input("Descrição (opcional)", key="ag_desc")
-            with c3:
-                st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("💾 Salvar", key="ag_btn", use_container_width=True):
-                    res = api.criar_agenda_evento(str(ag_data), ag_ativo, ag_tipo, ag_desc)
-                    if res:
-                        st.success("Evento salvo!")
-                        st.rerun()
-
-        # Botão remover (se houver eventos)
-        if eventos_agenda:
-            with st.expander("🗑️ Remover evento"):
-                ops = {f"{e['data']} · {e['ativo']} · {_LABEL_TIPO.get(e['tipo'],e['tipo'])}": e["id"]
-                       for e in eventos_agenda}
-                sel = st.selectbox("Selecione", list(ops.keys()), key="ag_rm_sel")
-                if st.button("Remover", key="ag_rm_btn"):
-                    api.deletar_agenda_evento(ops[sel])
-                    st.success("Removido!")
-                    st.rerun()
-
-    # ─── BLOCO E — PAINEL DE AÇÃO ────────────────────────────────
-    st.markdown("##### Painel de Ação")
-    col_alertas, col_ranking = st.columns([2, 3])
+    # ── E+G — ALERTAS | CAIXA ────────────────────────────────────
+    st.markdown(_DIVIDER, unsafe_allow_html=True)
+    col_alert, col_caixa = st.columns([3, 2])
 
     THRESH_ATENCAO = -0.15
     THRESH_CRITICO = -0.25
 
-    with col_alertas:
-        alertas = [p for p in posicoes if p.get("pl_total_pct", 0) < THRESH_ATENCAO]
-        alertas_sorted = sorted(alertas, key=lambda p: p["pl_total_pct"])
-
-        if alertas_sorted:
-            st.markdown(
-                f"<div style='color:{_TXT2};font-size:11px;margin-bottom:8px'>"
-                f"Posições com P&L abaixo de {fmt.pct(THRESH_ATENCAO)} do custo</div>",
-                unsafe_allow_html=True,
-            )
-            for p in alertas_sorted:
-                critico = p["pl_total_pct"] < THRESH_CRITICO
+    with col_alert:
+        st.markdown(
+            f'<div style="font-size:1rem;font-weight:700;color:{_TXT};margin-bottom:4px">'
+            f'Painel de Risco</div>'
+            f'<div style="font-size:0.78rem;color:{_TXT2};margin-bottom:10px">'
+            f'Posições com P&L abaixo de {fmt.pct(THRESH_ATENCAO)}</div>',
+            unsafe_allow_html=True,
+        )
+        alertas = sorted(
+            [p for p in posicoes if p.get("pl_total_pct", 0) < THRESH_ATENCAO],
+            key=lambda p: p["pl_total_pct"],
+        )
+        if alertas:
+            for p in alertas:
                 st.markdown(
-                    _card_alerta(p["ticker"], p["pl_total_pct"], p["pl_total_rs"], critico),
+                    _card_alerta(p["ticker"], p["pl_total_pct"], p["pl_total_rs"],
+                                 p["pl_total_pct"] < THRESH_CRITICO),
                     unsafe_allow_html=True,
                 )
         else:
             st.markdown(
-                f'<div style="background:rgba(38,166,154,0.1);border:1px solid rgba(38,166,154,0.3);'
-                f'border-radius:8px;padding:16px;text-align:center;color:{_OK};font-family:{_FONT};'
+                f'<div style="background:rgba(38,166,154,0.08);'
+                f'border:1px solid rgba(38,166,154,0.25);border-radius:8px;'
+                f'padding:18px;text-align:center;color:{_OK};font-family:{_FONT};'
                 f'font-size:13px">✓ Nenhuma posição abaixo de {fmt.pct(THRESH_ATENCAO)}</div>',
                 unsafe_allow_html=True,
             )
 
-    with col_ranking:
+    with col_caixa:
         st.markdown(
-            f"<div style='color:{_TXT2};font-size:11px;margin-bottom:4px'>"
-            "Top 5 winners · Top 5 losers (P&L acumulado)</div>",
+            f'<div style="font-size:1rem;font-weight:700;color:{_TXT};margin-bottom:12px">'
+            f'Caixa Operacional</div>',
             unsafe_allow_html=True,
         )
-        n_pos = len(posicoes)
-        top_n = min(5, n_pos // 2) if n_pos >= 4 else 2
-        ht_ranking = (top_n * 2 + 1) * 28 + 40
-        components.html(ranking_pnl_html(posicoes, top_n=top_n), height=ht_ranking)
-
-    # ─── BLOCOS F + G — PERFORMANCE | CAIXA ─────────────────────
-    col_perf, col_caixa = st.columns([3, 2])
-
-    with col_perf:
-        st.markdown("##### Performance RV vs benchmarks")
-        components.html(
-            tv_chart_rv_html(dados["performance_serie"], markers=dados.get("markers", [])),
-            height=245,
-        )
-
-    with col_caixa:
-        st.markdown("##### Caixa operacional")
         st.markdown(_caixa_html(dados["caixa"]), unsafe_allow_html=True)
 
-    # ─── BLOCO H — ANÁLISE SETORIAL ──────────────────────────────
+    # ── F — PERFORMANCE (largura total) ──────────────────────────
+    st.markdown(_DIVIDER, unsafe_allow_html=True)
     st.markdown(
-        "##### Análise setorial"
-        "<br><small style='color:#6B7280'>setor → ativos · clique para ampliar</small>",
+        f'<div style="font-size:1rem;font-weight:700;color:{_TXT};margin-bottom:2px">'
+        f'Performance RV vs Benchmarks</div>'
+        f'<div style="font-size:0.78rem;color:{_TXT2};margin-bottom:10px">'
+        f'TWR carteira · IBOV · CDI — marcadores de operações</div>',
         unsafe_allow_html=True,
     )
-    components.html(treemap_setorial_html(dados["setores"]), height=400)
+    components.html(
+        tv_chart_rv_html(dados["performance_serie"], markers=dados.get("markers", [])),
+        height=300,
+    )
 
-    # ─── PLACEHOLDERS FASE B / C ─────────────────────────────────
+    # ── H — ANÁLISE SETORIAL ─────────────────────────────────────
+    st.markdown(_DIVIDER, unsafe_allow_html=True)
+    st.markdown(
+        f'<div style="font-size:1rem;font-weight:700;color:{_TXT};margin-bottom:2px">'
+        f'Análise Setorial</div>'
+        f'<div style="font-size:0.78rem;color:{_TXT2};margin-bottom:10px">'
+        f'setor → ativos · tamanho = valor alocado</div>',
+        unsafe_allow_html=True,
+    )
+    components.html(treemap_setorial_html(dados["setores"]), height=420)
+
+    # ── PLACEHOLDERS FASE B / C ───────────────────────────────────
+    st.markdown(_DIVIDER, unsafe_allow_html=True)
     col_sinais, col_watch = st.columns(2)
-
     with col_sinais:
-        st.markdown("##### 📡 Sinais técnicos")
         st.markdown(
-            f'<div style="background:rgba(20,25,35,0.4);border:1px dashed rgba(99,102,241,0.3);'
-            f'border-radius:10px;padding:32px;text-align:center;color:{_TXT2};font-size:12px;'
-            f'font-family:{_FONT}">RSI · MACD · médias móveis<br/>'
-            f'<span style="font-size:11px;opacity:0.8">Próxima fase (C)</span></div>',
+            f'<div style="font-size:1rem;font-weight:700;color:{_TXT};margin-bottom:10px">'
+            f'📡 Sinais Técnicos</div>',
             unsafe_allow_html=True,
         )
-
+        st.markdown(
+            _placeholder_html("RSI · MACD · médias móveis", "Próxima fase (C)"),
+            unsafe_allow_html=True,
+        )
     with col_watch:
-        st.markdown("##### 👁️ Watchlist")
         st.markdown(
-            f'<div style="background:rgba(20,25,35,0.4);border:1px dashed rgba(99,102,241,0.3);'
-            f'border-radius:10px;padding:32px;text-align:center;color:{_TXT2};font-size:12px;'
-            f'font-family:{_FONT}">Ativos monitorados · alvo · distância<br/>'
-            f'<span style="font-size:11px;opacity:0.8">Próxima fase (B)</span></div>',
+            f'<div style="font-size:1rem;font-weight:700;color:{_TXT};margin-bottom:10px">'
+            f'👁️ Watchlist</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            _placeholder_html("Ativos monitorados · alvo · distância", "Próxima fase (B)"),
             unsafe_allow_html=True,
         )
 
-    # ─── DIÁRIO ──────────────────────────────────────────────────
-    st.markdown("##### Contexto do diário")
+    # ── DIÁRIO ────────────────────────────────────────────────────
+    st.markdown(_DIVIDER, unsafe_allow_html=True)
+    st.markdown(
+        f'<div style="font-size:1rem;font-weight:700;color:{_TXT};margin-bottom:10px">'
+        f'Contexto do Diário</div>',
+        unsafe_allow_html=True,
+    )
     entradas = api.get_diario_recentes(limit=3)
     if entradas:
         for e in entradas:
@@ -410,6 +409,6 @@ def render():
     else:
         st.markdown(
             f'<div style="color:{_TXT2};font-size:13px;font-family:{_FONT}">'
-            "Nenhuma decisão registrada ainda.</div>",
+            f'Nenhuma decisão registrada ainda.</div>',
             unsafe_allow_html=True,
         )
