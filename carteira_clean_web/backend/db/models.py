@@ -211,6 +211,32 @@ class Importacao(Base):
         }
 
 
+class AgendaEvento(Base):
+    """Agenda de eventos corporativos — ex-dividendo, balanços, etc."""
+    __tablename__ = "agenda_eventos"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    data = Column(Date, nullable=False)
+    ativo = Column(String(20), nullable=False)
+    tipo = Column(String(30), nullable=False)   # EX_DIV | BALANCO | DIVIDENDO | PROVENTOS | OUTRO
+    descricao = Column(String(200), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_agenda_data", "data"),
+        Index("ix_agenda_ativo", "ativo"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "data": str(self.data),
+            "ativo": self.ativo,
+            "tipo": self.tipo,
+            "descricao": self.descricao or "",
+        }
+
+
 class ImportacaoEvento(Base):
     """Associa importações aos eventos gravados no DB."""
     __tablename__ = "importacao_evento"

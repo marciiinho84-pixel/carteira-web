@@ -92,6 +92,166 @@ def garantir_calculado(force: bool = False) -> bool:
     return True
 
 
+def get_carteira_rv_dados() -> dict | None:
+    """Consolida dados RV de múltiplos endpoints para a página Carteira RV."""
+    posicoes_all = get("posicoes")
+    rv_raw = get("carteira-rv")
+    evo_all = get("evolucao")
+    eventos_all = get("eventos")
+
+    if posicoes_all is None or rv_raw is None or evo_all is None:
+        return None
+    eventos_all = eventos_all or []
+
+    # Mapa setor por ticker (a partir do endpoint carteira-rv)
+    ticker_setor: dict = {}
+    for s in rv_raw.get("setores", []):
+        for t in s.get("ativos", []):
+            ticker_setor[t] = s["setor"]
+
+    # Posições RV (excluindo FUNCEF, RF, Multimercado)
+    posicoes_rv = [p for p in posicoes_all if p.get("classe") == "Renda Variável"]
+
+    # Totais
+    valor_atual = sum(p["valor_atual"] for p in posicoes_rv)
+    var_dia_rv = sum((p.get("var_dia") or 0) for p in posicoes_rv)
+    val_ontem = valor_atual - var_dia_rv
+    var_dia_pct = var_dia_rv / val_ontem if val_ontem > 0 else 0.0
+
+    # Movers
+    rv_com_var = [p for p in posicoes_rv if p.get("var_dia_pct") is not None]
+    _noop = {"ticker": "—", "pct": 0.0, "contrib_rs": 0.0}
+    maior_alta = max(rv_com_var, key=lambda p: p["var_dia_pct"], default=None)
+    maior_queda = min(rv_com_var, key=lambda p: p["var_dia_pct"], default=None)
+    maior_impacto = max(posicoes_rv, key=lambda p: abs(p.get("var_dia") or 0), default=None)
+
+    def _mover(p):
+        if p is None:
+            return dict(_noop)
+        return {"ticker": p["ticker"], "pct": p.get("var_dia_pct") or 0.0,
+                "contrib_rs": p.get("var_dia") or 0.0}
+
+    # Posições enriquecidas para heatmap
+    posicoes_out = [
+        {
+            "ticker": p["ticker"],
+            "setor": ticker_setor.get(p["ticker"], "Outros"),
+            "qtd": p["qtd"],
+            "valor_atual": p["valor_atual"],
+            "pct_rv": p["valor_atual"] / valor_atual if valor_atual > 0 else 0,
+            "variacao_dia_pct": p.get("var_dia_pct") or 0.0,
+            "contrib_dia_rs": p.get("var_dia") or 0.0,
+            "pl_total_pct": p["pnl_pct"],
+            "pl_total_rs": p["pnl"],
+        }
+        for p in posicoes_rv
+    ]
+
+    # Série de performance YTD (twr_rv, ibov, cdi em %)
+    performance_serie = [
+        {
+            "time": r["data"],
+            "twr_rv": round(float(r["twr_rv"]) * 100, 4),
+            "ibov": round(float(r["ibov_acum"]) * 100, 4),
+            "cdi": round(float(r["cdi_acum"]) * 100, 4),
+        }
+        for r in evo_all
+    ]
+
+    # Caixa
+    caixa = {
+        "atual": rv_raw["caixa_atual"],
+        "entrando_d2": rv_raw["entrando_5d"],
+        "saindo_d2": rv_raw["saindo_5d"],
+        "projetado": rv_raw["saldo_projetado"],
+    }
+
+    # Setores com valor por ativo
+    ticker_valor = {p["ticker"]: p["valor_atual"] for p in posicoes_rv}
+    setores = []
+    for s in rv_raw.get("setores", []):
+        ativos_det = sorted(
+            [{"ticker": t, "valor": ticker_valor.get(t, 0),
+              "pct_setor": ticker_valor.get(t, 0) / s["valor"] if s["valor"] > 0 else 0}
+             for t in s.get("ativos", [])],
+            key=lambda x: -x["valor"],
+        )
+        setores.append({
+            "nome": s["setor"],
+            "valor_total": s["valor"],
+            "pct_rv": s["pct_rv"],
+            "ativos": ativos_det,
+        })
+
+    # Marcadores de compra/venda para o gráfico TV
+    rv_tickers = {p["ticker"] for p in posicoes_rv}
+    ops_por_data: dict = {}
+    for ev in eventos_all:
+        if ev.get("ativo") not in rv_tickers:
+            continue
+        if ev.get("tipo") not in ("COMPRA", "VENDA"):
+            continue
+        d = str(ev["data"])
+        if d not in ops_por_data:
+            ops_por_data[d] = {"COMPRA": [], "VENDA": []}
+        ops_por_data[d][ev["tipo"]].append(ev["ativo"])
+
+    markers = []
+    for d, tipos in sorted(ops_por_data.items()):
+        for tipo, tkrs in tipos.items():
+            if tkrs:
+                markers.append({
+                    "time": d,
+                    "tipo": tipo,
+                    "label": tkrs[0] if len(tkrs) == 1 else f"{len(tkrs)}x",
+                })
+
+    # Concentração por ativo (top 5)
+    top_concentracao = sorted(posicoes_out, key=lambda p: -p["pct_rv"])[:5]
+
+    return {
+        "valor_atual": valor_atual,
+        "variacao_dia_valor": var_dia_rv,
+        "variacao_dia_pct": var_dia_pct,
+        "movers": {
+            "maior_alta": _mover(maior_alta),
+            "maior_queda": _mover(maior_queda),
+            "maior_impacto": _mover(maior_impacto),
+        },
+        "posicoes": posicoes_out,
+        "top_concentracao": top_concentracao,
+        "markers": markers,
+        "performance_serie": performance_serie,
+        "caixa": caixa,
+        "setores": setores,
+    }
+
+
+def get_agenda_eventos(dias: int = 30) -> list:
+    """Retorna eventos de agenda nos próximos N dias, ordenados por data."""
+    data = get(f"agenda?dias={dias}")
+    if not data:
+        return []
+    return sorted(data, key=lambda x: x.get("data", ""))
+
+
+def criar_agenda_evento(data_ev: str, ativo: str, tipo: str, descricao: str = "") -> dict | None:
+    """Cria um evento de agenda."""
+    return post("agenda", data={"data": data_ev, "ativo": ativo, "tipo": tipo, "descricao": descricao})
+
+
+def deletar_agenda_evento(evento_id: int) -> bool:
+    return delete(f"agenda/{evento_id}")
+
+
+def get_diario_recentes(limit: int = 3) -> list:
+    """Retorna as N decisões mais recentes do diário."""
+    data = get("decisoes")
+    if not data:
+        return []
+    return sorted(data, key=lambda x: x.get("data_decisao", ""), reverse=True)[:limit]
+
+
 def tempo_desde_calculo() -> str:
     """Retorna string legível do tempo desde o último cálculo."""
     calc_em = st.session_state.get("calculado_em", "")

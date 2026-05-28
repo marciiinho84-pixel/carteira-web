@@ -19,7 +19,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from carteira_clean_web.backend.api.routers import (
-    ativos, eventos, precos_manuais, calcular, resultados, backup, decisoes, importacao,
+    ativos, eventos, precos_manuais, calcular, resultados, backup, decisoes, importacao, agenda,
 )
 
 log = logging.getLogger("api.main")
@@ -74,6 +74,7 @@ app.include_router(resultados.router, prefix=PREFIX)
 app.include_router(backup.router, prefix=PREFIX)
 app.include_router(decisoes.router, prefix=PREFIX)
 app.include_router(importacao.router, prefix=PREFIX)
+app.include_router(agenda.router, prefix=PREFIX)
 
 
 @app.get("/", include_in_schema=False)
