@@ -269,8 +269,9 @@ def calcular_sinal(ticker: str) -> dict:
 
 
 def calcular_sinais_lote(tickers: list[str]) -> list[dict]:
-    """Calcula sinais para vários tickers. Usa cache por ticker e baixa os
-    pendentes em uma única requisição. Ordena por peso desc, depois alfabético."""
+    """Calcula sinais técnicos + fundamentalistas para vários tickers.
+    Técnicos: cache por ticker (4h). Fundamentalistas: Brapi, cache por lote (48h).
+    Ordena por peso do sinal técnico desc, depois alfabético."""
     tickers = list(dict.fromkeys(
         t.strip().upper() for t in tickers if t and t.strip()
     ))
@@ -295,6 +296,28 @@ def calcular_sinais_lote(tickers: list[str]) -> list[dict]:
                 res = _erro(t, str(e))
             _salvar_cache(t, res)
             resultados.append(res)
+
+    # Enriquecer com fundamentalistas via yfinance (cache 48h)
+    try:
+        from carteira_clean_web.backend.engine.fundamentals_client import fetch_fundamentos
+        tickers_para_brapi = [s["ticker"] for s in resultados if not s.get("erro")]
+        fundamentos = fetch_fundamentos(tickers_para_brapi)
+        for sinal in resultados:
+            t = sinal["ticker"]
+            f = fundamentos.get(t, {})
+            sinal["fund"] = {
+                "pl":         f.get("pl"),
+                "pvp":        f.get("pvp"),
+                "ev_ebitda":  f.get("ev_ebitda"),
+                "roe":        f.get("roe"),
+                "margem_liq": f.get("margem_liq"),
+                "div_ebitda": f.get("div_ebitda"),
+                "erro":       f.get("erro"),
+            }
+    except Exception as e:
+        log.warning(f"Fundamentalistas indisponíveis: {e}")
+        for sinal in resultados:
+            sinal.setdefault("fund", {"erro": "Indisponível"})
 
     resultados.sort(key=lambda x: (
         -(x.get("combinado", {}).get("peso", 0)),

@@ -375,14 +375,14 @@ def render():
 
     # ── SINAIS TÉCNICOS ───────────────────────────────────────────
     st.markdown(_DIVIDER, unsafe_allow_html=True)
-    with st.expander("📡 Sinais Técnicos", expanded=False):
+    with st.expander("📡 Sinais Técnicos e Fundamentos", expanded=False):
         with st.spinner("Calculando RSI, MACD e médias móveis..."):
             sinais = api.get_sinais_carteira_rv(apenas_ativos=True)
 
         n_ativos = sum(1 for s in sinais if s.get("tem_sinal_ativo"))
         if n_ativos > 0:
             st.caption(f"{n_ativos} sinal(is) ativo(s) — posições e watchlist combinadas")
-        altura = max(160, 56 * n_ativos + 96)
+        altura = max(180, 78 * n_ativos + 96)
         components.html(sinais_html(sinais), height=altura)
 
     # ── WATCHLIST ─────────────────────────────────────────────────

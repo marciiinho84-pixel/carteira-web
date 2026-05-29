@@ -1,9 +1,13 @@
-"""Componente de Sinais Técnicos — tabela HTML (RSI · MACD · MM · Sinal)."""
+"""Componente de Sinais Técnicos — tabela HTML com sub-linha de fundamentalistas."""
 
 _BG      = "rgba(15,17,23,0.6)"
 _BORDER  = "#1C2333"
 _TXT     = "#D1D4DC"
 _TXT2    = "#6B7280"
+_VERDE   = "#26A69A"
+_VERMELHO = "#EF5350"
+_AMBAR   = "#F59E0B"
+_CINZA   = "#4B5563"
 _FONT    = "Inter, -apple-system, BlinkMacSystemFont, sans-serif"
 
 _FONTE_BADGE = {
@@ -31,8 +35,100 @@ def _vazio() -> str:
     )
 
 
+# ── Cores por faixa de fundamentalistas ──────────────────────────
+
+def _cor_pl(v) -> str:
+    if v is None: return _TXT2
+    if v < 0: return _VERMELHO
+    if v < 10: return _VERDE
+    if v <= 25: return _TXT
+    return _AMBAR
+
+
+def _cor_pvp(v) -> str:
+    if v is None: return _TXT2
+    if v < 1: return _VERDE
+    if v <= 3: return _TXT
+    return _AMBAR
+
+
+def _cor_ev_ebitda(v) -> str:
+    if v is None: return _TXT2
+    if v < 8: return _VERDE
+    if v <= 15: return _TXT
+    return _AMBAR
+
+
+def _cor_roe(v) -> str:
+    if v is None: return _TXT2
+    if v < 0: return _VERMELHO
+    if v < 10: return _AMBAR
+    if v <= 20: return _TXT
+    return _VERDE
+
+
+def _cor_margem(v) -> str:
+    if v is None: return _TXT2
+    if v < 0: return _VERMELHO
+    if v < 5: return _AMBAR
+    if v < 10: return "#9CA3AF"
+    if v <= 20: return _TXT
+    return _VERDE
+
+
+def _cor_div_ebitda(v) -> str:
+    if v is None: return _TXT2
+    if v < 1.5: return _VERDE
+    if v <= 3: return _TXT
+    if v <= 5: return _AMBAR
+    return _VERMELHO
+
+
+def _fmt_metrica(label: str, val, cor: str, sufixo: str = "", ndigits: int = 1) -> str:
+    if val is None:
+        return f'<span style="color:{_TXT2};font-size:10.5px">{label}</span> <span style="color:{_CINZA}">—</span>'
+    v = f"{val:.{ndigits}f}"
+    return (
+        f'<span style="color:{_TXT2};font-size:10.5px">{label}</span> '
+        f'<span style="color:{cor};font-weight:500">{v}{sufixo}</span>'
+    )
+
+
+def _fund_subrow(fund: dict) -> str:
+    """Gera o conteúdo HTML da sub-linha fundamentalista."""
+    if not fund:
+        return f'<span style="color:{_CINZA};font-size:10px;font-style:italic">—</span>'
+
+    pl = fund.get("pl")
+    pvp = fund.get("pvp")
+    ev = fund.get("ev_ebitda")
+    roe = fund.get("roe")
+    mg = fund.get("margem_liq")
+    dv = fund.get("div_ebitda")
+    erro = fund.get("erro")
+
+    tem_dados = any(x is not None for x in [pl, pvp, ev, roe, mg, dv])
+    if not tem_dados:
+        msg = erro or "Sem dados fundamentais"
+        return f'<span style="color:{_CINZA};font-size:10px;font-style:italic">{msg}</span>'
+
+    partes = [
+        f'<span style="color:{_TXT2};font-size:10px;font-weight:600;letter-spacing:0.04em">Fund:</span>',
+        _fmt_metrica("P/L", pl, _cor_pl(pl)),
+        _fmt_metrica("P/VP", pvp, _cor_pvp(pvp), ndigits=2),
+        _fmt_metrica("EV/EBITDA", ev, _cor_ev_ebitda(ev)),
+        _fmt_metrica("ROE", roe, _cor_roe(roe), sufixo="%"),
+        _fmt_metrica("Marg", mg, _cor_margem(mg), sufixo="%"),
+        _fmt_metrica("Dív", dv, _cor_div_ebitda(dv), sufixo="x"),
+    ]
+    return " &nbsp;<span style='color:#374151'>·</span>&nbsp; ".join(partes)
+
+
+# ── Tabela principal ──────────────────────────────────────────────
+
 def sinais_html(sinais: list, titulo: str = "") -> str:
-    """Tabela HTML de sinais técnicos. Só exibe linhas com tem_sinal_ativo."""
+    """Tabela HTML de sinais técnicos + sub-linha fundamentalista.
+    Só exibe linhas com tem_sinal_ativo == True."""
     ativos = [s for s in (sinais or []) if s.get("tem_sinal_ativo")]
 
     container_ini = (
@@ -44,19 +140,20 @@ def sinais_html(sinais: list, titulo: str = "") -> str:
 
     css = (
         "<style>"
-        ".sg-row:hover{background:rgba(28,35,51,0.5)}"
         ".sg-tbl{width:100%;border-collapse:collapse}"
         ".sg-th{color:#6B7280;font-size:10px;text-transform:uppercase;"
         "letter-spacing:0.06em;text-align:left;padding:4px 8px 8px;"
         f"border-bottom:1px solid {_BORDER}}}"
-        ".sg-td{padding:10px 8px;border-bottom:1px solid " + _BORDER +
-        ";font-size:11.5px;vertical-align:middle}"
+        ".sg-td{padding:10px 8px 4px;font-size:11.5px;vertical-align:middle}"
+        f".sg-fund td{{padding:2px 8px 10px;border-bottom:1px solid {_BORDER}}}"
+        ".sg-grupo:hover td{background:rgba(28,35,51,0.5)}"
         "</style>"
     )
 
     ths = "".join(f'<th class="sg-th">{h}</th>' for h in _HEADERS)
-    linhas = []
+    grupos = []
     for s in ativos:
+        # Fonte badge
         fonte = s.get("fonte")
         if fonte in _FONTE_BADGE:
             fl, fc, fbg = _FONTE_BADGE[fonte]
@@ -68,6 +165,7 @@ def sinais_html(sinais: list, titulo: str = "") -> str:
         else:
             fonte_html = f'<span style="color:{_TXT2}">—</span>'
 
+        # Sinal combinado badge
         comb = s.get("combinado", {})
         comb_cor = comb.get("cor", _TXT2)
         comb_html = (
@@ -76,8 +174,9 @@ def sinais_html(sinais: list, titulo: str = "") -> str:
             f'white-space:nowrap">{comb.get("label", "—")}</span>'
         )
 
-        linhas.append(
-            f'<tr class="sg-row">'
+        # Linha técnica
+        linha_tec = (
+            f'<tr>'
             f'<td class="sg-td" style="color:{_TXT};font-weight:600;font-size:13px">{s.get("ticker", "")}</td>'
             f'<td class="sg-td">{fonte_html}</td>'
             f'<td class="sg-td" style="color:{s.get("rsi_cor", _TXT2)}">{s.get("rsi_label", "—")}</td>'
@@ -87,8 +186,20 @@ def sinais_html(sinais: list, titulo: str = "") -> str:
             f'</tr>'
         )
 
+        # Sub-linha fundamentalista
+        fund_content = _fund_subrow(s.get("fund", {}))
+        linha_fund = (
+            f'<tr class="sg-fund-row">'
+            f'<td colspan="6" style="padding:2px 8px 10px;'
+            f'border-bottom:1px solid {_BORDER};font-size:11px">'
+            f'{fund_content}</td>'
+            f'</tr>'
+        )
+
+        grupos.append(f'<tbody class="sg-grupo">{linha_tec}{linha_fund}</tbody>')
+
     tabela = (
         f'<table class="sg-tbl"><thead><tr>{ths}</tr></thead>'
-        f'<tbody>{"".join(linhas)}</tbody></table>'
+        f'{"".join(grupos)}</table>'
     )
     return css + container_ini + tabela + "</div>"
