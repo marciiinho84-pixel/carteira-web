@@ -10,6 +10,7 @@ from datetime import datetime
 API_BASE = "http://localhost:8000/api/v1"
 TIMEOUT_LEVE = 10
 TIMEOUT_CALCULAR = 120
+TIMEOUT_SINAIS = 90
 
 
 def _url(endpoint: str) -> str:
@@ -31,9 +32,9 @@ def _tratar_erro(e: Exception, contexto: str = "") -> None:
         st.error(f"❌ Erro inesperado{' em ' + contexto if contexto else ''}: {str(e)}")
 
 
-def get(endpoint: str, params: dict = None) -> dict | list | None:
+def get(endpoint: str, params: dict = None, timeout: int = TIMEOUT_LEVE) -> dict | list | None:
     try:
-        r = requests.get(_url(endpoint), params=params, timeout=TIMEOUT_LEVE)
+        r = requests.get(_url(endpoint), params=params, timeout=timeout)
         r.raise_for_status()
         return r.json()
     except Exception as e:
@@ -242,6 +243,43 @@ def criar_agenda_evento(data_ev: str, ativo: str, tipo: str, descricao: str = ""
 
 def deletar_agenda_evento(evento_id: int) -> bool:
     return delete(f"agenda/{evento_id}")
+
+
+def put(endpoint: str, data: dict = None) -> dict | None:
+    try:
+        r = requests.put(_url(endpoint), json=data, timeout=TIMEOUT_LEVE)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        _tratar_erro(e, endpoint)
+        return None
+
+
+def get_watchlist() -> list:
+    return get("watchlist") or []
+
+
+def post_watchlist(data: dict) -> dict | None:
+    return post("watchlist", data=data)
+
+
+def delete_watchlist(item_id: int) -> bool:
+    return delete(f"watchlist/{item_id}")
+
+
+def get_sinais(tickers: list[str], apenas_ativos: bool = True) -> list:
+    data = get("sinais", params={
+        "tickers": ",".join(tickers),
+        "apenas_ativos": str(apenas_ativos).lower(),
+    }, timeout=TIMEOUT_SINAIS)
+    return data or []
+
+
+def get_sinais_carteira_rv(apenas_ativos: bool = True) -> list:
+    data = get("sinais/carteira_rv",
+               params={"apenas_ativos": str(apenas_ativos).lower()},
+               timeout=TIMEOUT_SINAIS)
+    return data or []
 
 
 def get_diario_recentes(limit: int = 3) -> list:

@@ -60,6 +60,23 @@ class Ativo(Base):
         }
 
 
+class WatchlistItem(Base):
+    """Watchlist — ativos monitorados ainda não comprados."""
+    __tablename__ = "watchlist"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    ticker      = Column(String(20), nullable=False)
+    preco_alvo  = Column(Float, nullable=False)
+    stop_loss   = Column(Float, nullable=True)
+    motivo      = Column(Text, nullable=True)
+    data_adicao = Column(Date, nullable=False, default=date.today)
+    ativo       = Column(Integer, nullable=False, default=1)
+
+    __table_args__ = (
+        Index("ix_watchlist_ticker_ativo", "ticker", "ativo"),
+    )
+
+
 class Evento(Base):
     """Event log — single source of truth. Nunca modificado automaticamente."""
     __tablename__ = "eventos"

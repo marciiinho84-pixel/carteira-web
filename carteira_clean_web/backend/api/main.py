@@ -20,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from carteira_clean_web.backend.api.routers import (
     ativos, eventos, precos_manuais, calcular, resultados, backup, decisoes, importacao, agenda,
+    watchlist, sinais,
 )
 
 log = logging.getLogger("api.main")
@@ -32,6 +33,11 @@ async def lifespan(app: FastAPI):
     Se o cache não existir (primeira execução), recalcula localmente.
     Assim cotações buscadas via API persistem entre restarts.
     """
+    # Cria tabelas novas sem afetar as existentes
+    from carteira_clean_web.backend.db.models import Base
+    from carteira_clean_web.backend.db.session import get_engine
+    Base.metadata.create_all(get_engine())
+
     from carteira_clean_web.backend.api import cache as engine_cache
     if engine_cache.carregar_disco():
         log.info("Startup: cache carregado do disco — pronto imediatamente")
@@ -75,6 +81,8 @@ app.include_router(backup.router, prefix=PREFIX)
 app.include_router(decisoes.router, prefix=PREFIX)
 app.include_router(importacao.router, prefix=PREFIX)
 app.include_router(agenda.router, prefix=PREFIX)
+app.include_router(watchlist.router, prefix=PREFIX)
+app.include_router(sinais.router, prefix=PREFIX)
 
 
 @app.get("/", include_in_schema=False)

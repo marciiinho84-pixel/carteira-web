@@ -1,8 +1,21 @@
 """Utilitários compartilhados: datas, liquidação D+2, lookback de preços."""
 
+import re
 from datetime import date, timedelta
 
 import pandas as pd
+
+
+def yf_symbol(ticker: str) -> str:
+    """Símbolo yfinance canônico. Acrescenta .SA para tickers B3 (terminam em
+    dígito: PETR4, ITSA4, NOKI34, ETHE11). Índices/câmbio (^BVSP, BRL=X) e
+    símbolos já sufixados passam intactos."""
+    t = ticker.strip().upper()
+    if "." in t or "=" in t or t.startswith("^"):
+        return t
+    if re.search(r"\d$", t):
+        return t + ".SA"
+    return t
 
 
 def preco_em(precos_ticker: dict, d: date, max_lookback_dias: int = 10):

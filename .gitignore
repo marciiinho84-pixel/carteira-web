@@ -1,1 +1,9 @@
 .env
+
+# Artefatos de runtime
+__pycache__/
+*.pyc
+*.db
+carteira_clean_web/cache/
+carteira_clean_web/cache_engine.pkl
+carteira_clean_web/backend/logs/

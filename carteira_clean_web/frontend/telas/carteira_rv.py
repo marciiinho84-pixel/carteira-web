@@ -23,6 +23,8 @@ from carteira_clean_web.frontend.components.heatmap_posicoes import heatmap_posi
 from carteira_clean_web.frontend.components.ranking_pnl import ranking_pnl_html
 from carteira_clean_web.frontend.components.treemap_setorial import treemap_setorial_html
 from carteira_clean_web.frontend.components.tv_chart import tv_chart_rv_html
+from carteira_clean_web.frontend.components.watchlist import render_watchlist
+from carteira_clean_web.frontend.components.sinais_card import sinais_html
 
 # ── Design tokens ──────────────────────────────────────────────────
 _BG      = "#161B27"
@@ -371,29 +373,70 @@ def render():
     )
     components.html(treemap_setorial_html(dados["setores"]), height=420)
 
-    # ── PLACEHOLDERS FASE B / C ───────────────────────────────────
+    # ── SINAIS TÉCNICOS ───────────────────────────────────────────
     st.markdown(_DIVIDER, unsafe_allow_html=True)
-    col_sinais, col_watch = st.columns(2)
-    with col_sinais:
-        st.markdown(
-            f'<div style="font-size:1rem;font-weight:700;color:{_TXT};margin-bottom:10px">'
-            f'📡 Sinais Técnicos</div>',
-            unsafe_allow_html=True,
+    with st.expander("📡 Sinais Técnicos", expanded=False):
+        with st.spinner("Calculando RSI, MACD e médias móveis..."):
+            sinais = api.get_sinais_carteira_rv(apenas_ativos=True)
+
+        n_ativos = sum(1 for s in sinais if s.get("tem_sinal_ativo"))
+        if n_ativos > 0:
+            st.caption(f"{n_ativos} sinal(is) ativo(s) — posições e watchlist combinadas")
+        altura = max(160, 56 * n_ativos + 96)
+        components.html(sinais_html(sinais), height=altura)
+
+    # ── WATCHLIST ─────────────────────────────────────────────────
+    st.markdown(_DIVIDER, unsafe_allow_html=True)
+    st.markdown(
+        f'<div style="font-size:1rem;font-weight:700;color:{_TXT};margin-bottom:10px">'
+        f'👁️ Watchlist</div>',
+        unsafe_allow_html=True,
+    )
+
+    with st.expander("➕ Adicionar à Watchlist", expanded=False):
+        col1, col2, col3 = st.columns([2, 2, 2])
+        with col1:
+            ticker_input = st.text_input(
+                "Ticker", placeholder="ex: SAPR11", key="wl_ticker",
+            ).upper().strip()
+        with col2:
+            alvo_input = st.number_input(
+                "Preço-alvo (R$)", min_value=0.01, step=0.01, key="wl_alvo",
+            )
+        with col3:
+            stop_raw = st.number_input(
+                "Stop-loss (R$) — opcional", min_value=0.0, step=0.01, key="wl_stop",
+            )
+            stop_input = stop_raw if stop_raw > 0 else None
+
+        motivo_input = st.text_area(
+            "Motivo / tese", height=68,
+            placeholder="ex: Dividend yield > 8%, setor defensivo...",
+            key="wl_motivo",
         )
-        st.markdown(
-            _placeholder_html("RSI · MACD · médias móveis", "Próxima fase (C)"),
-            unsafe_allow_html=True,
-        )
-    with col_watch:
-        st.markdown(
-            f'<div style="font-size:1rem;font-weight:700;color:{_TXT};margin-bottom:10px">'
-            f'👁️ Watchlist</div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            _placeholder_html("Ativos monitorados · alvo · distância", "Próxima fase (B)"),
-            unsafe_allow_html=True,
-        )
+
+        if st.button("Adicionar", key="wl_add"):
+            if not ticker_input:
+                st.error("Ticker obrigatório.")
+            elif alvo_input <= 0:
+                st.error("Preço-alvo deve ser maior que zero.")
+            elif stop_input and stop_input >= alvo_input:
+                st.error("Stop-loss deve ser menor que o preço-alvo.")
+            else:
+                resp = api.post_watchlist({
+                    "ticker": ticker_input,
+                    "preco_alvo": alvo_input,
+                    "stop_loss": stop_input,
+                    "motivo": motivo_input or None,
+                })
+                if resp and resp.get("id"):
+                    st.success(f"{ticker_input} adicionado à watchlist.")
+                    st.rerun()
+                else:
+                    st.error("Erro ao adicionar. Verifique os dados.")
+
+    wl_items = api.get_watchlist()
+    render_watchlist(wl_items)
 
     # ── DIÁRIO ────────────────────────────────────────────────────
     st.markdown(_DIVIDER, unsafe_allow_html=True)
