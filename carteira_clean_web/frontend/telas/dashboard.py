@@ -104,25 +104,58 @@ def render():
                 f"Vence em **{venc_fmt}** (último dia útil do mês seguinte)"
             )
 
-    # ─── Variação no dia ─────────────────────────────────────────
-    var_dia     = dash.get("var_dia")
-    var_dia_pct = dash.get("var_dia_pct")
-    if var_dia is not None:
-        seta    = "▲" if var_dia >= 0 else "▼"
-        cor_var = _POS if var_dia >= 0 else _NEG
-        st.markdown(
-            f"<div style='background:{_BG2};border-left:3px solid {cor_var};"
-            f"padding:10px 18px;border-radius:8px;margin-bottom:12px;"
-            f"display:flex;align-items:center;gap:20px'>"
-            f"<span style='color:{_TXT2};font-size:0.72rem;text-transform:uppercase;"
-            f"letter-spacing:0.06em'>VARIAÇÃO HOJE (D-1→D)</span>"
-            f"<span style='color:{cor_var};font-size:1.25rem;font-weight:700'>"
-            f"{seta} {fmt.moeda(abs(var_dia))} ({fmt.pct(abs(var_dia_pct), casas=2)})"
-            f"</span></div>",
-            unsafe_allow_html=True,
+    # ─── Banner — 3 métricas em linha ───────────────────────────
+    var_mercado = dash.get("var_mercado_dia")
+    fluxo_dia   = dash.get("fluxo_dia")
+    pat_total   = dash.get("patrimonio_total", 0)
+
+    def _banner_seg(label: str, valor_html: str, cor_borda: str, flex: int = 1) -> str:
+        return (
+            f"<div style='flex:{flex};padding:10px 18px;border-left:3px solid {cor_borda};"
+            f"border-radius:6px;background:{_BG2}'>"
+            f"<div style='color:{_TXT2};font-size:0.65rem;text-transform:uppercase;"
+            f"letter-spacing:0.08em;margin-bottom:4px'>{label}</div>"
+            f"<div style='font-size:1.2rem;font-weight:700;line-height:1'>{valor_html}</div>"
+            f"</div>"
         )
+
+    # segmento 1 — variação de mercado
+    if var_mercado is not None:
+        seta_m   = "▲" if var_mercado >= 0 else "▼"
+        cor_m    = _POS if var_mercado >= 0 else _NEG
+        pct_m = abs(var_mercado / pat_total) if pat_total else 0
+        val_m_html = (
+            f"<span style='color:{cor_m}'>{seta_m} {fmt.moeda(abs(var_mercado))}</span>"
+            f"<span style='color:{_TXT2};font-size:0.82rem;margin-left:6px'>"
+            f"({fmt.pct(pct_m, casas=2)})</span>"
+        )
+        seg1 = _banner_seg("Variação mercado (D-1→D)", val_m_html, cor_m, flex=2)
     else:
-        st.info("ℹ️ Variação diária indisponível (modo sem preços de mercado ou 1º cálculo).")
+        seg1 = _banner_seg("Variação mercado (D-1→D)",
+                           f"<span style='color:{_TXT2}'>—</span>", _TXT2, flex=2)
+
+    # segmento 2 — fluxo do dia
+    if fluxo_dia is not None and fluxo_dia != 0:
+        seta_f    = "+" if fluxo_dia >= 0 else "−"
+        cor_f     = _INFO if fluxo_dia >= 0 else _ALERT
+        label_f   = "Aporte" if fluxo_dia >= 0 else "Resgate"
+        val_f_html = (
+            f"<span style='color:{cor_f}'>{seta_f} {fmt.moeda(abs(fluxo_dia))}</span>"
+            f"<span style='color:{_TXT2};font-size:0.75rem;margin-left:6px'>{label_f}</span>"
+        )
+        seg2 = _banner_seg("Fluxo externo do dia", val_f_html, cor_f, flex=2)
+    else:
+        seg2 = _banner_seg("Fluxo externo do dia",
+                           f"<span style='color:{_TXT2}'>—</span>", _BG3, flex=2)
+
+    # segmento 3 — patrimônio total
+    val_pat_html = f"<span style='color:{_TXT}'>{fmt.moeda(pat_total)}</span>"
+    seg3 = _banner_seg("Patrimônio total", val_pat_html, _NEUT, flex=3)
+
+    st.markdown(
+        f"<div style='display:flex;gap:8px;margin-bottom:14px'>{seg1}{seg2}{seg3}</div>",
+        unsafe_allow_html=True,
+    )
 
     # ─── LINHA 1 — KPI Cards (Investidor10 style) ───────────────
     twr   = dash["twr_gerida_ytd"]

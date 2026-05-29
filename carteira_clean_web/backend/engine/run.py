@@ -118,7 +118,7 @@ def run(
                     precos_manuais[tkr].setdefault(dt, v)  # extrato DB tem prioridade
 
     log.info("\n[3/6] Calculando posições e vendas (PEPS)...")
-    posicoes, vendas_rv, vendas_rf, proventos = calc_posicoes_e_vendas(eventos, ativos)
+    posicoes, vendas_rv, vendas_rf, proventos = calc_posicoes_e_vendas(eventos, ativos, precos_manuais)
     pnl_total = sum(v["pnl"] for v in vendas_rv)
     log.info(f"  • {sum(1 for p in posicoes.values() if p.qtd > 0)} posições ativas")
     log.info(f"  • {len(vendas_rv)} vendas de RV | P&L: R$ {pnl_total:+,.2f}")

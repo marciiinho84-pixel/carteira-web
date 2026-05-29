@@ -13,6 +13,7 @@ import pandas as pd
 from .constantes import (
     DATA_INICIO,
     COTIZADO_PUBLICO,
+    COTIZADO_PRIVADO,
     AGREGADO_PRIVADO,
     COMPRAS,
     VENDAS,
@@ -50,6 +51,14 @@ def calc_evolucao_diaria(
             if tipo in COMPRAS or tipo == "CONTRIBUICAO":
                 p.qtd += qtd
                 p.custo_total += abs(valor)
+            elif tipo == "APORTE_EXTERNO":
+                familia = ativos.get(tkr, {}).get("familia", "")
+                if familia in COTIZADO_PRIVADO:
+                    valor_abs = abs(valor)
+                    cota = preco_em(precos_manuais.get(tkr, {}), d)
+                    if cota and cota > 0 and valor_abs > 0:
+                        p.qtd += valor_abs / cota
+                        p.custo_total += valor_abs
             elif tipo in VENDAS and p.qtd > 1e-9:
                 cm = p.custo_medio
                 p.custo_total -= cm * qtd

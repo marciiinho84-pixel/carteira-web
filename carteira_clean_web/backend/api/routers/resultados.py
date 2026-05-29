@@ -205,6 +205,19 @@ def dashboard():
             var_dia = round(pat_hoje - pat_d1, 2)
             var_dia_pct = round((pat_hoje - pat_d1) / pat_d1, 6)
 
+    # fluxo externo no dia (APORTE_EXTERNO − RESGATE_EXTERNO)
+    from datetime import date as _date
+    _hoje_d = ult["data"] if isinstance(ult["data"], _date) else pd.Timestamp(ult["data"]).date()
+    _fluxo = 0.0
+    for ev in estado["eventos"]:
+        if ev["data"] == _hoje_d:
+            if ev["tipo"] == "APORTE_EXTERNO":
+                _fluxo += abs(ev["valor"] or 0)
+            elif ev["tipo"] == "RESGATE_EXTERNO":
+                _fluxo -= abs(ev["valor"] or 0)
+    fluxo_dia = round(_fluxo, 2) if _fluxo != 0.0 else None
+    var_mercado_dia = round(var_dia - (_fluxo), 2) if var_dia is not None else None
+
     # drawdown máximo
     drawdown_max = drawdown_max_data = None
     if "drawdown" in df.columns and not df["drawdown"].isna().all():
@@ -286,6 +299,8 @@ def dashboard():
         alertas=alertas,
         var_dia=var_dia,
         var_dia_pct=var_dia_pct,
+        var_mercado_dia=var_mercado_dia,
+        fluxo_dia=fluxo_dia,
         drawdown_max=drawdown_max,
         drawdown_max_data=drawdown_max_data,
         vol_anualizada=round(vol_anualizada, 6),

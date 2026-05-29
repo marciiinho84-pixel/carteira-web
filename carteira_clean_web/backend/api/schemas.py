@@ -217,6 +217,8 @@ class DashboardOut(BaseModel):
     alertas: List[AlertaOut] = []
     var_dia: Optional[float] = None
     var_dia_pct: Optional[float] = None
+    var_mercado_dia: Optional[float] = None   # variação de mercado pura (ex-fluxos externos)
+    fluxo_dia: Optional[float] = None         # APORTE_EXTERNO − RESGATE_EXTERNO no dia
     drawdown_max: Optional[float] = None
     drawdown_max_data: Optional[str] = None
     vol_anualizada: Optional[float] = None   # volatilidade anualizada da Gerida

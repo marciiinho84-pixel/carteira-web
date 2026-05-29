@@ -8,7 +8,8 @@ Sem alteração de comportamento.
 from collections import defaultdict
 from dataclasses import dataclass
 
-from .constantes import COMPRAS, VENDAS, PROVENTOS, COTIZADO_PUBLICO
+from .constantes import COMPRAS, VENDAS, PROVENTOS, COTIZADO_PUBLICO, COTIZADO_PRIVADO
+from .utils import preco_em
 
 
 @dataclass
@@ -21,7 +22,7 @@ class Posicao:
         return self.custo_total / self.qtd if self.qtd > 1e-9 else 0.0
 
 
-def calc_posicoes_e_vendas(eventos: list, ativos: dict = None):
+def calc_posicoes_e_vendas(eventos: list, ativos: dict = None, precos_manuais: dict = None):
     """PEPS corrigido com reset em zeramento.
 
     Returns: (posicoes, vendas_rv, vendas_rf, proventos)
@@ -34,6 +35,7 @@ def calc_posicoes_e_vendas(eventos: list, ativos: dict = None):
     vendas_rf = []
     proventos = defaultdict(float)
     ativos = ativos or {}
+    precos_manuais = precos_manuais or {}
 
     for ev in eventos:
         tkr = ev["ativo"]
@@ -45,6 +47,15 @@ def calc_posicoes_e_vendas(eventos: list, ativos: dict = None):
             valor = ev["valor"] or 0
             p.qtd += qtd
             p.custo_total += abs(valor)
+
+        elif tipo == "APORTE_EXTERNO":
+            familia = ativos.get(tkr, {}).get("familia", "")
+            if familia in COTIZADO_PRIVADO:
+                valor = abs(ev["valor"] or 0)
+                cota = preco_em(precos_manuais.get(tkr, {}), ev["data"])
+                if cota and cota > 0 and valor > 0:
+                    p.qtd += valor / cota
+                    p.custo_total += valor
 
         elif tipo in VENDAS:
             qtd = ev["qtd"] or 0
