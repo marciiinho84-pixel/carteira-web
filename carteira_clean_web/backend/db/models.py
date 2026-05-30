@@ -260,3 +260,103 @@ class ImportacaoEvento(Base):
 
     importacao_id = Column(Integer, ForeignKey("importacoes.id", ondelete="CASCADE"), primary_key=True)
     evento_id = Column(Integer, ForeignKey("eventos.id", ondelete="CASCADE"), primary_key=True)
+
+
+# ─── Assistente: threads, mensagens, memórias ─────────────────────
+
+class Conversa(Base):
+    """Thread de conversa com o assistente."""
+    __tablename__ = "conversas"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    titulo          = Column(Text, nullable=False, default="Nova conversa")
+    criada_em       = Column(DateTime, nullable=False, default=datetime.utcnow)
+    atualizada_em   = Column(DateTime, nullable=False, default=datetime.utcnow)
+    ativa           = Column(Integer, nullable=False, default=1)
+    total_msgs      = Column(Integer, nullable=False, default=0)
+    total_tokens    = Column(Integer, nullable=False, default=0)
+    custo_usd       = Column(Float, nullable=False, default=0.0)
+    ultima_extracao = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index("ix_conversas_ativa", "ativa"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "titulo": self.titulo or "Nova conversa",
+            "criada_em": self.criada_em.isoformat() if self.criada_em else None,
+            "atualizada_em": self.atualizada_em.isoformat() if self.atualizada_em else None,
+            "ativa": self.ativa,
+            "total_msgs": self.total_msgs or 0,
+            "total_tokens": self.total_tokens or 0,
+            "custo_usd": self.custo_usd or 0.0,
+            "ultima_extracao": self.ultima_extracao.isoformat() if self.ultima_extracao else None,
+        }
+
+
+class Mensagem(Base):
+    """Mensagem de uma conversa (user / assistant / tool)."""
+    __tablename__ = "mensagens"
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    conversa_id  = Column(Integer, ForeignKey("conversas.id", ondelete="CASCADE"), nullable=False)
+    role         = Column(String(20), nullable=False)
+    content      = Column(Text, nullable=False, default="")
+    tool_calls   = Column(Text, nullable=True)
+    tokens_in    = Column(Integer, nullable=False, default=0)
+    tokens_out   = Column(Integer, nullable=False, default=0)
+    custo_usd    = Column(Float, nullable=False, default=0.0)
+    criada_em    = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        CheckConstraint("role IN ('user','assistant','tool','system')", name="ck_mensagem_role"),
+        Index("ix_mensagens_conversa", "conversa_id"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "conversa_id": self.conversa_id,
+            "role": self.role,
+            "content": self.content or "",
+            "tool_calls": self.tool_calls,
+            "tokens_in": self.tokens_in or 0,
+            "tokens_out": self.tokens_out or 0,
+            "custo_usd": self.custo_usd or 0.0,
+            "criada_em": self.criada_em.isoformat() if self.criada_em else None,
+        }
+
+
+class MemoriaAssistente(Base):
+    """Memória de longo prazo extraída ou criada manualmente."""
+    __tablename__ = "memorias_assistente"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    tipo        = Column(String(20), nullable=False)
+    conteudo    = Column(Text, nullable=False)
+    conversa_id = Column(Integer, ForeignKey("conversas.id", ondelete="SET NULL"), nullable=True)
+    fonte       = Column(String(20), nullable=False, default="manual")
+    criada_em   = Column(DateTime, nullable=False, default=datetime.utcnow)
+    ativa       = Column(Integer, nullable=False, default=1)
+
+    __table_args__ = (
+        CheckConstraint(
+            "tipo IN ('estrategia','preferencia','decisao','meta','fato')",
+            name="ck_memoria_tipo",
+        ),
+        CheckConstraint("fonte IN ('extraida','manual')", name="ck_memoria_fonte"),
+        Index("ix_memorias_ativa", "ativa"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "tipo": self.tipo,
+            "conteudo": self.conteudo,
+            "conversa_id": self.conversa_id,
+            "fonte": self.fonte,
+            "criada_em": self.criada_em.isoformat() if self.criada_em else None,
+            "ativa": self.ativa,
+        }

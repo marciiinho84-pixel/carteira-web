@@ -456,3 +456,254 @@ def fn_obter_cotacao(ticker: str) -> dict:
         cache_idade_minutos=cache_idade,
     )
     return resultado.model_dump()
+
+
+# ── TOOL 4 — DIÁRIO (decisões de investimento) ────────────────────
+
+_PERIODOS_DIARIO = {"7d": 7, "30d": 30, "90d": 90, "all": None}
+
+
+def fn_obter_diario(
+    periodo: str = "30d",
+    busca: str | None = None,
+    ticker: str | None = None,
+) -> dict:
+    """Retorna entradas do diário de decisões.
+
+    Mapeamento da tabela `decisoes`:
+      data    ← data_decisao
+      titulo  ← "{acao} {ativo}" (ex.: "COMPRA WEGE3")
+      conteudo ← tese (+ notas, se houver)
+    """
+    from datetime import date
+    from carteira_clean_web.backend.db.session import get_session
+    from carteira_clean_web.backend.db.models import Decisao
+
+    periodo = (periodo or "30d").lower().strip()
+    if periodo not in _PERIODOS_DIARIO:
+        return {"erro": f"Período inválido: '{periodo}'. Use: 7d, 30d, 90d, all"}
+
+    dias = _PERIODOS_DIARIO[periodo]
+    data_minima = date.today() - timedelta(days=dias) if dias else None
+
+    session = get_session()
+    try:
+        q = session.query(Decisao).order_by(Decisao.data_decisao.desc())
+        if data_minima:
+            q = q.filter(Decisao.data_decisao >= data_minima)
+        if ticker:
+            q = q.filter(Decisao.ativo == ticker.upper().strip())
+        decisoes = q.limit(50).all()
+
+        entradas = []
+        busca_lower = busca.lower().strip() if busca else None
+        for d in decisoes:
+            tese = (d.tese or "").strip()
+            notas = (d.notas or "").strip()
+            conteudo = tese
+            if notas:
+                conteudo = f"{tese}\n\nNotas: {notas}" if tese else f"Notas: {notas}"
+
+            if busca_lower:
+                if (busca_lower not in conteudo.lower()
+                        and busca_lower not in (d.ativo or "").lower()):
+                    continue
+
+            entradas.append({
+                "data": str(d.data_decisao),
+                "titulo": f"{d.acao} {d.ativo}",
+                "ativo": d.ativo,
+                "acao": d.acao,
+                "horizonte": d.horizonte,
+                "conteudo": conteudo,
+                "revisao_em": str(d.revisao_em) if d.revisao_em else None,
+                "resultado_revisao": d.resultado_revisao,
+            })
+            if len(entradas) >= 20:
+                break
+
+        return {
+            "periodo": periodo,
+            "total": len(entradas),
+            "entradas": entradas,
+        }
+    finally:
+        session.close()
+
+
+# ── TOOL 5 — SINAIS TÉCNICOS E FUNDAMENTOS ───────────────────────
+
+def fn_obter_sinais(
+    tickers: list[str] | None = None,
+    apenas_ativos: bool = False,
+) -> dict:
+    """Retorna sinais técnicos (RSI/MACD/MM) e fundamentos para ativos da carteira ou lista."""
+    from carteira_clean_web.backend.engine.sinais_tecnicos import calcular_sinais_lote
+    from carteira_clean_web.backend.engine.constantes import COTIZADO_PUBLICO
+
+    if not tickers:
+        if not engine_cache.esta_calculado():
+            engine_cache.carregar_disco()
+        if not engine_cache.esta_calculado():
+            return {"erro": "Cache vazio. Recalcule a carteira."}
+        estado = engine_cache.get_estado()
+        posicoes = estado["posicoes"]
+        ativos_meta = estado["ativos"]
+        tickers = [
+            t for t, p in posicoes.items()
+            if ativos_meta.get(t, {}).get("familia", "") in COTIZADO_PUBLICO
+            and p.qtd > 1e-9
+        ]
+
+    if not tickers:
+        return {"erro": "Nenhum ticker encontrado."}
+
+    sinais = calcular_sinais_lote(tickers)
+
+    if apenas_ativos:
+        sinais = [s for s in sinais if s.get("tem_sinal_ativo") and not s.get("erro")]
+
+    return {
+        "total": len(sinais),
+        "apenas_ativos": apenas_ativos,
+        "sinais": sinais,
+    }
+
+
+# ── TOOL 6 — FUNDAMENTOS ─────────────────────────────────────────
+
+def fn_obter_fundamentos(tickers: list[str] | None = None) -> dict:
+    """Retorna indicadores fundamentalistas (P/L, P/VP, ROE, etc.) da carteira ou lista."""
+    from carteira_clean_web.backend.engine.fundamentals_client import fetch_fundamentos
+    from carteira_clean_web.backend.engine.constantes import COTIZADO_PUBLICO
+
+    if not tickers:
+        if not engine_cache.esta_calculado():
+            engine_cache.carregar_disco()
+        if not engine_cache.esta_calculado():
+            return {"erro": "Cache vazio. Recalcule a carteira."}
+        estado = engine_cache.get_estado()
+        posicoes = estado["posicoes"]
+        ativos_meta = estado["ativos"]
+        tickers = [
+            t for t, p in posicoes.items()
+            if ativos_meta.get(t, {}).get("familia", "") in COTIZADO_PUBLICO
+            and p.qtd > 1e-9
+        ]
+
+    if not tickers:
+        return {"erro": "Nenhum ticker encontrado."}
+
+    fundamentos = fetch_fundamentos(tickers)
+
+    return {
+        "total": len(fundamentos),
+        "fundamentos": fundamentos,
+    }
+
+
+# ── TOOL 7 — WATCHLIST ────────────────────────────────────────────
+
+def fn_obter_watchlist() -> dict:
+    """Retorna a watchlist com cotações ao vivo e distância até o preço-alvo."""
+    from carteira_clean_web.backend.db.session import get_session
+    from carteira_clean_web.backend.db.models import WatchlistItem
+
+    session = get_session()
+    try:
+        items = (
+            session.query(WatchlistItem)
+            .filter(WatchlistItem.ativo == 1)
+            .order_by(WatchlistItem.id)
+            .all()
+        )
+        if not items:
+            return {"total": 0, "itens": []}
+
+        result = []
+        for item in items:
+            ticker_yf = _formatar_ticker_yfinance(item.ticker)
+            cotacao = None
+            try:
+                import yfinance as yf
+                info = yf.Ticker(ticker_yf).info
+                preco = info.get("regularMarketPrice") or info.get("currentPrice")
+                if preco:
+                    cotacao = float(preco)
+            except Exception:
+                pass
+
+            alvo = item.preco_alvo
+            stop = item.stop_loss
+            dist_alvo = round((alvo - cotacao) / cotacao * 100, 2) if (cotacao and alvo) else None
+            dist_stop = round((cotacao - stop) / stop * 100, 2) if (cotacao and stop) else None
+
+            sinal = "SEM_DADOS"
+            if cotacao and alvo:
+                diff = (alvo - cotacao) / cotacao * 100
+                sinal = "ACIMA" if diff <= 0 else ("PROXIMO" if diff <= 3 else "NA_ZONA")
+
+            result.append({
+                "ticker": item.ticker,
+                "preco_alvo": alvo,
+                "stop_loss": stop,
+                "motivo": item.motivo,
+                "data_adicao": str(item.data_adicao),
+                "cotacao_atual": round(cotacao, 2) if cotacao else None,
+                "distancia_alvo_pct": dist_alvo,
+                "distancia_stop_pct": dist_stop,
+                "sinal": sinal,
+            })
+
+        return {"total": len(result), "itens": result}
+    finally:
+        session.close()
+
+
+# ── TOOL 8 — ANÁLISE COMPLETA RV ─────────────────────────────────
+
+def fn_obter_analise_rv() -> dict:
+    """Análise completa da carteira RV: posições + sinais técnicos + fundamentos + watchlist.
+    Chamadas em paralelo para minimizar latência."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        fut_pos = ex.submit(fn_obter_posicoes)
+        fut_sinais = ex.submit(fn_obter_sinais)
+        fut_watch = ex.submit(fn_obter_watchlist)
+        posicoes_result = fut_pos.result()
+        sinais_result = fut_sinais.result()
+        watchlist_result = fut_watch.result()
+
+    rv_posicoes = [
+        p for p in posicoes_result.get("posicoes", [])
+        if p.get("classe") == "Renda Variável"
+    ] if "posicoes" in posicoes_result else []
+
+    sinais_map = {s["ticker"]: s for s in sinais_result.get("sinais", [])}
+
+    ativos_rv = []
+    for pos in rv_posicoes:
+        t = pos["ticker"]
+        s = sinais_map.get(t, {})
+        ativos_rv.append({
+            "ticker": t,
+            "valor_atual": pos["valor_atual"],
+            "pct_carteira": pos["pct_carteira"],
+            "pl_pct": pos.get("pl_percentual"),
+            "sinal_combinado": s.get("combinado", {}).get("label"),
+            "rsi": s.get("rsi"),
+            "rsi_sinal": s.get("rsi_sinal"),
+            "macd_sinal": s.get("macd_sinal"),
+            "mm_sinal": s.get("mm_sinal"),
+            "fund": s.get("fund", {}),
+        })
+
+    return {
+        "data_referencia": posicoes_result.get("data_referencia"),
+        "patrimonio_total": posicoes_result.get("patrimonio_total"),
+        "total_rv": len(ativos_rv),
+        "ativos_rv": ativos_rv,
+        "watchlist": watchlist_result.get("itens", []),
+        "alertas": posicoes_result.get("alertas", []),
+    }

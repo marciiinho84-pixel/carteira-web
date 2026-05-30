@@ -290,6 +290,58 @@ def get_diario_recentes(limit: int = 3) -> list:
     return sorted(data, key=lambda x: x.get("data_decisao", ""), reverse=True)[:limit]
 
 
+# ─── Memória do assistente: conversas + mensagens + memórias ──────
+
+def get_conversas() -> list:
+    return get("conversas") or []
+
+
+def post_conversa() -> dict | None:
+    return post("conversas")
+
+
+def get_conversa(conversa_id: int) -> dict | None:
+    return get(f"conversas/{conversa_id}")
+
+
+def patch_conversa_titulo(conversa_id: int, titulo: str) -> dict | None:
+    return patch(f"conversas/{conversa_id}/titulo", data={"titulo": titulo})
+
+
+def delete_conversa(conversa_id: int) -> bool:
+    return delete(f"conversas/{conversa_id}")
+
+
+def get_mensagens(conversa_id: int) -> list:
+    return get(f"conversas/{conversa_id}/mensagens") or []
+
+
+def post_mensagem(conversa_id: int, role: str, content: str,
+                  tool_calls: str | None = None,
+                  tokens_in: int = 0, tokens_out: int = 0,
+                  custo_usd: float = 0.0) -> dict | None:
+    return post(f"conversas/{conversa_id}/mensagens", data={
+        "role": role, "content": content, "tool_calls": tool_calls,
+        "tokens_in": tokens_in, "tokens_out": tokens_out, "custo_usd": custo_usd,
+    })
+
+
+def get_memorias() -> list:
+    return get("memorias") or []
+
+
+def post_memoria(tipo: str, conteudo: str, conversa_id: int | None = None,
+                 fonte: str = "manual") -> dict | None:
+    return post("memorias", data={
+        "tipo": tipo, "conteudo": conteudo,
+        "conversa_id": conversa_id, "fonte": fonte,
+    })
+
+
+def delete_memoria(memoria_id: int) -> bool:
+    return delete(f"memorias/{memoria_id}")
+
+
 def tempo_desde_calculo() -> str:
     """Retorna string legível do tempo desde o último cálculo."""
     calc_em = st.session_state.get("calculado_em", "")

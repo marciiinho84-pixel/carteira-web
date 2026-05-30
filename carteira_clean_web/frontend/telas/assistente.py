@@ -1,16 +1,20 @@
 """
 Página: Assistente IA — Chat conectado à carteira real via tool use.
 
-Arquitetura:
-  - Ferramentas definidas no Anthropic tools API (executadas localmente)
-  - MCP server (porta 8001) está disponível para uso futuro com URL pública
+3 camadas de memória:
+  1. Threads persistidas em DB (conversas + mensagens)
+  2. Memórias de longo prazo extraídas após cada resposta (Haiku 4.5)
+  3. Acesso proativo ao diário (tool obter_diario + injeção no system)
 """
 
 import json
 import os
+import threading
 from pathlib import Path
 
 import streamlit as st
+
+from carteira_clean_web.frontend.utils import api
 
 try:
     import anthropic
@@ -18,29 +22,16 @@ try:
 except ImportError:
     HAS_ANTHROPIC = False
 
-MODEL = "claude-sonnet-4-6"
+MODEL = "claude-opus-4-8"
 
-# Custo Sonnet 4.6: $3/1M input, $15/1M output
-_CUSTO_IN = 3.0 / 1_000_000
-_CUSTO_OUT = 15.0 / 1_000_000
+# Custo Opus 4.8: $5/1M input, $25/1M output
+_CUSTO_IN = 5.0 / 1_000_000
+_CUSTO_OUT = 25.0 / 1_000_000
 _USD_BRL = 5.7
 
-SYSTEM_PROMPT = """Você é o assistente financeiro pessoal do Marcio de Almeida Souza, \
-integrado à sua ferramenta Carteira Clean.
 
-Você tem acesso a ferramentas que consultam dados reais do portfólio. \
-Use-as sempre que o usuário perguntar sobre sua carteira. \
-NUNCA invente ou estime números financeiros.
+# ── Definição das tools ───────────────────────────────────────────
 
-DIRETRIZES:
-- Responda em português brasileiro
-- Seja preciso com números (use R$ com formatação brasileira: R$ 1.234.567,89)
-- Contextualize os dados — não apenas repita números
-- Ao detectar concentração elevada, mencione proativamente
-- Perguntas fora do escopo financeiro: responda brevemente \
-e redirecione para o portfólio"""
-
-# Definição das tools para a Anthropic API
 TOOLS = [
     {
         "name": "obter_posicoes",
@@ -58,22 +49,19 @@ TOOLS = [
         "name": "obter_performance",
         "description": (
             "Retorna a performance (rentabilidade) da carteira no período "
-            "solicitado, comparada com CDI e IBOV. "
-            "Use quando o usuário perguntar sobre: rentabilidade, performance, "
-            "retorno, quanto rendeu, estou ganhando do CDI, comparação com mercado, "
-            "drawdown, dias positivos, resultado do período, como foi meu ano."
+            "solicitado, comparada com CDI e IBOV."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "periodo": {
                     "type": "string",
-                    "description": "Período de análise: 'ytd' (ano atual), '1m', '3m', '6m', '1a'",
+                    "description": "Período: 'ytd', '1m', '3m', '6m', '1a'",
                     "enum": ["ytd", "1m", "3m", "6m", "1a"],
                 },
                 "benchmark": {
                     "type": "string",
-                    "description": "Benchmark para comparação: 'CDI', 'IBOV' ou 'ambos'",
+                    "description": "Benchmark: 'CDI', 'IBOV' ou 'ambos'",
                     "enum": ["CDI", "IBOV", "ambos"],
                 },
             },
@@ -84,12 +72,9 @@ TOOLS = [
         "name": "obter_cotacao",
         "description": (
             "Busca a cotação atual de qualquer ativo financeiro e cruza com a posição "
-            "do usuário na carteira. "
-            "Para ativos B3 e BDRs use o código sem .SA (ex: 'WEGE3', 'MSFT34'). "
-            "Para ativos americanos originais use o ticker em inglês (ex: 'MSFT'). "
-            "Use quando o usuário perguntar sobre: cotação, preço atual, quanto está "
-            "valendo, variação do dia, quanto rendeu hoje, máxima/mínima do ano, "
-            "está acima ou abaixo do preço médio."
+            "do usuário na carteira. Para ativos B3 e BDRs use o código sem .SA "
+            "(ex: 'WEGE3', 'MSFT34'). Para ativos americanos originais use o ticker "
+            "em inglês (ex: 'MSFT')."
         ),
         "input_schema": {
             "type": "object",
@@ -102,25 +87,197 @@ TOOLS = [
             "required": ["ticker"],
         },
     },
+    {
+        "name": "obter_diario",
+        "description": (
+            "Retorna anotações de estratégia e decisões do diário do investidor. "
+            "Use quando o usuário perguntar sobre estratégias, decisões anteriores, "
+            "planos, teses de compra/venda — ou quando uma análise se beneficiaria "
+            "de contexto histórico do diário."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "periodo": {
+                    "type": "string",
+                    "description": "Período: '7d', '30d', '90d', 'all'",
+                    "enum": ["7d", "30d", "90d", "all"],
+                },
+                "busca": {
+                    "type": "string",
+                    "description": "Texto livre para filtrar entradas",
+                },
+                "ticker": {
+                    "type": "string",
+                    "description": "Filtrar entradas que mencionam este ticker",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "obter_sinais",
+        "description": (
+            "Retorna sinais técnicos (RSI, MACD, Médias Móveis) e indicadores "
+            "fundamentalistas (P/L, P/VP, ROE, EV/EBITDA, Margem Líq., Dív/EBITDA) "
+            "para os ativos da carteira ou lista específica. "
+            "Use quando o usuário perguntar sobre análise técnica, RSI, MACD, médias, "
+            "fundamentos, P/L, ROE de ativos específicos."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "tickers": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Lista de tickers (ex: ['WEGE3','ITUB4']). "
+                                   "Se vazio, usa todos os ativos RV da carteira.",
+                },
+                "apenas_ativos": {
+                    "type": "boolean",
+                    "description": "Se true, retorna apenas ativos com sinal diferente de NEUTRO.",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "obter_fundamentos",
+        "description": (
+            "Retorna indicadores fundamentalistas detalhados (P/L, P/VP, EV/EBITDA, "
+            "ROE, Margem Líquida, Dívida/EBITDA) para ativos da carteira ou lista. "
+            "Use para comparação entre ativos, triagem por múltiplos, ou análise "
+            "fundamentalista focada."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "tickers": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Lista de tickers. Se vazio, usa todos os ativos RV da carteira.",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "obter_watchlist",
+        "description": (
+            "Retorna a watchlist do investidor com cotações ao vivo, preço-alvo, "
+            "stop-loss, distância percentual ao alvo e sinal (NA_ZONA / PROXIMO / ACIMA). "
+            "Use quando o usuário perguntar sobre ativos que está monitorando, "
+            "watchlist, candidatos a compra, alvos de preço."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "obter_analise_rv",
+        "description": (
+            "ANÁLISE COMPLETA da carteira de Renda Variável. "
+            "Combina em paralelo: posições RV + sinais técnicos + fundamentos + watchlist. "
+            "Use quando o usuário pedir análise geral da carteira RV, avaliação de ativos, "
+            "revisão de portfólio, ou qualquer análise que precise de múltiplos indicadores. "
+            "PREFIRA esta tool a chamar obter_posicoes + obter_sinais separadamente."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
 ]
 
 
 def _executar_tool(nome: str, entrada: dict) -> str:
     from carteira_clean_web.backend.mcp.tools.portfolio import (
-        fn_obter_posicoes, fn_obter_performance, fn_obter_cotacao,
+        fn_obter_posicoes, fn_obter_performance, fn_obter_cotacao, fn_obter_diario,
+        fn_obter_sinais, fn_obter_fundamentos, fn_obter_watchlist, fn_obter_analise_rv,
     )
     if nome == "obter_posicoes":
         resultado = fn_obter_posicoes()
     elif nome == "obter_performance":
-        periodo = entrada.get("periodo", "ytd")
-        benchmark = entrada.get("benchmark", "ambos")
-        resultado = fn_obter_performance(periodo, benchmark)
+        resultado = fn_obter_performance(
+            entrada.get("periodo", "ytd"), entrada.get("benchmark", "ambos"),
+        )
     elif nome == "obter_cotacao":
         resultado = fn_obter_cotacao(entrada.get("ticker", ""))
+    elif nome == "obter_diario":
+        resultado = fn_obter_diario(
+            periodo=entrada.get("periodo", "30d"),
+            busca=entrada.get("busca"),
+            ticker=entrada.get("ticker"),
+        )
+    elif nome == "obter_sinais":
+        resultado = fn_obter_sinais(
+            tickers=entrada.get("tickers"),
+            apenas_ativos=entrada.get("apenas_ativos", False),
+        )
+    elif nome == "obter_fundamentos":
+        resultado = fn_obter_fundamentos(tickers=entrada.get("tickers"))
+    elif nome == "obter_watchlist":
+        resultado = fn_obter_watchlist()
+    elif nome == "obter_analise_rv":
+        resultado = fn_obter_analise_rv()
     else:
         resultado = {"erro": f"Tool desconhecida: {nome}"}
     return json.dumps(resultado, ensure_ascii=False, default=str)
 
+
+# ── System prompt com injeção de contexto ─────────────────────────
+
+_PROMPT_BASE = """Você é o assistente financeiro pessoal do Marcio de Almeida Souza, \
+integrado à ferramenta Carteira Clean.
+
+Você tem acesso a ferramentas que consultam dados reais do portfólio. \
+Use-as sempre que o usuário perguntar sobre sua carteira. \
+NUNCA invente ou estime números financeiros.
+
+DIRETRIZES:
+- Responda em português brasileiro
+- Seja preciso com números (R$ 1.234.567,89; vírgula decimal)
+- Contextualize os dados — não apenas repita números
+- Ao detectar concentração elevada, mencione proativamente
+- Referencie memórias e anotações do diário quando pertinente
+- Se uma decisão foi anotada no diário, mencione explicitamente"""
+
+
+def build_system_prompt() -> str:
+    """Reconstrói o system prompt a cada mensagem do usuário com memórias e diário recentes."""
+    memorias = api.get_memorias()
+    diario = api.get_diario_recentes(limit=5)
+
+    blocos = [_PROMPT_BASE]
+
+    if memorias:
+        itens = "\n".join(
+            f"- [{m['tipo'].upper()}] {m['conteudo']}" for m in memorias
+        )
+        blocos.append(f"## O que sei sobre você (memórias de conversas anteriores)\n{itens}")
+
+    if diario:
+        # decisoes vem com data_decisao + acao/ativo + tese
+        itens = []
+        for d in diario:
+            data = d.get("data_decisao", "")
+            tese = (d.get("tese") or "").strip()
+            ativo = d.get("ativo", "")
+            acao = d.get("acao", "")
+            itens.append(f"- {data} — {acao} {ativo}: {tese[:200]}")
+        blocos.append(f"## Suas anotações recentes no diário (últimas 5)\n" + "\n".join(itens))
+
+    blocos.append(
+        "Ferramentas disponíveis:\n"
+        "- obter_posicoes: todas as posições com P&L e alertas\n"
+        "- obter_performance: rentabilidade vs CDI/IBOV\n"
+        "- obter_cotacao: cotação ao vivo de um ativo + cruzamento com carteira\n"
+        "- obter_diario: decisões e anotações do diário\n"
+        "- obter_sinais: sinais técnicos (RSI/MACD/MM) + fundamentos por ativo\n"
+        "- obter_fundamentos: múltiplos fundamentalistas (P/L, P/VP, ROE...)\n"
+        "- obter_watchlist: watchlist com cotações ao vivo e distância ao alvo\n"
+        "- obter_analise_rv: análise completa RV (posições+sinais+fundamentos+watchlist). "
+        "USE ESTA quando o usuário pedir análise geral da carteira."
+    )
+    return "\n\n".join(blocos)
+
+
+# ── Cliente Anthropic ─────────────────────────────────────────────
 
 def _get_client():
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -134,11 +291,8 @@ def _get_client():
     return anthropic.Anthropic(api_key=api_key) if api_key else None
 
 
-def _enviar_mensagem(client, mensagens_api: list) -> tuple[str, list[str], object]:
-    """
-    Loop de tool use: envia mensagem, executa tools se necessário, retorna resposta final.
-    Retorna: (texto_resposta, tools_usadas, usage)
-    """
+def _enviar_mensagem(client, mensagens_api: list, system: str) -> tuple[str, list[str], object]:
+    """Loop de tool use. Retorna: (texto, tools_usadas, usage)."""
     tools_usadas = []
     msgs = list(mensagens_api)
 
@@ -146,23 +300,17 @@ def _enviar_mensagem(client, mensagens_api: list) -> tuple[str, list[str], objec
         response = client.messages.create(
             model=MODEL,
             max_tokens=1500,
-            system=SYSTEM_PROMPT,
+            system=system,
             messages=msgs,
             tools=TOOLS,
         )
 
         if response.stop_reason == "end_turn":
-            texto = ""
-            for block in response.content:
-                if hasattr(block, "text"):
-                    texto += block.text
+            texto = "".join(b.text for b in response.content if hasattr(b, "text"))
             return texto, tools_usadas, response.usage
 
         if response.stop_reason == "tool_use":
-            # Adicionar resposta do assistente ao histórico temporário
             msgs.append({"role": "assistant", "content": response.content})
-
-            # Executar cada tool call e coletar resultados
             resultados = []
             for block in response.content:
                 if not hasattr(block, "type") or block.type != "tool_use":
@@ -174,16 +322,46 @@ def _enviar_mensagem(client, mensagens_api: list) -> tuple[str, list[str], objec
                     "tool_use_id": block.id,
                     "content": saida,
                 })
-
             msgs.append({"role": "user", "content": resultados})
             continue
 
-        # Outro stop_reason inesperado — retornar o que tiver
-        texto = ""
-        for block in response.content:
-            if hasattr(block, "text"):
-                texto += block.text
+        texto = "".join(b.text for b in response.content if hasattr(b, "text"))
         return texto, tools_usadas, response.usage
+
+
+# ── Auto-título e extração ────────────────────────────────────────
+
+def _gerar_titulo(primeira_msg: str) -> str:
+    palavras = primeira_msg.strip().split()[:6]
+    titulo = " ".join(palavras)
+    return (titulo[:40] + "…") if len(titulo) > 40 else titulo
+
+
+def _extrair_em_background(conversa_id: int) -> None:
+    """Spawn thread daemon — não bloqueia o chat."""
+    def _run():
+        try:
+            from carteira_clean_web.backend.engine.memoria_extrator import extrair_memorias
+            extrair_memorias(conversa_id)
+        except Exception:
+            pass
+    threading.Thread(target=_run, daemon=True).start()
+
+
+# ── Renderização ──────────────────────────────────────────────────
+
+def _garantir_conversa() -> int | None:
+    """Garante que session_state.conversa_id aponta para uma conversa ativa."""
+    cid = st.session_state.get("conversa_id")
+    if cid:
+        conv = api.get_conversa(cid)
+        if conv and conv.get("ativa"):
+            return cid
+    nova = api.post_conversa()
+    if nova:
+        st.session_state["conversa_id"] = nova["id"]
+        return nova["id"]
+    return None
 
 
 def render():
@@ -193,89 +371,238 @@ def render():
         st.error("Pacote `anthropic` não instalado. Execute `pip install anthropic`.")
         return
 
-    # ── Estado da sessão ──────────────────────────────────────────
-    if "mensagens" not in st.session_state:
-        st.session_state["mensagens"] = []
-    if "tokens_total_in" not in st.session_state:
-        st.session_state["tokens_total_in"] = 0
-    if "tokens_total_out" not in st.session_state:
-        st.session_state["tokens_total_out"] = 0
+    st.markdown("""
+    <style>
+    /* Alinhar texto dos botões de conversa à esquerda */
+    div[data-testid="column"] button[kind="secondary"] {
+        text-align: left !important;
+        justify-content: flex-start !important;
+        font-size: 0.82rem !important;
+        padding: 4px 8px !important;
+    }
+    /* Botão ativo: destaque sutil */
+    div[data-testid="column"] button[kind="primary"] {
+        text-align: left !important;
+        justify-content: flex-start !important;
+        font-size: 0.82rem !important;
+        padding: 4px 8px !important;
+    }
+    /* Botões de ícone (✏ 🗑): compactos */
+    div[class*="conv-icon"] button { padding: 2px 4px !important; }
+    </style>
+    """, unsafe_allow_html=True)
 
-    # ── Sidebar ────────────────────────────────────────────────────
-    with st.sidebar:
-        st.subheader("🤖 Assistente")
-        if st.button("🗑️ Nova conversa", use_container_width=True):
-            st.session_state["mensagens"] = []
-            st.session_state["tokens_total_in"] = 0
-            st.session_state["tokens_total_out"] = 0
-            st.rerun()
+    col_threads, col_chat = st.columns([1, 3])
+
+    # ── COLUNA ESQUERDA: threads + memórias ──────────────────────
+    with col_threads:
+        st.markdown("**Conversas**")
+        if st.button("＋ Nova conversa", use_container_width=True, key="nova_conv_btn"):
+            nova = api.post_conversa()
+            if nova:
+                st.session_state["conversa_id"] = nova["id"]
+                st.rerun()
+
+        conversas = api.get_conversas()
+        cid_atual = st.session_state.get("conversa_id")
+
+        for conv in conversas[:30]:
+            cid = conv["id"]
+            ativo = cid == cid_atual
+            renaming = st.session_state.get(f"_renaming_{cid}", False)
+            del_confirm = st.session_state.get(f"_del_confirm_{cid}", False)
+
+            if renaming:
+                # ── Modo edição de título ─────────────────────
+                novo_nome = st.text_input(
+                    "", value=conv["titulo"], key=f"_rename_input_{cid}",
+                    label_visibility="collapsed", max_chars=60,
+                )
+                c1, c2 = st.columns(2)
+                with c1:
+                    if st.button("✓ Salvar", key=f"_rename_ok_{cid}",
+                                 use_container_width=True, type="primary"):
+                        if novo_nome and novo_nome.strip():
+                            api.patch_conversa_titulo(cid, novo_nome.strip())
+                            st.session_state.pop(f"_titulo_visto_{cid}", None)
+                        st.session_state[f"_renaming_{cid}"] = False
+                        st.rerun()
+                with c2:
+                    if st.button("✗ Cancelar", key=f"_rename_cancel_{cid}",
+                                 use_container_width=True):
+                        st.session_state[f"_renaming_{cid}"] = False
+                        st.rerun()
+
+            elif del_confirm:
+                # ── Modo confirmação de exclusão ──────────────
+                st.markdown(
+                    f'<p style="color:#F59E0B;font-size:0.78rem;margin:4px 0">'
+                    f'🗑 Excluir <b>"{conv["titulo"][:20]}"</b>?</p>',
+                    unsafe_allow_html=True,
+                )
+                c1, c2 = st.columns(2)
+                with c1:
+                    if st.button("Sim", key=f"_del_ok_{cid}",
+                                 use_container_width=True, type="primary"):
+                        api.delete_conversa(cid)
+                        st.session_state.pop(f"_del_confirm_{cid}", None)
+                        if cid == cid_atual:
+                            st.session_state.pop("conversa_id", None)
+                        st.rerun()
+                with c2:
+                    if st.button("Não", key=f"_del_no_{cid}",
+                                 use_container_width=True):
+                        st.session_state[f"_del_confirm_{cid}"] = False
+                        st.rerun()
+
+            else:
+                # ── Modo normal: título + ícones ──────────────
+                c1, c2, c3 = st.columns([7, 1, 1])
+                with c1:
+                    label = f"{'▶' if ativo else '·'} {conv['titulo'][:22]}"
+                    btn_type = "primary" if ativo else "secondary"
+                    if st.button(label, key=f"conv_{cid}",
+                                 use_container_width=True, type=btn_type):
+                        st.session_state["conversa_id"] = cid
+                        st.rerun()
+                with c2:
+                    if st.button("✏", key=f"_rename_btn_{cid}",
+                                 use_container_width=True, help="Renomear"):
+                        st.session_state[f"_renaming_{cid}"] = True
+                        st.rerun()
+                with c3:
+                    if st.button("🗑", key=f"_del_btn_{cid}",
+                                 use_container_width=True, help="Excluir"):
+                        st.session_state[f"_del_confirm_{cid}"] = True
+                        st.rerun()
+
         st.divider()
-        n_in = st.session_state["tokens_total_in"]
-        n_out = st.session_state["tokens_total_out"]
-        custo_brl = (n_in * _CUSTO_IN + n_out * _CUSTO_OUT) * _USD_BRL
-        st.caption(f"Tokens entrada: {n_in:,}")
-        st.caption(f"Tokens saída: {n_out:,}")
-        st.caption(f"Custo sessão: ~R$ {custo_brl:.4f}")
 
-    # ── Histórico de mensagens ────────────────────────────────────
-    for msg in st.session_state["mensagens"]:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["display"])
+        memorias = api.get_memorias()
+        with st.expander(f"🧠 Memórias ({len(memorias)})", expanded=False):
+            if not memorias:
+                st.caption("_Nenhuma memória ainda — vão aparecer aqui depois de algumas conversas._")
+            for m in memorias:
+                c1, c2 = st.columns([6, 1])
+                with c1:
+                    st.caption(f"**[{m['tipo']}]** {m['conteudo']}")
+                with c2:
+                    if st.button("×", key=f"del_mem_{m['id']}", help="Remover"):
+                        api.delete_memoria(m["id"])
+                        st.rerun()
 
-    # ── Input do usuário ──────────────────────────────────────────
-    prompt = st.chat_input("Pergunte sobre sua carteira...")
-    if not prompt:
-        return
-
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    # Adicionar ao histórico
-    st.session_state["mensagens"].append({
-        "role": "user",
-        "content": prompt,
-        "display": prompt,
-    })
-
-    # ── Chamar API ────────────────────────────────────────────────
-    client = _get_client()
-    if not client:
-        st.error("❌ ANTHROPIC_API_KEY não configurada. Adicione ao arquivo .env na raiz do projeto.")
-        return
-
-    # Mensagens API: apenas role + content (sem campo display)
-    msgs_api = [{"role": m["role"], "content": m["content"]} for m in st.session_state["mensagens"]]
-
-    with st.chat_message("assistant"):
-        status = st.empty()
-        status.caption("🔄 Consultando...")
-        try:
-            texto, tools_usadas, usage = _enviar_mensagem(client, msgs_api)
-            status.empty()
-            for t in tools_usadas:
-                st.caption(f"🔧 Consultou: `{t}`")
-            st.markdown(texto or "(sem resposta)")
-        except anthropic.AuthenticationError:
-            status.empty()
-            st.error("❌ API key inválida.")
-            return
-        except anthropic.APIConnectionError:
-            status.empty()
-            st.error("❌ Sem conexão com a API Anthropic.")
-            return
-        except Exception as e:
-            status.empty()
-            st.error(f"❌ Erro: {e}")
+    # ── COLUNA DIREITA: chat ──────────────────────────────────────
+    with col_chat:
+        conversa_id = _garantir_conversa()
+        if not conversa_id:
+            st.error("❌ Não foi possível criar/recuperar a conversa.")
             return
 
-    # Salvar no histórico
-    st.session_state["mensagens"].append({
-        "role": "assistant",
-        "content": texto,
-        "display": texto,
-    })
+        conv_atual = api.get_conversa(conversa_id) or {"titulo": "Nova conversa"}
+        titulo_db = conv_atual.get("titulo", "Nova conversa")
+        # Sincroniza session_state com o DB para que rerun mostre o título atual
+        # (auto-título e outras alterações fora do text_input).
+        titulo_key = f"titulo_{conversa_id}"
+        last_seen_key = f"_titulo_visto_{conversa_id}"
+        if st.session_state.get(last_seen_key) != titulo_db:
+            st.session_state[titulo_key] = titulo_db
+            st.session_state[last_seen_key] = titulo_db
 
-    # Atualizar tokens
-    if usage:
-        st.session_state["tokens_total_in"] += getattr(usage, "input_tokens", 0)
-        st.session_state["tokens_total_out"] += getattr(usage, "output_tokens", 0)
+        novo_titulo = st.text_input(
+            "Título da conversa",
+            value=titulo_db,
+            key=titulo_key,
+            label_visibility="collapsed",
+        )
+        if novo_titulo and novo_titulo != titulo_db:
+            api.patch_conversa_titulo(conversa_id, novo_titulo)
+            st.session_state[last_seen_key] = novo_titulo
+
+        mensagens = api.get_mensagens(conversa_id)
+        for msg in mensagens:
+            with st.chat_message(msg["role"]):
+                tcs = msg.get("tool_calls")
+                if tcs:
+                    try:
+                        nomes = json.loads(tcs)
+                        if isinstance(nomes, list):
+                            for n in nomes:
+                                st.caption(f"🔧 Consultou: `{n}`")
+                    except Exception:
+                        pass
+                st.markdown(msg["content"])
+
+        # ── Sidebar de custo ──────────────────────────────────────
+        with st.sidebar:
+            st.subheader("🤖 Assistente")
+            st.caption(f"Modelo: `{MODEL}`")
+            tot_t = conv_atual.get("total_tokens", 0)
+            custo_usd = conv_atual.get("custo_usd", 0.0)
+            custo_brl = custo_usd * _USD_BRL
+            st.caption(f"Tokens (conversa): {tot_t:,}")
+            st.caption(f"Custo conversa: R$ {custo_brl:.4f}")
+
+        # ── Input do usuário ──────────────────────────────────────
+        prompt = st.chat_input("Pergunte sobre sua carteira...")
+        if not prompt:
+            return
+
+        # Mostrar imediatamente
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        # Persistir mensagem do usuário
+        api.post_mensagem(conversa_id, role="user", content=prompt)
+
+        # Auto-título se for a 1ª mensagem
+        # (não mexer em session_state[titulo_key] aqui — widget já foi instanciado
+        # acima neste run; o bloco de sincronização no topo do próximo rerun pega.)
+        if len(mensagens) == 0:
+            api.patch_conversa_titulo(conversa_id, _gerar_titulo(prompt))
+
+        # Construir histórico para a API (role + content)
+        historico = [{"role": m["role"], "content": m["content"]} for m in mensagens]
+        historico.append({"role": "user", "content": prompt})
+
+        client = _get_client()
+        if not client:
+            st.error("❌ ANTHROPIC_API_KEY não configurada no .env.")
+            return
+
+        system = build_system_prompt()
+        with st.chat_message("assistant"):
+            status = st.empty()
+            status.caption("🔄 Consultando...")
+            try:
+                texto, tools_usadas, usage = _enviar_mensagem(client, historico, system)
+                status.empty()
+                for t in tools_usadas:
+                    st.caption(f"🔧 Consultou: `{t}`")
+                st.markdown(texto or "(sem resposta)")
+            except anthropic.AuthenticationError:
+                status.empty()
+                st.error("❌ API key inválida.")
+                return
+            except anthropic.APIConnectionError:
+                status.empty()
+                st.error("❌ Sem conexão com a API Anthropic.")
+                return
+            except Exception as e:
+                status.empty()
+                st.error(f"❌ Erro: {e}")
+                return
+
+        # Persistir resposta + custo
+        tokens_in = getattr(usage, "input_tokens", 0) if usage else 0
+        tokens_out = getattr(usage, "output_tokens", 0) if usage else 0
+        custo_msg = tokens_in * _CUSTO_IN + tokens_out * _CUSTO_OUT
+        api.post_mensagem(
+            conversa_id, role="assistant", content=texto,
+            tool_calls=json.dumps(tools_usadas) if tools_usadas else None,
+            tokens_in=tokens_in, tokens_out=tokens_out, custo_usd=custo_msg,
+        )
+
+        # Extração em background (não bloqueia)
+        _extrair_em_background(conversa_id)
+
+        st.rerun()
