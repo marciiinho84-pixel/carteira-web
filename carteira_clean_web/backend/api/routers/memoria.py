@@ -26,6 +26,10 @@ class TituloUpdate(BaseModel):
     titulo: str
 
 
+class ResumoUpdate(BaseModel):
+    resumo: str
+
+
 class MensagemCreate(BaseModel):
     role: str
     content: str
@@ -92,6 +96,17 @@ def atualizar_titulo(conversa_id: int, body: TituloUpdate, db: Session = Depends
     return c.to_dict()
 
 
+@router.patch("/conversas/{conversa_id}/resumo")
+def salvar_resumo(conversa_id: int, body: ResumoUpdate, db: Session = Depends(get_db)):
+    c = db.get(Conversa, conversa_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Conversa não encontrada")
+    c.resumo_historico = (body.resumo or "").strip() or None
+    c.atualizada_em = datetime.utcnow()
+    db.commit()
+    return {"ok": True}
+
+
 @router.delete("/conversas/{conversa_id}")
 def excluir_conversa(conversa_id: int, db: Session = Depends(get_db)):
     c = db.get(Conversa, conversa_id)
@@ -153,6 +168,9 @@ def criar_mensagem(conversa_id: int, body: MensagemCreate, db: Session = Depends
 
 # ─── Memórias ─────────────────────────────────────────────────────
 
+_PRIORIDADE_TIPO = {"decisao": 1, "estrategia": 2, "meta": 3, "preferencia": 4, "fato": 5}
+
+
 @router.get("/memorias")
 def listar_memorias(db: Session = Depends(get_db)):
     mems = (
@@ -164,8 +182,24 @@ def listar_memorias(db: Session = Depends(get_db)):
     return [m.to_dict() for m in mems]
 
 
+@router.get("/memorias/priorizadas")
+def listar_memorias_priorizadas(limite: int = 12, db: Session = Depends(get_db)):
+    """Retorna até `limite` memórias ativas, ordenadas por tipo (decisão > estratégia > ...) e data."""
+    mems = (
+        db.query(MemoriaAssistente)
+        .filter(MemoriaAssistente.ativa == 1)
+        .all()
+    )
+    mems.sort(key=lambda m: (
+        _PRIORIDADE_TIPO.get(m.tipo, 5),
+        -(m.criada_em.timestamp() if m.criada_em else 0),
+    ))
+    return [m.to_dict() for m in mems[:limite]]
+
+
 @router.post("/memorias", status_code=status.HTTP_201_CREATED)
 def criar_memoria(body: MemoriaCreate, db: Session = Depends(get_db)):
+    from fastapi.responses import JSONResponse
     if body.tipo not in _TIPOS_VALIDOS:
         raise HTTPException(status_code=422, detail=f"tipo inválido: {body.tipo}")
     if body.fonte not in _FONTES_VALIDAS:
@@ -173,6 +207,12 @@ def criar_memoria(body: MemoriaCreate, db: Session = Depends(get_db)):
     conteudo = (body.conteudo or "").strip()
     if not conteudo:
         raise HTTPException(status_code=422, detail="conteudo vazio")
+
+    # Deduplicação: não salvar se os primeiros 80 chars já existem
+    prefixo = conteudo[:80].lower()
+    existentes = db.query(MemoriaAssistente).filter(MemoriaAssistente.ativa == 1).all()
+    if any(e.conteudo[:80].lower() == prefixo for e in existentes):
+        return JSONResponse(status_code=200, content={"deduplicado": True})
 
     m = MemoriaAssistente(
         tipo=body.tipo,

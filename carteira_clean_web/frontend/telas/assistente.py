@@ -240,7 +240,7 @@ DIRETRIZES:
 
 def build_system_prompt() -> str:
     """Reconstrói o system prompt a cada mensagem do usuário com memórias e diário recentes."""
-    memorias = api.get_memorias()
+    memorias = api.get_memorias_priorizadas(limite=12)
     diario = api.get_diario_recentes(limit=5)
 
     blocos = [_PROMPT_BASE]
@@ -343,6 +343,17 @@ def _extrair_em_background(conversa_id: int) -> None:
         try:
             from carteira_clean_web.backend.engine.memoria_extrator import extrair_memorias
             extrair_memorias(conversa_id)
+        except Exception:
+            pass
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def _sumarizar_em_background(conversa_id: int) -> None:
+    """Sumariza histórico antigo quando a conversa ultrapassa o limiar."""
+    def _run():
+        try:
+            from carteira_clean_web.backend.engine.memoria_extrator import sumarizar_historico
+            sumarizar_historico(conversa_id)
         except Exception:
             pass
     threading.Thread(target=_run, daemon=True).start()
@@ -560,8 +571,18 @@ def render():
         if len(mensagens) == 0:
             api.patch_conversa_titulo(conversa_id, _gerar_titulo(prompt))
 
-        # Construir histórico para a API (role + content)
-        historico = [{"role": m["role"], "content": m["content"]} for m in mensagens]
+        # Construir histórico com janela deslizante
+        resumo_hist = conv_atual.get("resumo_historico")
+        if resumo_hist:
+            # Resumo das msgs antigas + últimas 20 mensagens frescas
+            historico = [
+                {"role": "user",
+                 "content": f"[RESUMO DAS MENSAGENS ANTERIORES]\n{resumo_hist}"},
+                {"role": "assistant",
+                 "content": "Entendido. Continuando a conversa."},
+            ] + [{"role": m["role"], "content": m["content"]} for m in mensagens[-20:]]
+        else:
+            historico = [{"role": m["role"], "content": m["content"]} for m in mensagens]
         historico.append({"role": "user", "content": prompt})
 
         client = _get_client()
@@ -602,7 +623,11 @@ def render():
             tokens_in=tokens_in, tokens_out=tokens_out, custo_usd=custo_msg,
         )
 
-        # Extração em background (não bloqueia)
+        # Extração de memórias em background
         _extrair_em_background(conversa_id)
+
+        # Sumarização em background quando histórico fica longo (>20 msgs livres)
+        if len(mensagens) >= 20:
+            _sumarizar_em_background(conversa_id)
 
         st.rerun()

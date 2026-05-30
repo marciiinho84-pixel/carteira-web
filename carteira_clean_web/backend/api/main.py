@@ -36,7 +36,22 @@ async def lifespan(app: FastAPI):
     # Cria tabelas novas sem afetar as existentes
     from carteira_clean_web.backend.db.models import Base
     from carteira_clean_web.backend.db.session import get_engine
-    Base.metadata.create_all(get_engine())
+    from sqlalchemy import text
+    engine = get_engine()
+    Base.metadata.create_all(engine)
+
+    # Migração inline — adiciona colunas novas sem Alembic
+    _ddls = [
+        "ALTER TABLE conversas ADD COLUMN resumo_historico TEXT",
+        "ALTER TABLE mensagens ADD COLUMN incluida_no_resumo INTEGER NOT NULL DEFAULT 0",
+    ]
+    with engine.connect() as conn:
+        for ddl in _ddls:
+            try:
+                conn.execute(text(ddl))
+                conn.commit()
+            except Exception:
+                pass  # coluna já existe
 
     from carteira_clean_web.backend.api import cache as engine_cache
     if engine_cache.carregar_disco():

@@ -330,6 +330,11 @@ def get_memorias() -> list:
     return get("memorias") or []
 
 
+def get_memorias_priorizadas(limite: int = 12) -> list:
+    """Retorna até `limite` memórias ativas, priorizadas por tipo."""
+    return get("memorias/priorizadas", params={"limite": limite}) or []
+
+
 def post_memoria(tipo: str, conteudo: str, conversa_id: int | None = None,
                  fonte: str = "manual") -> dict | None:
     return post("memorias", data={

@@ -268,15 +268,16 @@ class Conversa(Base):
     """Thread de conversa com o assistente."""
     __tablename__ = "conversas"
 
-    id              = Column(Integer, primary_key=True, autoincrement=True)
-    titulo          = Column(Text, nullable=False, default="Nova conversa")
-    criada_em       = Column(DateTime, nullable=False, default=datetime.utcnow)
-    atualizada_em   = Column(DateTime, nullable=False, default=datetime.utcnow)
-    ativa           = Column(Integer, nullable=False, default=1)
-    total_msgs      = Column(Integer, nullable=False, default=0)
-    total_tokens    = Column(Integer, nullable=False, default=0)
-    custo_usd       = Column(Float, nullable=False, default=0.0)
-    ultima_extracao = Column(DateTime, nullable=True)
+    id               = Column(Integer, primary_key=True, autoincrement=True)
+    titulo           = Column(Text, nullable=False, default="Nova conversa")
+    criada_em        = Column(DateTime, nullable=False, default=datetime.utcnow)
+    atualizada_em    = Column(DateTime, nullable=False, default=datetime.utcnow)
+    ativa            = Column(Integer, nullable=False, default=1)
+    total_msgs       = Column(Integer, nullable=False, default=0)
+    total_tokens     = Column(Integer, nullable=False, default=0)
+    custo_usd        = Column(Float, nullable=False, default=0.0)
+    ultima_extracao  = Column(DateTime, nullable=True)
+    resumo_historico = Column(Text, nullable=True)
 
     __table_args__ = (
         Index("ix_conversas_ativa", "ativa"),
@@ -293,6 +294,7 @@ class Conversa(Base):
             "total_tokens": self.total_tokens or 0,
             "custo_usd": self.custo_usd or 0.0,
             "ultima_extracao": self.ultima_extracao.isoformat() if self.ultima_extracao else None,
+            "resumo_historico": self.resumo_historico,
         }
 
 
@@ -300,15 +302,16 @@ class Mensagem(Base):
     """Mensagem de uma conversa (user / assistant / tool)."""
     __tablename__ = "mensagens"
 
-    id           = Column(Integer, primary_key=True, autoincrement=True)
-    conversa_id  = Column(Integer, ForeignKey("conversas.id", ondelete="CASCADE"), nullable=False)
-    role         = Column(String(20), nullable=False)
-    content      = Column(Text, nullable=False, default="")
-    tool_calls   = Column(Text, nullable=True)
-    tokens_in    = Column(Integer, nullable=False, default=0)
-    tokens_out   = Column(Integer, nullable=False, default=0)
-    custo_usd    = Column(Float, nullable=False, default=0.0)
-    criada_em    = Column(DateTime, nullable=False, default=datetime.utcnow)
+    id                  = Column(Integer, primary_key=True, autoincrement=True)
+    conversa_id         = Column(Integer, ForeignKey("conversas.id", ondelete="CASCADE"), nullable=False)
+    role                = Column(String(20), nullable=False)
+    content             = Column(Text, nullable=False, default="")
+    tool_calls          = Column(Text, nullable=True)
+    tokens_in           = Column(Integer, nullable=False, default=0)
+    tokens_out          = Column(Integer, nullable=False, default=0)
+    custo_usd           = Column(Float, nullable=False, default=0.0)
+    criada_em           = Column(DateTime, nullable=False, default=datetime.utcnow)
+    incluida_no_resumo  = Column(Integer, nullable=False, default=0)
 
     __table_args__ = (
         CheckConstraint("role IN ('user','assistant','tool','system')", name="ck_mensagem_role"),
@@ -326,6 +329,7 @@ class Mensagem(Base):
             "tokens_out": self.tokens_out or 0,
             "custo_usd": self.custo_usd or 0.0,
             "criada_em": self.criada_em.isoformat() if self.criada_em else None,
+            "incluida_no_resumo": self.incluida_no_resumo or 0,
         }
 
 
