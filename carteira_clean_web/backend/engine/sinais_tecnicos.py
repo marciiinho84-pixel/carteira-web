@@ -8,6 +8,7 @@ sinal único. Usa cache em disco de 4h para evitar chamadas repetidas.
 
 import json
 import logging
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -23,7 +24,9 @@ try:
 except ImportError:
     HAS_YF = False
 
-CACHE_DIR = Path(__file__).resolve().parents[2] / "cache" / "sinais"
+_CACHE_BASE = Path(os.environ.get("CACHE_DIR", str(Path(__file__).resolve().parents[2] / "cache")))
+CACHE_DIR = _CACHE_BASE / "sinais"
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_TTL_HORAS = 4
 PERIODO = "1y"        # 1 ano cobre MM200 (~252 pregões)
 MIN_PONTOS = 30       # mínimo para RSI/MACD confiáveis

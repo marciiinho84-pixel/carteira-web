@@ -1,0 +1,37 @@
+services:
+  backend:
+    build: .
+    image: minha-carteira
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_PATH: /data/carteira.db
+      CACHE_DIR: /data/cache
+    volumes:
+      - ./data:/data
+    ports:
+      - "8000:8000"
+    command: >
+      python3 -m uvicorn carteira_clean_web.backend.api.main:app
+      --host 0.0.0.0 --port 8000 --log-level warning
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/status"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  frontend:
+    image: minha-carteira
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      API_BASE_URL: http://backend:8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      backend:
+        condition: service_healthy
+    command: >
+      python3 -m streamlit run carteira_clean_web/frontend/app.py
+      --server.port 8501 --server.headless true --server.address 0.0.0.0

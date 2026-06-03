@@ -3,11 +3,12 @@ Cliente HTTP para a API FastAPI da Carteira Clean.
 Todas as chamadas passam por aqui — tratamento de erro centralizado.
 """
 
+import os
 import requests
 import streamlit as st
 from datetime import datetime
 
-API_BASE = "http://localhost:8000/api/v1"
+API_BASE = os.environ.get("API_BASE_URL", "http://localhost:8000") + "/api/v1"
 TIMEOUT_LEVE = 10
 TIMEOUT_CALCULAR = 120
 TIMEOUT_SINAIS = 90

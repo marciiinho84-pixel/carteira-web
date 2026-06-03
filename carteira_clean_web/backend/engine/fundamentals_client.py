@@ -9,13 +9,16 @@ sem limitações de plano. ETFs/FIIs sem fundamentais retornam
 
 import json
 import logging
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
 
 log = logging.getLogger("engine.brapi")
 
-CACHE_DIR = Path(__file__).resolve().parents[2] / "cache" / "brapi"
+_CACHE_BASE = Path(os.environ.get("CACHE_DIR", str(Path(__file__).resolve().parents[2] / "cache")))
+CACHE_DIR = _CACHE_BASE / "brapi"
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_TTL = timedelta(hours=48)
 
 try:
