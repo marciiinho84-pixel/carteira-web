@@ -27,6 +27,10 @@ services:
     env_file: .env
     environment:
       API_BASE_URL: http://backend:8000
+      DB_PATH: /data/carteira.db
+      CACHE_DIR: /data/cache
+    volumes:
+      - ./data:/data
     ports:
       - "8501:8501"
     depends_on:
