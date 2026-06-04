@@ -17,7 +17,10 @@ from typing import Optional
 
 log = logging.getLogger("api.cache")
 
-_CACHE_FILE = Path(__file__).resolve().parents[2] / "cache_engine.pkl"
+import os
+_DEFAULT_CACHE_FILE = Path(__file__).resolve().parents[2] / "cache_engine.pkl"
+_CACHE_DIR = os.environ.get("CACHE_DIR")
+_CACHE_FILE = (Path(_CACHE_DIR) / "cache_engine.pkl") if _CACHE_DIR else _DEFAULT_CACHE_FILE
 
 _estado: dict = {}
 _calculado_em: Optional[datetime] = None
