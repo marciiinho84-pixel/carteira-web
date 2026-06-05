@@ -46,6 +46,12 @@ def esta_calculado() -> bool:
 def _salvar_disco() -> None:
     """Persiste o estado atual em pickle para sobreviver ao restart."""
     try:
+        # Não sobrescreve pkl existente com precos_publicos vazio.
+        # Condição "vazio E havia pkl antes" preserva carteiras sem RV (precos legit vazios
+        # nunca tiveram pkl com precos, então a guarda não dispara).
+        if not _estado.get("precos_publicos") and _CACHE_FILE.exists():
+            log.warning("Abortando save: precos_publicos vazio com pkl anterior presente — preservando dados bons")
+            return
         payload = {"estado": _estado, "calculado_em": _calculado_em}
         _CACHE_FILE.write_bytes(pickle.dumps(payload))
         log.debug(f"Cache salvo em {_CACHE_FILE}")
@@ -81,7 +87,6 @@ def recalcular(db_path: Path = None, no_api: bool = False) -> dict:
     global _estado, _calculado_em, _erro
     try:
         from carteira_clean_web.backend.engine.run import run
-        # Preserve yfinance prices already in cache when recalculating without API
         precos_externos = None
         if no_api and _estado:
             precos_externos = {
@@ -89,6 +94,16 @@ def recalcular(db_path: Path = None, no_api: bool = False) -> dict:
                 "benchmarks": _estado.get("benchmarks", {}),
             }
         resultado = run(db_path=db_path, no_api=no_api, precos_externos=precos_externos)
+        # Merge por ticker: quando o fetch atual vier vazio ou parcial, preserva o último
+        # preço bom de cada ticker do estado anterior — nunca zera com falha transitória.
+        if _estado:
+            prev_pp = _estado.get("precos_publicos", {})
+            novo_pp = resultado.get("precos_publicos", {})
+            for tkr, serie in prev_pp.items():
+                if serie and not novo_pp.get(tkr):
+                    novo_pp[tkr] = serie
+                    log.debug(f"precos_merge: {tkr} preservado do estado anterior")
+            resultado["precos_publicos"] = novo_pp
         _estado = resultado
         _calculado_em = datetime.now()
         _erro = None

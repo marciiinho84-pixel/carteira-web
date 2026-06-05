@@ -57,10 +57,10 @@ async def lifespan(app: FastAPI):
     if engine_cache.carregar_disco():
         log.info("Startup: cache carregado do disco — pronto imediatamente")
     else:
-        log.info("Startup: sem cache em disco, recalculando localmente...")
+        log.info("Startup: sem cache em disco — primeiro boot, buscando preços externos...")
         try:
-            engine_cache.recalcular(no_api=True)
-            log.info("Startup: engine calculado e salvo em disco")
+            engine_cache.recalcular(no_api=False)
+            log.info("Startup: engine calculado com API e salvo em disco")
         except Exception as e:
             log.warning(f"Startup engine falhou (não crítico): {e}")
     yield
