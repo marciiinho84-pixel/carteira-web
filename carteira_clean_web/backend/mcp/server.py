@@ -85,4 +85,4 @@ def obter_cotacao(ticker: str) -> dict:
 
 
 if __name__ == "__main__":
-    mcp.run(transport="streamable-http", port=8001)
+    mcp.run(transport="streamable-http", host="0.0.0.0", port=8001)
