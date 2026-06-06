@@ -1,12 +1,13 @@
 """
-engine/precos.py — Download de preços públicos (yfinance), benchmarks (BCB SGS)
-e PUs do Tesouro Direto (Tesouro Transparente).
+engine/precos.py — Download de preços públicos (yfinance em lote + retry),
+benchmarks (BCB SGS) e PUs do Tesouro Direto (Tesouro Transparente).
 """
 
 import csv
 import io
 import logging
 import re
+import time
 from datetime import date, datetime, timedelta
 
 import pandas as pd
@@ -30,33 +31,92 @@ def baixar_precos_publicos(
     if no_api or not HAS_NETWORK:
         log.warning("Modo no_api: pulando download de preços públicos")
         return {}
-    out = {}
-    log.info(f"Baixando preços via yfinance ({len(tickers)} ativos)…")
-    for tkr in tickers:
-        yf_tkr = tkr + ".SA"
-        try:
-            df = yf.download(
-                yf_tkr,
-                start=str(data_ini),
-                end=str(data_fim + timedelta(days=1)),
-                progress=False,
-                auto_adjust=True,
-                threads=False,
-            )
-            if df.empty:
-                log.debug(f"  ✗ {tkr}: vazio")
+    if not tickers:
+        return {}
+
+    log.info(f"Baixando preços via yfinance em lote ({len(tickers)} ativos)…")
+
+    # Mapeia ticker.SA → ticker interno para reindexar sem trocar símbolos
+    yf_map = {tkr + ".SA": tkr for tkr in tickers}
+    yf_tickers = list(yf_map.keys())
+
+    def _normalizar_close(df: pd.DataFrame, syms: list) -> pd.DataFrame:
+        """Devolve DataFrame com colunas = syms e linhas = datas.
+
+        yf.download com N tickers → MultiIndex (campo, ticker) → df["Close"] = DataFrame
+        yf.download com 1 ticker  → colunas planas → df["Close"] = Series
+        Normaliza os dois casos para o mesmo formato.
+        """
+        if df.empty:
+            return pd.DataFrame(columns=syms)
+        if isinstance(df.columns, pd.MultiIndex):
+            close = df["Close"] if "Close" in df.columns.get_level_values(0) else pd.DataFrame(columns=syms)
+        else:
+            close = df[["Close"]].rename(columns={"Close": syms[0]}) if "Close" in df.columns else pd.DataFrame(columns=syms)
+        return close
+
+    def _extrair(close_df: pd.DataFrame, sym_map: dict, faltantes_out: list) -> dict:
+        """Extrai séries por nome de coluna; NaN total → ticker vai para faltantes_out."""
+        parcial = {}
+        for yf_tkr, tkr in sym_map.items():
+            if yf_tkr not in close_df.columns:
+                log.debug(f"  ✗ {tkr}: ausente no DataFrame")
+                faltantes_out.append(yf_tkr)
                 continue
-            close = df["Close"] if "Close" in df else df.iloc[:, 0]
-            if isinstance(close, pd.DataFrame):
-                close = close.iloc[:, 0]
-            out[tkr] = {
-                pd.Timestamp(idx).date(): float(v)
-                for idx, v in close.items()
-                if pd.notna(v)
-            }
-            log.debug(f"  ✓ {tkr}: {len(out[tkr])} dias")
-        except Exception as e:
-            log.warning(f"  ✗ {tkr}: {e}")
+            serie = close_df[yf_tkr].dropna()
+            if serie.empty:
+                # NaN total = falha silenciosa — omite para que o merge em cache.py
+                # preserve o último preço bom automaticamente
+                log.debug(f"  ✗ {tkr}: todos NaN — entra no retry")
+                faltantes_out.append(yf_tkr)
+                continue
+            parcial[tkr] = {pd.Timestamp(idx).date(): float(v) for idx, v in serie.items()}
+            log.debug(f"  ✓ {tkr}: {len(parcial[tkr])} dias")
+        return parcial
+
+    # Tentativa 1: lote completo
+    faltantes: list = []
+    try:
+        df = yf.download(
+            yf_tickers,
+            start=str(data_ini),
+            end=str(data_fim + timedelta(days=1)),
+            progress=False,
+            auto_adjust=True,
+        )
+    except Exception as e:
+        log.warning(f"yfinance lote falhou — {e}")
+        df = pd.DataFrame()
+
+    close_df = _normalizar_close(df, yf_tickers)
+    out = _extrair(close_df, yf_map, faltantes)
+
+    # Tentativa 2: retry sequencial com backoff apenas para os faltantes.
+    # Crítico no boot a frio: sem estado anterior, o merge não consegue preservar nada.
+    if faltantes:
+        log.info(f"  Retry sequencial para {len(faltantes)} ticker(s) faltante(s)…")
+        for yf_tkr in faltantes:
+            tkr = yf_map[yf_tkr]
+            time.sleep(1)
+            try:
+                df_r = yf.download(
+                    [yf_tkr],
+                    start=str(data_ini),
+                    end=str(data_fim + timedelta(days=1)),
+                    progress=False,
+                    auto_adjust=True,
+                )
+                close_r = _normalizar_close(df_r, [yf_tkr])
+                sem_retry: list = []
+                recuperado = _extrair(close_r, {yf_tkr: tkr}, sem_retry)
+                if recuperado:
+                    out.update(recuperado)
+                    log.info(f"  ✓ {tkr}: recuperado no retry")
+                else:
+                    log.debug(f"  ✗ {tkr}: vazio no retry — merge preservará preço anterior")
+            except Exception as e:
+                log.warning(f"  ✗ {tkr}: retry falhou — {e}")
+
     log.info(f"  → {len(out)}/{len(tickers)} ativos com preços")
     return out
 
