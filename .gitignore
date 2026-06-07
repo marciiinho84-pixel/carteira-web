@@ -1,5 +1,8 @@
 .env
 
+# Volume de dados (banco SQLite + cache pkl) — nunca commitar
+data/
+
 # Artefatos de runtime
 __pycache__/
 *.pyc
