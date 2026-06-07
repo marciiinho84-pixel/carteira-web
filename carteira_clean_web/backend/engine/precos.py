@@ -6,9 +6,11 @@ benchmarks (BCB SGS) e PUs do Tesouro Direto (Tesouro Transparente).
 import csv
 import io
 import logging
+import os
 import re
 import time
 from datetime import date, datetime, timedelta
+from pathlib import Path
 
 import pandas as pd
 
@@ -118,7 +120,67 @@ def baixar_precos_publicos(
                 log.warning(f"  ✗ {tkr}: retry falhou — {e}")
 
     log.info(f"  → {len(out)}/{len(tickers)} ativos com preços")
+    _gravar_cotacoes(out)  # Passo 1: persiste cotações novas/alteradas (resiliente)
     return out
+
+
+def _gravar_cotacoes(precos_dict: dict) -> None:
+    """Persiste cotações na tabela append-only cotacoes (variante A).
+
+    Insere nova linha apenas se (ticker, date) é inédito ou o preço mudou
+    (tolerância 1e-6). Nunca UPDATE/DELETE. Falhas são logadas e silenciadas
+    para não quebrar o engine — a leitura ainda vem do pkl neste passo.
+    """
+    if not precos_dict:
+        return
+    try:
+        import sqlite3 as _sqlite3
+
+        _db_env = os.environ.get("DB_PATH")
+        db_path = _db_env if _db_env else str(
+            Path(__file__).resolve().parents[2] / "carteira.db"
+        )
+
+        con = _sqlite3.connect(db_path)
+        try:
+            # Carrega o último preço registrado por (ticker, date) em uma query
+            rows = con.execute(
+                "SELECT ticker, date, preco FROM cotacoes c "
+                "WHERE fetched_at = ("
+                "  SELECT MAX(fetched_at) FROM cotacoes "
+                "  WHERE ticker = c.ticker AND date = c.date"
+                ")"
+            ).fetchall()
+        except _sqlite3.OperationalError:
+            log.debug("cotacoes: tabela não existe ainda — gravação pulada")
+            con.close()
+            return
+
+        ultimos: dict = {(r[0], r[1]): r[2] for r in rows}
+        agora = datetime.now().isoformat(timespec="seconds")
+        inserir: list = []
+
+        for ticker, serie in precos_dict.items():
+            for dt, preco in serie.items():
+                dt_str = dt.isoformat() if hasattr(dt, "isoformat") else str(dt)
+                ultimo = ultimos.get((ticker, dt_str))
+                if ultimo is None or abs(float(preco) - float(ultimo)) > 1e-6:
+                    inserir.append((ticker, dt_str, float(preco), agora, "yfinance"))
+
+        if inserir:
+            con.executemany(
+                "INSERT INTO cotacoes (ticker, date, preco, fetched_at, source) "
+                "VALUES (?, ?, ?, ?, ?)",
+                inserir,
+            )
+            con.commit()
+            log.info(f"cotacoes: {len(inserir)} linhas gravadas (yfinance)")
+        else:
+            log.debug("cotacoes: nenhuma cotação nova ou alterada — skip")
+
+        con.close()
+    except Exception as e:
+        log.warning(f"cotacoes: gravação falhou (não crítico) — {e}")
 
 
 def baixar_benchmarks(
