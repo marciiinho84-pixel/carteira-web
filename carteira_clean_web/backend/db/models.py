@@ -333,6 +333,26 @@ class Mensagem(Base):
         }
 
 
+class Cotacao(Base):
+    """Histórico de cotações públicas — append-only log, sem UPDATE/DELETE.
+
+    Múltiplas linhas por (ticker, date) são permitidas (cada fetch gera
+    nova linha). A leitura usa MAX(fetched_at) para obter o valor vigente.
+    """
+    __tablename__ = "cotacoes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ticker = Column(Text, nullable=False)
+    date = Column(Date, nullable=False)
+    preco = Column(Float, nullable=False)
+    fetched_at = Column(DateTime, nullable=False)
+    source = Column(Text, nullable=False, server_default="yfinance")
+
+    __table_args__ = (
+        Index("ix_cotacoes_ticker_date", "ticker", "date"),
+    )
+
+
 class MemoriaAssistente(Base):
     """Memória de longo prazo extraída ou criada manualmente."""
     __tablename__ = "memorias_assistente"
