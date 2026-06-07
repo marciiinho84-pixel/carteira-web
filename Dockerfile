@@ -12,6 +12,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY carteira_clean_web/ ./carteira_clean_web/
+COPY alembic.ini .
+COPY alembic/ ./alembic/
 
 RUN mkdir -p /app/carteira_clean_web/logs
 
