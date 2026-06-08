@@ -128,8 +128,9 @@ def _gravar_cotacoes(precos_dict: dict) -> None:
     """Persiste cotações na tabela append-only cotacoes (variante A).
 
     Insere nova linha apenas se (ticker, date) é inédito ou o preço mudou
-    (tolerância 1e-6). Nunca UPDATE/DELETE. Falhas são logadas e silenciadas
-    para não quebrar o engine — a leitura ainda vem do pkl neste passo.
+    em >= 0.01 (1 centavo). Tolerância elimina ruído de arredondamento
+    float32/64 do yfinance (max observado 1.22e-4 << 0.01).
+    Nunca UPDATE/DELETE. Falhas são logadas e silenciadas.
     """
     if not precos_dict:
         return
@@ -164,7 +165,7 @@ def _gravar_cotacoes(precos_dict: dict) -> None:
             for dt, preco in serie.items():
                 dt_str = dt.isoformat() if hasattr(dt, "isoformat") else str(dt)
                 ultimo = ultimos.get((ticker, dt_str))
-                if ultimo is None or abs(float(preco) - float(ultimo)) > 1e-6:
+                if ultimo is None or abs(float(preco) - float(ultimo)) > 0.01:
                     inserir.append((ticker, dt_str, float(preco), agora, "yfinance"))
 
         if inserir:
