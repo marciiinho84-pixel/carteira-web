@@ -62,8 +62,6 @@ def posicoes():
         pat_gerida = ult["patrimonio_gerida"]
         pat_funcef = ult["patrimonio_funcef"]
 
-    # Dia útil anterior para var_dia
-    d_minus_1 = pd.bdate_range(end=hoje, periods=2)[0].date()
     # Yield projetado por ativo
     proventos_dict = estado.get("proventos", {})
     meses_periodo = max((hoje - DATA_INICIO).days / 30.44, 1.0)
@@ -92,22 +90,33 @@ def posicoes():
         pnl = valor_atual - p.custo_total
         pnl_pct = pnl / p.custo_total if p.custo_total > 0 else 0
 
-        # var_dia: (preço_hoje - preço_d-1) / preço_d-1, aplicado ao qtd atual
+        # var_dia: re-ancora d_minus_1 à data real do preco_atual (não ao calendário hoje)
+        # Evita var_dia=0% quando preco_atual vem de lookback para o mesmo dia que d_minus_1.
         var_dia = var_dia_pct = None
         if familia in COTIZADO_PUBLICO and preco_atual is not None:
-            p_d1 = preco_em(precos_pub.get(tkr, {}), d_minus_1)
-            if p_d1 and p_d1 > 0:
-                var_dia_pct = (preco_atual - p_d1) / p_d1
-                var_dia = p.qtd * (preco_atual - p_d1)
-        elif preco_atual is not None and p.qtd > 0:
-            p_d1 = preco_em(precos_man.get(tkr, {}), d_minus_1, max_lookback_dias=10)
-            if p_d1 and p_d1 > 0:
-                if familia in AGREGADO_PRIVADO:
-                    var_dia_pct = (preco_atual - p_d1) / p_d1
-                    var_dia = preco_atual - p_d1
-                else:
+            serie_pub = precos_pub.get(tkr, {})
+            datas_pub = sorted(dt for dt in serie_pub if dt <= hoje)
+            if datas_pub:
+                data_real = datas_pub[-1]
+                d_minus_1 = pd.bdate_range(end=data_real, periods=2)[0].date()
+                p_d1 = preco_em(serie_pub, d_minus_1)
+                if p_d1 and p_d1 > 0:
                     var_dia_pct = (preco_atual - p_d1) / p_d1
                     var_dia = p.qtd * (preco_atual - p_d1)
+        elif preco_atual is not None and p.qtd > 0:
+            serie_man = precos_man.get(tkr, {})
+            datas_man = sorted(dt for dt in serie_man if dt <= hoje)
+            if datas_man:
+                data_real = datas_man[-1]
+                d_minus_1 = pd.bdate_range(end=data_real, periods=2)[0].date()
+                p_d1 = preco_em(serie_man, d_minus_1, max_lookback_dias=10)
+                if p_d1 and p_d1 > 0:
+                    if familia in AGREGADO_PRIVADO:
+                        var_dia_pct = (preco_atual - p_d1) / p_d1
+                        var_dia = preco_atual - p_d1
+                    else:
+                        var_dia_pct = (preco_atual - p_d1) / p_d1
+                        var_dia = p.qtd * (preco_atual - p_d1)
 
         # yield projetado 12m para este ativo
         prov_ativo = proventos_dict.get(tkr, 0.0)
