@@ -21,7 +21,10 @@ sys.path.insert(0, str(ROOT))
 
 from carteira_clean_web.backend.engine.io import carregar_dados
 from carteira_clean_web.backend.engine.constantes import COTIZADO_PUBLICO
-from carteira_clean_web.backend.engine.precos import baixar_precos_publicos, baixar_benchmarks, baixar_precos_tesouro, baixar_precos_cvm, calcular_saldo_lci
+from carteira_clean_web.backend.engine.precos import (
+    baixar_precos_publicos, baixar_benchmarks, baixar_precos_tesouro,
+    baixar_precos_cvm, calcular_saldo_lci, carregar_precos_da_tabela,
+)
 from carteira_clean_web.backend.engine.posicoes import calc_posicoes_e_vendas
 from carteira_clean_web.backend.engine.inferencia import inferir_fluxos_externos_retroativos
 from carteira_clean_web.backend.engine.twr import calc_evolucao_diaria, calc_twr_e_benchmarks
@@ -81,6 +84,10 @@ def run(
     else:
         precos_publicos = baixar_precos_publicos(tickers_pub, DATA_INICIO, hoje, no_api)
         benchmarks = baixar_benchmarks(DATA_INICIO, hoje, no_api)
+
+    # Fase A: comparar yfinance vs tabela cotacoes (só após coleta real com API)
+    if not no_api and not precos_externos:
+        _comparar_yf_vs_tabela(precos_publicos, db_path)
 
     # Injeta PUs do Tesouro Direto em precos_manuais (sem alterar o banco)
     precos_td = baixar_precos_tesouro(ativos, no_api)
@@ -172,6 +179,69 @@ def run(
         "alertas": alertas,
         "hoje": hoje,
     }
+
+
+def _comparar_yf_vs_tabela(precos_yf: dict, db_path=None) -> None:
+    """Fase A: compara precos_yf (yfinance) vs tabela cotacoes. Loga divergências.
+
+    Classifica cada par (ticker, date):
+      OK         — ambos presentes e diff <= 0.01
+      DIVERGENTE — ambos presentes e diff > 0.01
+      AUSENTE_TAB — existe no yfinance, não na tabela
+      AUSENTE_YF  — existe na tabela, não no yfinance
+
+    Produção não é alterada: precos_yf continua sendo a fonte de cálculo.
+    """
+    db_str = str(db_path) if db_path else None
+    precos_tab = carregar_precos_da_tabela(db_path=db_str)
+
+    pares_yf  = {(tkr, dt) for tkr, serie in precos_yf.items()  for dt in serie}
+    pares_tab = {(tkr, dt) for tkr, serie in precos_tab.items() for dt in serie}
+
+    ok = 0
+    detalhes_div: list = []
+    detalhes_ausentes_tab: list = []
+    detalhes_ausentes_yf:  list = []
+
+    for tkr, dt in pares_yf & pares_tab:
+        p_yf  = float(precos_yf[tkr][dt])
+        p_tab = float(precos_tab[tkr][dt])
+        diff  = abs(p_yf - p_tab)
+        if diff <= 0.01:
+            ok += 1
+        else:
+            detalhes_div.append((tkr, dt, p_yf, p_tab, diff))
+
+    for tkr, dt in pares_yf - pares_tab:
+        detalhes_ausentes_tab.append((tkr, dt))
+
+    for tkr, dt in pares_tab - pares_yf:
+        detalhes_ausentes_yf.append((tkr, dt))
+
+    total = ok + len(detalhes_div) + len(detalhes_ausentes_tab) + len(detalhes_ausentes_yf)
+
+    log.warning("=" * 60)
+    log.warning("[PASSO2-FASE-A] Comparacao yfinance vs tabela cotacoes")
+    log.warning(f"  Total pares         : {total}")
+    log.warning(f"  OK (diff <= 0.01)   : {ok}")
+    log.warning(f"  DIVERGENTES         : {len(detalhes_div)}")
+    log.warning(f"  AUSENTES NA TABELA  : {len(detalhes_ausentes_tab)}")
+    log.warning(f"  AUSENTES NO YFINANCE: {len(detalhes_ausentes_yf)}")
+
+    for tkr, dt, p_yf, p_tab, diff in sorted(detalhes_div):
+        log.warning(f"  DIVERGENTE  {tkr}  {dt}  yf={p_yf:.4f}  tab={p_tab:.4f}  diff={diff:.4f}")
+
+    for tkr, dt in sorted(detalhes_ausentes_tab)[:20]:
+        log.warning(f"  AUSENTE_TAB  {tkr}  {dt}")
+    if len(detalhes_ausentes_tab) > 20:
+        log.warning(f"  AUSENTE_TAB  ... e mais {len(detalhes_ausentes_tab) - 20}")
+
+    for tkr, dt in sorted(detalhes_ausentes_yf)[:20]:
+        log.warning(f"  AUSENTE_YF   {tkr}  {dt}")
+    if len(detalhes_ausentes_yf) > 20:
+        log.warning(f"  AUSENTE_YF   ... e mais {len(detalhes_ausentes_yf) - 20}")
+
+    log.warning("=" * 60)
 
 
 def main():

@@ -184,6 +184,47 @@ def _gravar_cotacoes(precos_dict: dict) -> None:
         log.warning(f"cotacoes: gravação falhou (não crítico) — {e}")
 
 
+def carregar_precos_da_tabela(db_path: str = None) -> dict:
+    """Carrega cotações da tabela como {ticker: {date: preco}}.
+
+    Para cada (ticker, date) usa a linha com fetched_at mais recente.
+    Formato idêntico ao precos_publicos — substituto drop-in pronto para Fase B.
+    Retorna {} se a tabela não existir ou houver erro (não lança exceção).
+    """
+    import sqlite3 as _sqlite3
+    from datetime import date as _date
+
+    path = db_path or os.environ.get("DB_PATH") or str(
+        Path(__file__).resolve().parents[2] / "carteira.db"
+    )
+
+    try:
+        con = _sqlite3.connect(path)
+        rows = con.execute(
+            "SELECT ticker, date, preco FROM cotacoes c "
+            "WHERE fetched_at = ("
+            "  SELECT MAX(fetched_at) FROM cotacoes "
+            "  WHERE ticker = c.ticker AND date = c.date"
+            ")"
+        ).fetchall()
+        con.close()
+    except Exception as e:
+        log.warning(f"carregar_precos_da_tabela: falha — {e}")
+        return {}
+
+    out: dict = {}
+    for ticker, dt_str, preco in rows:
+        if ticker not in out:
+            out[ticker] = {}
+        try:
+            dt = _date.fromisoformat(dt_str)
+        except Exception:
+            continue
+        out[ticker][dt] = float(preco)
+
+    return out
+
+
 def baixar_benchmarks(
     data_ini: date,
     data_fim: date,
