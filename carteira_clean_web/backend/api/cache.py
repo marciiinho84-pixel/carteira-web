@@ -6,7 +6,9 @@ Fluxo:
   - Restart do servidor → lifespan carrega o pickle (sem refazer cálculo)
   - Dados mudam (novo evento, preço) → recalcular() automaticamente após cada mutação
 
-O pickle garante que cotações buscadas via API (yfinance/BCB) sobrevivam ao restart.
+O pickle persiste o estado calculado (posições, performance, alertas, benchmarks)
+para boot rápido após restart. Cotações públicas sobrevivem ao restart via tabela
+cotacoes (Camada 3 — fonte única de verdade).
 """
 
 import logging
@@ -41,24 +43,6 @@ def get_erro() -> Optional[str]:
 
 def esta_calculado() -> bool:
     return bool(_estado)
-
-
-def _precos_publicos_vazios_mas_esperados(resultado: dict) -> bool:
-    """True se precos_publicos vazio mas há posições públicas ativas (qtd > 0).
-
-    Distingue falha de coleta (carteira tem RV mas yfinance retornou nada)
-    de carteira legítima sem RV (precos_publicos vazio é correto).
-    """
-    if resultado.get("precos_publicos"):
-        return False  # tem preços — caminho normal
-    from carteira_clean_web.backend.engine.constantes import COTIZADO_PUBLICO
-    posicoes = resultado.get("posicoes", {})
-    ativos = resultado.get("ativos", {})
-    for tkr, p in posicoes.items():
-        familia = ativos.get(tkr, {}).get("familia", "")
-        if familia in COTIZADO_PUBLICO and p.qtd > 1e-9:
-            return True  # posição pública ativa sem preço = coleta falhou
-    return False
 
 
 def _salvar_disco() -> None:
@@ -101,36 +85,12 @@ def recalcular(db_path: Path = None, no_api: bool = False) -> dict:
         from carteira_clean_web.backend.engine.run import run
         precos_externos = None
         if no_api and _estado:
+            # Preserva benchmarks (CDI/IPCA/IBOV) entre recálculos sem rede.
+            # precos_publicos não é passado: engine lê da tabela cotacoes.
             precos_externos = {
-                "precos_publicos": _estado.get("precos_publicos", {}),
                 "benchmarks": _estado.get("benchmarks", {}),
             }
         resultado = run(db_path=db_path, no_api=no_api, precos_externos=precos_externos)
-
-        # Merge por ticker: quando o fetch atual vier vazio ou parcial, preserva o último
-        # preço bom de cada ticker do estado anterior — nunca zera com falha transitória.
-        if _estado:
-            prev_pp = _estado.get("precos_publicos", {})
-            novo_pp = resultado.get("precos_publicos", {})
-            for tkr, serie in prev_pp.items():
-                if serie and not novo_pp.get(tkr):
-                    novo_pp[tkr] = serie
-                    log.debug(f"precos_merge: {tkr} preservado do estado anterior")
-            resultado["precos_publicos"] = novo_pp
-
-        # Guard anti-envenenamento: coleta yfinance vazia com posições públicas ativas
-        # indica falha de fetch, não carteira sem RV — não deve envenenar o cache.
-        if _precos_publicos_vazios_mas_esperados(resultado):
-            if _estado:
-                log.warning("Coleta yfinance vazia com posições públicas — mantendo estado anterior")
-                return _estado  # não sobrescreve RAM nem disco
-            else:
-                log.warning("Coleta yfinance vazia no primeiro boot — serve em RAM, não persiste pkl")
-                _estado = resultado
-                _calculado_em = datetime.now()
-                _erro = None
-                return resultado  # não chama _salvar_disco()
-
         _estado = resultado
         _calculado_em = datetime.now()
         _erro = None
