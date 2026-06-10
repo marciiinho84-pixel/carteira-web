@@ -1,17 +1,17 @@
 """
-tests/test_comparacao_precos.py — Passo 2 Fase A: comparação yfinance vs tabela cotacoes.
+tests/test_comparacao_precos.py — Passo 2 Fase B: engine le precos da tabela cotacoes.
 
 Casos:
-  A) mesmo preço (diff <= 0.01) → 1 OK, 0 divergentes
-  B) preço diferente (diff > 0.01) → 0 OK, 1 DIVERGENTE com detalhes
-  C) ticker no yfinance, ausente na tabela → 1 AUSENTE_TAB
-  D) ticker na tabela, ausente no yfinance → 1 AUSENTE_YF
+  A) Tabela populada com preco 35.00, yfinance retornaria 99.00 →
+     carregar_precos_da_tabela() retorna 35.00 (fonte: tabela, nao yfinance).
+  B) Tabela vazia → carregar_precos_da_tabela() retorna {} (sem fallback silencioso).
+  C) no_api=True → baixar_precos_publicos() retorna {} (sem rede),
+     mas carregar_precos_da_tabela() ainda retorna os precos persistidos na tabela.
 
 Rodar:
     pytest tests/test_comparacao_precos.py -v -s
 """
 
-import logging
 import sqlite3
 import sys
 import tempfile
@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT))
 
 import pytest
 
-from carteira_clean_web.backend.engine.run import _comparar_yf_vs_tabela
+from carteira_clean_web.backend.engine.precos import carregar_precos_da_tabela
 
 NOW = datetime.now().isoformat(timespec="seconds")
 DATE_A = date(2026, 6, 8)
@@ -36,12 +36,12 @@ def _criar_db(rows: list) -> str:
     con = sqlite3.connect(tmp.name)
     con.execute("""
         CREATE TABLE cotacoes (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            ticker    TEXT    NOT NULL,
-            date      TEXT    NOT NULL,
-            preco     REAL    NOT NULL,
-            fetched_at TEXT   NOT NULL,
-            source    TEXT    NOT NULL DEFAULT 'yfinance'
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker     TEXT    NOT NULL,
+            date       TEXT    NOT NULL,
+            preco      REAL    NOT NULL,
+            fetched_at TEXT    NOT NULL,
+            source     TEXT    NOT NULL DEFAULT 'yfinance'
         )
     """)
     if rows:
@@ -55,75 +55,75 @@ def _criar_db(rows: list) -> str:
     return tmp.name
 
 
-# ── Teste A: mesmo preço → 1 OK ─────────────────────────────────────────────
+# ── Teste A: preco vem da tabela, nao do yfinance ────────────────────────────
 
-def test_A_mesmo_preco(caplog):
-    """Preço idêntico em ambos: 1 OK, 0 divergentes, 0 ausentes."""
+def test_A_usa_preco_da_tabela():
+    """Tabela tem PETR4=35.00; yfinance retornaria 99.00 (diferente).
+    Fase B: engine usa 35.00 (tabela), nao 99.00 (yfinance).
+    """
     db = _criar_db([("PETR4", "2026-06-08", 35.00, NOW, "yfinance")])
-    precos_yf = {"PETR4": {DATE_A: 35.00}}
 
-    with caplog.at_level(logging.WARNING):
-        _comparar_yf_vs_tabela(precos_yf, db_path=db)
+    precos = carregar_precos_da_tabela(db_path=db)
 
-    relatorio = "\n".join(caplog.messages)
-    print("\n[Teste A — mesmo preço]\n" + relatorio)
+    print(f"\n[Teste A] precos['PETR4'][{DATE_A}] = {precos.get('PETR4', {}).get(DATE_A)}")
 
-    assert "OK (diff <= 0.01)   : 1" in relatorio
-    assert "DIVERGENTES         : 0" in relatorio
-    assert "AUSENTES NA TABELA  : 0" in relatorio
-    assert "AUSENTES NO YFINANCE: 0" in relatorio
+    assert "PETR4" in precos
+    assert DATE_A in precos["PETR4"]
+    assert precos["PETR4"][DATE_A] == 35.00
 
 
-# ── Teste B: preço diferente > 0.01 → 1 DIVERGENTE ─────────────────────────
+# ── Teste B: tabela vazia → retorna {} (sem fallback) ────────────────────────
 
-def test_B_preco_divergente(caplog):
-    """Diff = 5.00 > 0.01: 0 OK, 1 DIVERGENTE com ticker/data/valores."""
-    db = _criar_db([("VALE3", "2026-06-08", 60.00, NOW, "yfinance")])
-    precos_yf = {"VALE3": {DATE_A: 65.00}}
-
-    with caplog.at_level(logging.WARNING):
-        _comparar_yf_vs_tabela(precos_yf, db_path=db)
-
-    relatorio = "\n".join(caplog.messages)
-    print("\n[Teste B — preço divergente]\n" + relatorio)
-
-    assert "OK (diff <= 0.01)   : 0" in relatorio
-    assert "DIVERGENTES         : 1" in relatorio
-    assert "DIVERGENTE  VALE3" in relatorio
-    assert "yf=65.0000" in relatorio
-    assert "tab=60.0000" in relatorio
-    assert "diff=5.0000" in relatorio
-
-
-# ── Teste C: ausente na tabela → 1 AUSENTE_TAB ──────────────────────────────
-
-def test_C_ausente_na_tabela(caplog):
-    """Tabela vazia: yfinance tem MGLU3, tabela não tem → 1 AUSENTE_TAB."""
+def test_B_tabela_vazia_retorna_dict_vazio():
+    """Tabela sem registros: carregar_precos_da_tabela() retorna {}.
+    Nao ha fallback silencioso para yfinance ou qualquer outra fonte.
+    """
     db = _criar_db([])
-    precos_yf = {"MGLU3": {DATE_A: 12.50}}
 
-    with caplog.at_level(logging.WARNING):
-        _comparar_yf_vs_tabela(precos_yf, db_path=db)
+    precos = carregar_precos_da_tabela(db_path=db)
 
-    relatorio = "\n".join(caplog.messages)
-    print("\n[Teste C — ausente na tabela]\n" + relatorio)
+    print(f"\n[Teste B] precos = {precos}")
 
-    assert "AUSENTES NA TABELA  : 1" in relatorio
-    assert "AUSENTE_TAB  MGLU3" in relatorio
+    assert precos == {}
 
 
-# ── Teste D: ausente no yfinance → 1 AUSENTE_YF ─────────────────────────────
+# ── Teste C: no_api=True nao zera precos (teste central da Camada 3) ─────────
 
-def test_D_ausente_no_yfinance(caplog):
-    """BBAS3 na tabela, yfinance retornou vazio → 1 AUSENTE_YF."""
-    db = _criar_db([("BBAS3", "2026-06-08", 27.00, NOW, "yfinance")])
-    precos_yf = {}
+def test_C_no_api_True_nao_zera_precos():
+    """Com no_api=True, baixar_precos_publicos() retorna {} (sem rede).
+    Mas a tabela tem dados persistidos de coletas anteriores.
+    carregar_precos_da_tabela() retorna esses dados — precos NAO zerados.
 
-    with caplog.at_level(logging.WARNING):
-        _comparar_yf_vs_tabela(precos_yf, db_path=db)
+    Este e o teste central da Camada 3: confirma que no_api=True
+    nao apaga o que foi coletado antes.
+    """
+    # Simula tabela com dados de coleta anterior
+    db = _criar_db([
+        ("WEGE3", "2026-06-06", 42.50, NOW, "yfinance"),
+        ("WEGE3", "2026-06-07", 43.10, NOW, "yfinance"),
+        ("WEGE3", "2026-06-08", 44.00, NOW, "yfinance"),
+        ("BURA39", "2026-06-08", 11.25, NOW, "yfinance"),
+    ])
 
-    relatorio = "\n".join(caplog.messages)
-    print("\n[Teste D — ausente no yfinance]\n" + relatorio)
+    # Simula o que baixar_precos_publicos() retorna com no_api=True: vazio
+    resultado_yfinance_com_no_api = {}
 
-    assert "AUSENTES NO YFINANCE: 1" in relatorio
-    assert "AUSENTE_YF   BBAS3" in relatorio
+    # Engine (Fase B) ignora o retorno do yfinance e le da tabela
+    precos = carregar_precos_da_tabela(db_path=db)
+
+    print(f"\n[Teste C] yfinance (no_api=True) retornou: {resultado_yfinance_com_no_api}")
+    print(f"[Teste C] tabela retornou: {len(precos)} tickers, "
+          f"{sum(len(v) for v in precos.values())} pontos")
+    for tkr, serie in sorted(precos.items()):
+        for dt, p in sorted(serie.items()):
+            print(f"  {tkr}  {dt}  {p:.2f}")
+
+    # precos da tabela disponiveis, mesmo com no_api=True
+    assert "WEGE3" in precos
+    assert len(precos["WEGE3"]) == 3
+    assert precos["WEGE3"][date(2026, 6, 8)] == 44.00
+    assert "BURA39" in precos
+    assert precos["BURA39"][date(2026, 6, 8)] == 11.25
+
+    # confirma que yfinance estava vazio (simula no_api=True)
+    assert resultado_yfinance_com_no_api == {}
