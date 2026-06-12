@@ -181,6 +181,8 @@ class EvolucaoDiariaOut(BaseModel):
     ipca_acum: float
     ibov_acum: float
     sp500_brl_acum: float
+    nasdaq_brl_acum: float = 0.0
+    ouro_brl_acum: float = 0.0
     drawdown: Optional[float] = None
 
 

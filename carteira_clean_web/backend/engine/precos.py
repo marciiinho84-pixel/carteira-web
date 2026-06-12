@@ -225,6 +225,45 @@ def carregar_precos_da_tabela(db_path: str = None) -> dict:
     return out
 
 
+def carregar_benchmarks_da_tabela(db_path: str = None) -> dict:
+    """Carrega benchmarks da tabela como {nome: {date: valor}}.
+
+    Para cada (nome, date) usa a linha com fetched_at mais recente.
+    Formato idêntico ao estado["benchmarks"] — substituto drop-in.
+    Retorna {} se a tabela não existir ou houver erro (não lança exceção).
+    """
+    import sqlite3 as _sqlite3
+    from datetime import date as _date
+
+    path = db_path or os.environ.get("DB_PATH") or str(
+        Path(__file__).resolve().parents[2] / "carteira.db"
+    )
+    try:
+        con = _sqlite3.connect(path)
+        rows = con.execute(
+            "SELECT nome, date, valor FROM benchmarks b "
+            "WHERE fetched_at = ("
+            "  SELECT MAX(fetched_at) FROM benchmarks "
+            "  WHERE nome = b.nome AND date = b.date"
+            ")"
+        ).fetchall()
+        con.close()
+    except Exception as e:
+        log.warning(f"carregar_benchmarks_da_tabela: falha — {e}")
+        return {}
+
+    out: dict = {}
+    for nome, dt_str, valor in rows:
+        if nome not in out:
+            out[nome] = {}
+        try:
+            dt = _date.fromisoformat(dt_str)
+        except Exception:
+            continue
+        out[nome][dt] = float(valor)
+    return out
+
+
 def _gravar_benchmarks(nome: str, serie: dict, source: str) -> None:
     """Persiste série de benchmark na tabela append-only benchmarks (variante A).
 

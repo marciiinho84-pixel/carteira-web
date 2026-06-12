@@ -174,6 +174,8 @@ def evolucao(
             ipca_acum=row.ipca_acum,
             ibov_acum=row.ibov_acum,
             sp500_brl_acum=row.sp500_brl_acum,
+            nasdaq_brl_acum=getattr(row, "nasdaq_brl_acum", 0.0),
+            ouro_brl_acum=getattr(row, "ouro_brl_acum", 0.0),
             drawdown=round(float(row.drawdown), 6) if hasattr(row, "drawdown") else None,
         )
         for row in df.itertuples(index=False)
