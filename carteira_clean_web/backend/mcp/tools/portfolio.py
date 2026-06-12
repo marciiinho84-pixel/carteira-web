@@ -707,3 +707,64 @@ def fn_obter_analise_rv() -> dict:
         "watchlist": watchlist_result.get("itens", []),
         "alertas": posicoes_result.get("alertas", []),
     }
+
+
+# ── TOOL 9 — ATRIBUIÇÃO MENSAL ───────────────────────────────────
+
+def fn_atribuicao(
+    mes: str | None = None,
+    composite: str | None = None,
+    bloco_ips: str | None = None,
+) -> dict:
+    """Retorna atribuição mensal: quais ativos contribuíram para a performance.
+
+    Parâmetros opcionais:
+      - mes: "YYYY-MM" (ex: "2026-05"). Sem filtro → todos os meses.
+      - composite: "Gerida", "FUNCEF" ou "TOTAL_CARTEIRA".
+      - bloco_ips: "SWING_TRADE", "GROWTH", "RENDA_FIXA", "DEFENSIVOS" ou "FORA_IPS".
+
+    Inclui linhas TOTAL por (mes, composite) e TOTAL_CARTEIRA por mes.
+    """
+    if not engine_cache.esta_calculado():
+        engine_cache.carregar_disco()
+    if not engine_cache.esta_calculado():
+        return {"erro": "Cache vazio. Recalcule a carteira antes de usar o assistente."}
+
+    estado = engine_cache.get_estado()
+    df = estado.get("df_atrib")
+    if df is None or df.empty:
+        return {"erro": "Sem dados de atribuição. Recalcule a carteira."}
+
+    if mes:
+        df = df[df["mes"] == mes]
+    if composite:
+        df = df[df["composite"] == composite]
+    if bloco_ips:
+        df = df[df["bloco_ips"].fillna("") == bloco_ips]
+
+    if df.empty:
+        return {"total": 0, "atribuicao": [], "resumo_totais": []}
+
+    rows = []
+    for row in df.itertuples(index=False):
+        rows.append({
+            "mes": row.mes,
+            "composite": row.composite,
+            "ativo": row.ativo,
+            "retorno_pct": round(row.retorno_ativo * 100, 2),
+            "peso_pct": round(row.peso_medio * 100, 1),
+            "contribuicao_pp": round(row.contribuicao * 100, 2),
+            "benchmark": getattr(row, "benchmark", None),
+            "bloco_ips": getattr(row, "bloco_ips", None),
+        })
+
+    totais = [r for r in rows if r["ativo"] == "TOTAL"]
+    individuais = [r for r in rows if r["ativo"] != "TOTAL"]
+    meses_disp = sorted(df["mes"].unique().tolist())
+
+    return {
+        "total": len(rows),
+        "meses_disponiveis": meses_disp,
+        "resumo_totais": totais,
+        "atribuicao": individuais,
+    }

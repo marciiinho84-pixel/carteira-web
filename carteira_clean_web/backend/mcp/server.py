@@ -11,6 +11,7 @@ Uso:
 from fastmcp import FastMCP
 from carteira_clean_web.backend.mcp.tools.portfolio import (
     fn_obter_posicoes, fn_obter_performance, fn_obter_cotacao,
+    fn_atribuicao,
 )
 
 mcp = FastMCP(
@@ -82,6 +83,33 @@ def obter_performance(periodo: str = "ytd", benchmark: str = "ambos") -> dict:
 )
 def obter_cotacao(ticker: str) -> dict:
     return fn_obter_cotacao(ticker)
+
+
+@mcp.tool(
+    description="""
+    Retorna a atribuição mensal de performance da carteira:
+    quais ativos contribuíram (positiva ou negativamente) para o retorno.
+
+    Parâmetros opcionais:
+    - mes: "YYYY-MM" (ex: "2026-05"). Sem filtro → todos os meses.
+    - composite: "Gerida", "FUNCEF" ou "TOTAL_CARTEIRA".
+    - bloco_ips: "SWING_TRADE", "GROWTH", "RENDA_FIXA", "DEFENSIVOS" ou "FORA_IPS".
+
+    Inclui linhas TOTAL por composite (retorno ponderado do bloco) e
+    TOTAL_CARTEIRA (retorno total da carteira no mês).
+
+    Use quando o usuário perguntar sobre:
+    quais ativos contribuíram mais, performance por bloco IPS,
+    atribuição de retorno, o que puxou a carteira para cima/baixo,
+    como foi o bloco Growth este mês, contribuição de cada ativo.
+    """
+)
+def obter_atribuicao(
+    mes: str = None,
+    composite: str = None,
+    bloco_ips: str = None,
+) -> dict:
+    return fn_atribuicao(mes, composite, bloco_ips)
 
 
 if __name__ == "__main__":

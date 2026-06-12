@@ -248,6 +248,7 @@ class AtribuicaoOut(BaseModel):
     peso_medio: float
     contribuicao: float
     benchmark: Optional[str] = None
+    bloco_ips: Optional[str] = None
 
 
 class CarteiraRVOut(BaseModel):

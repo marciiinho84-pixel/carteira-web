@@ -3,6 +3,7 @@ GET /api/v1/posicoes
 GET /api/v1/evolucao?from=...&to=...
 GET /api/v1/carteira-rv
 GET /api/v1/atribuicao?mes=...
+GET /api/v1/atribuicao-mensal?mes=...&composite=...&bloco_ips=...
 GET /api/v1/meta
 GET /api/v1/dashboard
 GET /api/v1/precos/{ticker}?from=...&to=...
@@ -448,6 +449,22 @@ def carteira_rv():
 
 # ─── Atribuição mensal ────────────────────────────────────────────
 
+def _atrib_rows(df) -> list[AtribuicaoOut]:
+    return [
+        AtribuicaoOut(
+            mes=row.mes,
+            composite=row.composite,
+            ativo=row.ativo,
+            retorno_ativo=row.retorno_ativo,
+            peso_medio=row.peso_medio,
+            contribuicao=row.contribuicao,
+            benchmark=getattr(row, "benchmark", None),
+            bloco_ips=getattr(row, "bloco_ips", None),
+        )
+        for row in df.itertuples(index=False)
+    ]
+
+
 @router.get("/atribuicao", response_model=list[AtribuicaoOut])
 def atribuicao(mes: Optional[str] = Query(None, description="Formato YYYY-MM")):
     """Atribuição mensal (long format: mês × ativo). Filtro opcional por mês."""
@@ -457,18 +474,27 @@ def atribuicao(mes: Optional[str] = Query(None, description="Formato YYYY-MM")):
         return []
     if mes:
         df = df[df["mes"] == mes]
-    return [
-        AtribuicaoOut(
-            mes=row.mes,
-            composite=row.composite,
-            ativo=row.ativo,
-            retorno_ativo=row.retorno_ativo,
-            peso_medio=row.peso_medio,
-            contribuicao=row.contribuicao,
-            benchmark=row.benchmark if hasattr(row, "benchmark") else None,
-        )
-        for row in df.itertuples(index=False)
-    ]
+    return _atrib_rows(df)
+
+
+@router.get("/atribuicao-mensal", response_model=list[AtribuicaoOut])
+def atribuicao_mensal(
+    mes: Optional[str] = Query(None, description="Formato YYYY-MM"),
+    composite: Optional[str] = Query(None, description="Gerida / FUNCEF / TOTAL_CARTEIRA"),
+    bloco_ips: Optional[str] = Query(None, description="SWING_TRADE / GROWTH / RENDA_FIXA / DEFENSIVOS / FORA_IPS"),
+):
+    """Atribuição mensal com filtros por mês, composite e bloco IPS. Inclui linhas TOTAL."""
+    estado = _exige_cache()
+    df = estado["df_atrib"]
+    if df.empty:
+        return []
+    if mes:
+        df = df[df["mes"] == mes]
+    if composite:
+        df = df[df["composite"] == composite]
+    if bloco_ips:
+        df = df[df["bloco_ips"].fillna("") == bloco_ips]
+    return _atrib_rows(df)
 
 
 # ─── Relatório de vendas ──────────────────────────────────────────

@@ -14,6 +14,10 @@ from .constantes import DATA_INICIO, COTIZADO_PUBLICO, AGREGADO_PRIVADO, COMPRAS
 from .posicoes import Posicao
 from .utils import preco_em, bdate_range
 
+# Benchmark composto da IPS para o composite Gerida
+_BENCH_GERIDA = "30%IBOV+20%NasdaqBRL+20%OuroBRL+30%CDI"
+_BENCH_FUNCEF = "CDI"
+
 
 def calc_atribuicao_mensal(
     eventos: list,
@@ -74,7 +78,11 @@ def calc_atribuicao_mensal(
                 continue
             valores_diarios[(d, tkr)] = valor_pos
 
+    # patrimônio médio por (mes, composite) — usado para TOTAL_CARTEIRA ponderado
+    pat_por_mes = {}  # {(mes_str, composite): float}
+
     for ano, mes in meses:
+        mes_str = f"{ano}-{mes:02d}"
         dias_mes = [d for d in datas_uteis if d.year == ano and d.month == mes]
         if not dias_mes:
             continue
@@ -98,6 +106,9 @@ def calc_atribuicao_mensal(
         pat_medio_gerida /= len(dias_mes)
         pat_medio_funcef /= len(dias_mes)
 
+        pat_por_mes[(mes_str, "Gerida")] = pat_medio_gerida
+        pat_por_mes[(mes_str, "FUNCEF")] = pat_medio_funcef
+
         ativos_mes = set(t for d in dias_mes for (dt, t) in valores_diarios.keys() if dt == d)
         for tkr in sorted(ativos_mes):
             v_ini = valores_diarios.get((d_ini, tkr), 0)
@@ -116,14 +127,55 @@ def calc_atribuicao_mensal(
             peso_pct = peso_medio / denom if denom > 0 else 0
             contribuicao = retorno * peso_pct
             bench = ativos.get(tkr, {}).get("benchmark", "")
+            bloco = ativos.get(tkr, {}).get("bloco_ips")
             linhas.append({
-                "mes": f"{ano}-{mes:02d}",
+                "mes": mes_str,
                 "composite": composite,
                 "ativo": tkr,
                 "retorno_ativo": retorno,
                 "peso_medio": peso_pct,
                 "contribuicao": contribuicao,
                 "benchmark": bench,
+                "bloco_ips": bloco,
+            })
+
+    # ── Linhas TOTAL por (mes, composite) e TOTAL_CARTEIRA por mes ──────────
+    if linhas:
+        df_ind = pd.DataFrame(linhas)
+
+        for (mes_str, composite), grp in df_ind.groupby(["mes", "composite"]):
+            contr = grp["contribuicao"].sum()
+            bench = _BENCH_FUNCEF if composite == "FUNCEF" else _BENCH_GERIDA
+            linhas.append({
+                "mes": mes_str,
+                "composite": composite,
+                "ativo": "TOTAL",
+                "retorno_ativo": contr,
+                "peso_medio": 1.0,
+                "contribuicao": contr,
+                "benchmark": bench,
+                "bloco_ips": None,
+            })
+
+        for mes_str, grp in df_ind.groupby("mes"):
+            pat_g = pat_por_mes.get((mes_str, "Gerida"), 0.0)
+            pat_f = pat_por_mes.get((mes_str, "FUNCEF"), 0.0)
+            pat_total = pat_g + pat_f
+            ret_g = grp[grp["composite"] == "Gerida"]["contribuicao"].sum()
+            ret_f = grp[grp["composite"] == "FUNCEF"]["contribuicao"].sum()
+            if pat_total > 0:
+                retorno_carteira = (ret_g * pat_g + ret_f * pat_f) / pat_total
+            else:
+                retorno_carteira = ret_g + ret_f
+            linhas.append({
+                "mes": mes_str,
+                "composite": "TOTAL_CARTEIRA",
+                "ativo": "TOTAL",
+                "retorno_ativo": retorno_carteira,
+                "peso_medio": 1.0,
+                "contribuicao": retorno_carteira,
+                "benchmark": _BENCH_GERIDA,
+                "bloco_ips": None,
             })
 
     return pd.DataFrame(linhas)
