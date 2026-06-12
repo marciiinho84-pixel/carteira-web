@@ -24,13 +24,21 @@ A **FUNCEF** (e o CAIXA FIC FUNC vinculado a ela) está **fora da atribuição**
 
 Ações brasileiras negociadas na B3 e ETFs de índices domésticos. Teses táticas com horizonte de semanas a meses, aproveitando volatilidade de curto prazo com fundamento macroeconômico ou de resultado. Benchmark: IBOV.
 
+**Decisões conscientes de classificação neste bloco:**
+
+- **DIVO11** (ETF Dividendos BR): buy-and-hold de ações brasileiras pagadoras de dividendos. Medido contra IBOV — correto, pois a carteira do fundo é integralmente de ações da B3. O baixo giro não contradiz o bloco; "Swing" nomeia o conjunto de exposição doméstica em RV, não o estilo de operação.
+
+- **AURA33** (BDR — Aura Minerals, mineradora de ouro): beta de Renda Variável, não replica ouro físico. Em Defensivos distorceria o efeito-seleção do bloco vs. benchmark Ouro BRL; em Swing Trade compete contra o IBOV, que é o benchmark correto para uma ação de mineradora listada.
+
 ### 2.2 Growth — alvo 20%, banda 10%–30%
 
 BDRs e ETFs de teses estruturais de longo prazo: inteligência artificial, semicondutores, aeroespacial, robótica, biotecnologia, fintechs digitais, transição energética (lítio, urânio, terras raras). Horizonte multi-ano; tolerância a volatilidade elevada. Benchmark: Nasdaq Composite (cotado em BRL).
 
 ### 2.3 Defensivos — alvo 20%, banda 15%–25%
 
-Metais preciosos (ouro, prata) e ativos descorrelacionados do ciclo de risco. Função: proteção de patrimônio em crises e hedge cambial. Benchmark: Ouro à vista (cotado em BRL).
+Instrumentos que replicam diretamente o preço de metais preciosos (ETFs de ouro/prata, fundos indexados a commodities). Função: proteção de patrimônio em crises e hedge cambial. Benchmark: Ouro à vista (cotado em BRL).
+
+> Ações de mineradoras (ex: AURA33) são classificadas em Swing Trade — o bloco Defensivos é reservado para instrumentos que replicam o metal, não para empresas do setor.
 
 ### 2.4 Renda Fixa — alvo 30%, banda 25%–35%
 
