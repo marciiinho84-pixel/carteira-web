@@ -26,44 +26,6 @@ from .utils import preco_em
 
 log = logging.getLogger("engine.twr")
 
-# Benchmarks validados via tabela na Fase A (antes do corte de produção)
-_BENCHMARKS_FASE_A = frozenset({"CDI", "IBOV", "SP500", "USDBRL", "IPCA"})
-
-
-def _comparar_benchmarks(benchmarks_pkl: dict, benchmarks_tabela: dict) -> dict:
-    """Compara pkl vs tabela para os 5 benchmarks existentes (Fase A).
-
-    Returns:
-        ok, divergentes, ausentes_tab, ausentes_pkl, detalhes:
-        detalhes = [(categoria, nome, dt, v_pkl, v_tab, rel_ou_None)]
-    """
-    ok = div = aus_tab = aus_pkl = 0
-    detalhes: list = []
-    for nome in sorted(_BENCHMARKS_FASE_A):
-        s_pkl = benchmarks_pkl.get(nome, {})
-        s_tab = benchmarks_tabela.get(nome, {})
-        for dt in sorted(set(s_pkl) | set(s_tab)):
-            v_p = s_pkl.get(dt)
-            v_t = s_tab.get(dt)
-            if v_p is None:
-                aus_pkl += 1
-                detalhes.append(("AUSENTE_PKL", nome, dt, None, v_t, None))
-            elif v_t is None:
-                aus_tab += 1
-                detalhes.append(("AUSENTE_TAB", nome, dt, v_p, None, None))
-            else:
-                rel = abs(v_p - v_t) / abs(v_p) if abs(v_p) > 1e-12 else 0.0
-                if rel <= 1e-5:
-                    ok += 1
-                else:
-                    div += 1
-                    detalhes.append(("DIVERGENTE", nome, dt, v_p, v_t, rel))
-    return {
-        "ok": ok, "divergentes": div,
-        "ausentes_tab": aus_tab, "ausentes_pkl": aus_pkl,
-        "detalhes": detalhes,
-    }
-
 
 def calc_evolucao_diaria(
     eventos: list,
@@ -149,7 +111,6 @@ def calc_evolucao_diaria(
 def calc_twr_e_benchmarks(
     df_evo: pd.DataFrame,
     eventos: list,
-    benchmarks: dict,
     aportes_inferidos: list = None,
     ativos: dict = None,
 ) -> pd.DataFrame:
@@ -212,106 +173,76 @@ def calc_twr_e_benchmarks(
         else 0
     )
 
-    cdi = benchmarks.get("CDI", {})
-    ipca = benchmarks.get("IPCA", {})
-    ibov = benchmarks.get("IBOV", {})
-    sp500 = benchmarks.get("SP500", {})
-    usdbrl = benchmarks.get("USDBRL", {})
+    # Fase B: todos os benchmarks lidos da tabela (fonte única de verdade)
+    benchmarks = carregar_benchmarks_da_tabela()
 
-    cdi_acum, ipca_acum, ibov_acum, sp_brl_acum = [], [], [], []
-    cdi_v, ipca_v = 1.0, 1.0
-    ibov_base = sp_base_brl = None
+    cdi    = benchmarks.get("CDI",    {})
+    ipca   = benchmarks.get("IPCA",   {})
+    ibov   = benchmarks.get("IBOV",   {})
+    sp500  = benchmarks.get("SP500",  {})
+    usdbrl = benchmarks.get("USDBRL", {})
+    nasdaq = benchmarks.get("NASDAQ", {})
+    ouro   = benchmarks.get("OURO",   {})
+
+    cdi_acum, ipca_acum, ibov_acum = [], [], []
+    sp_brl_acum, nasdaq_brl_acum_, ouro_brl_acum_ = [], [], []
+
+    cdi_v = ipca_v = 1.0
+    ibov_base = sp_base_brl = ndx_base_brl = ouro_base_brl = None
 
     for d in df["data"]:
         if d in cdi:
             cdi_v *= 1 + cdi[d]
         cdi_acum.append(cdi_v - 1)
+
         if d in ipca:
             ipca_v *= 1 + ipca[d]
         ipca_acum.append(ipca_v - 1)
+
         ibov_p = preco_em(ibov, d)
         if ibov_base is None and ibov_p:
             ibov_base = ibov_p
         ibov_acum.append((ibov_p / ibov_base - 1) if ibov_base and ibov_p else 0)
-        sp_p = preco_em(sp500, d)
+
         usd = preco_em(usdbrl, d)
+
+        sp_p = preco_em(sp500, d)
         if sp_p and usd:
             sp_brl = sp_p * usd
             if sp_base_brl is None:
                 sp_base_brl = sp_brl
             sp_brl_acum.append(sp_brl / sp_base_brl - 1)
         else:
-            sp_brl_acum.append(sp_brl_acum[-1] if sp_brl_acum else 0)
+            sp_brl_acum.append(sp_brl_acum[-1] if sp_brl_acum else 0.0)
 
-    df["cdi_acum"] = cdi_acum
-    df["ipca_acum"] = ipca_acum
-    df["ibov_acum"] = ibov_acum
+        ndx_p = preco_em(nasdaq, d)
+        if ndx_p and usd:
+            ndx_brl = ndx_p * usd
+            if ndx_base_brl is None:
+                ndx_base_brl = ndx_brl
+            nasdaq_brl_acum_.append(ndx_brl / ndx_base_brl - 1)
+        else:
+            nasdaq_brl_acum_.append(nasdaq_brl_acum_[-1] if nasdaq_brl_acum_ else 0.0)
+
+        ouro_p = preco_em(ouro, d)
+        if ouro_p and usd:
+            ouro_brl = ouro_p * usd
+            if ouro_base_brl is None:
+                ouro_base_brl = ouro_brl
+            ouro_brl_acum_.append(ouro_brl / ouro_base_brl - 1)
+        else:
+            ouro_brl_acum_.append(ouro_brl_acum_[-1] if ouro_brl_acum_ else 0.0)
+
+    df["cdi_acum"]       = cdi_acum
+    df["ipca_acum"]      = ipca_acum
+    df["ibov_acum"]      = ibov_acum
     df["sp500_brl_acum"] = sp_brl_acum
+    df["nasdaq_brl_acum"] = nasdaq_brl_acum_
+    df["ouro_brl_acum"]   = ouro_brl_acum_
 
     # Drawdown da Gerida: queda % do pico histórico (sempre ≤ 0)
     max_gerida = df["patrimonio_gerida"].cummax()
     denom = max_gerida.where(max_gerida > 0, other=1.0)
     df["drawdown"] = ((df["patrimonio_gerida"] - max_gerida) / denom).clip(upper=0)
-
-    # ── Fase A: comparação tabela vs pkl + NASDAQ/OURO via tabela ────────────
-    try:
-        benchmarks_tabela = carregar_benchmarks_da_tabela()
-
-        # Comparação 5 benchmarks existentes (produção segue lendo pkl)
-        stats = _comparar_benchmarks(benchmarks, benchmarks_tabela)
-        total = stats["ok"] + stats["divergentes"] + stats["ausentes_tab"] + stats["ausentes_pkl"]
-        if stats["divergentes"] or stats["ausentes_tab"]:
-            log.warning(
-                f"benchmarks Fase A — {total} pares: OK={stats['ok']}  "
-                f"DIVERGENTES={stats['divergentes']}  "
-                f"AUSENTES_TAB={stats['ausentes_tab']}  AUSENTES_PKL={stats['ausentes_pkl']}"
-            )
-            for cat, nome, dt, v_p, v_t, rel in stats["detalhes"][:20]:
-                if cat == "DIVERGENTE":
-                    log.warning(
-                        f"  {cat} {nome} {dt}: pkl={v_p:.6g}  tab={v_t:.6g}  rel={rel:.2e}"
-                    )
-                elif cat == "AUSENTE_TAB":
-                    log.warning(f"  {cat} {nome} {dt}: pkl={v_p:.6g}")
-        else:
-            log.info(f"benchmarks Fase A — {total} pares OK, 0 divergências (tabela ≡ pkl)")
-
-        # NASDAQ e OURO: funcionalidade nova via tabela (sem corte de produção)
-        nasdaq_tab = benchmarks_tabela.get("NASDAQ", {})
-        ouro_tab   = benchmarks_tabela.get("OURO", {})
-        usdbrl_tab = benchmarks_tabela.get("USDBRL", {})
-
-        ndx_base_brl = ouro_base_brl = None
-        nasdaq_brl_acum_: list = []
-        ouro_brl_acum_: list = []
-
-        for d in df["data"]:
-            usd = preco_em(usdbrl_tab, d) or preco_em(usdbrl, d)
-
-            ndx_p = preco_em(nasdaq_tab, d)
-            if ndx_p and usd:
-                ndx_brl = ndx_p * usd
-                if ndx_base_brl is None:
-                    ndx_base_brl = ndx_brl
-                nasdaq_brl_acum_.append(ndx_brl / ndx_base_brl - 1)
-            else:
-                nasdaq_brl_acum_.append(nasdaq_brl_acum_[-1] if nasdaq_brl_acum_ else 0.0)
-
-            ouro_p = preco_em(ouro_tab, d)
-            if ouro_p and usd:
-                ouro_brl = ouro_p * usd
-                if ouro_base_brl is None:
-                    ouro_base_brl = ouro_brl
-                ouro_brl_acum_.append(ouro_brl / ouro_base_brl - 1)
-            else:
-                ouro_brl_acum_.append(ouro_brl_acum_[-1] if ouro_brl_acum_ else 0.0)
-
-        df["nasdaq_brl_acum"] = nasdaq_brl_acum_
-        df["ouro_brl_acum"]   = ouro_brl_acum_
-
-    except Exception as e:
-        log.warning(f"benchmarks Fase A: erro (não crítico) — {e}")
-        df["nasdaq_brl_acum"] = 0.0
-        df["ouro_brl_acum"]   = 0.0
 
     return df

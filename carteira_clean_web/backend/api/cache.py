@@ -6,9 +6,9 @@ Fluxo:
   - Restart do servidor → lifespan carrega o pickle (sem refazer cálculo)
   - Dados mudam (novo evento, preço) → recalcular() automaticamente após cada mutação
 
-O pickle persiste o estado calculado (posições, performance, alertas, benchmarks)
-para boot rápido após restart. Cotações públicas sobrevivem ao restart via tabela
-cotacoes (Camada 3 — fonte única de verdade).
+O pickle persiste o estado calculado (posições, performance, alertas)
+para boot rápido após restart. Cotações e benchmarks sobrevivem ao restart via
+tabelas cotacoes e benchmarks (Camada 3 — fonte única de verdade).
 """
 
 import logging
@@ -83,14 +83,7 @@ def recalcular(db_path: Path = None, no_api: bool = False) -> dict:
     global _estado, _calculado_em, _erro
     try:
         from carteira_clean_web.backend.engine.run import run
-        precos_externos = None
-        if no_api and _estado:
-            # Preserva benchmarks (CDI/IPCA/IBOV) entre recálculos sem rede.
-            # precos_publicos não é passado: engine lê da tabela cotacoes.
-            precos_externos = {
-                "benchmarks": _estado.get("benchmarks", {}),
-            }
-        resultado = run(db_path=db_path, no_api=no_api, precos_externos=precos_externos)
+        resultado = run(db_path=db_path, no_api=no_api)
         _estado = resultado
         _calculado_em = datetime.now()
         _erro = None

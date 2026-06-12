@@ -48,15 +48,8 @@ def run(
     db_path: Path = None,
     no_api: bool = False,
     verbose: bool = False,
-    precos_externos: dict = None,
 ) -> dict:
     """Executa o engine completo e retorna resultados.
-
-    Args:
-        precos_externos: dict com chave 'benchmarks' já fetchada.
-                         Quando fornecido, pula o download de benchmarks e yfinance.
-                         Usado para preservar benchmarks entre recálculos automáticos.
-                         'precos_publicos' em precos_externos é ignorado (Fase B: fonte é a tabela).
 
     Returns dict com chaves:
       ativos, eventos, precos_manuais, posicoes, vendas_rv, vendas_rf,
@@ -78,13 +71,9 @@ def run(
     from carteira_clean_web.backend.engine.constantes import DATA_INICIO
     tickers_pub = [t for t, info in ativos.items() if info.get("familia") in COTIZADO_PUBLICO]
 
-    if precos_externos:
-        benchmarks = precos_externos.get("benchmarks", {})
-        log.info("  • Benchmarks do cache — yfinance pulado")
-    else:
-        # Coleta do yfinance → grava na tabela cotacoes (Passo 1); retorno descartado
-        baixar_precos_publicos(tickers_pub, DATA_INICIO, hoje, no_api)
-        benchmarks = baixar_benchmarks(DATA_INICIO, hoje, no_api)
+    # Fase B: cotações e benchmarks vêm da tabela; downloads inserem lá (no_api respeita flag)
+    baixar_precos_publicos(tickers_pub, DATA_INICIO, hoje, no_api)
+    baixar_benchmarks(DATA_INICIO, hoje, no_api)  # insere na tabela; retorno descartado
 
     # Fase B: precos_publicos vem da tabela cotacoes (fonte única de verdade)
     db_str = str(db_path) if db_path else None
@@ -141,7 +130,7 @@ def run(
     log.info(f"  • {len(aportes_inferidos)} APORTEs externos inferidos")
     log.info(f"    Total inferido: R$ {sum(a['valor'] for a in aportes_inferidos):,.2f}")
     log.info(f"    Saldo residual: R$ {saldo_residual:,.2f}")
-    df_evo = calc_twr_e_benchmarks(df_evo, eventos, benchmarks, aportes_inferidos, ativos)
+    df_evo = calc_twr_e_benchmarks(df_evo, eventos, aportes_inferidos, ativos)
     if not df_evo.empty:
         ult = df_evo.iloc[-1]
         log.info(f"  • Patrimônio em {ult['data']}: R$ {ult['patrimonio_total']:,.2f}")
@@ -170,7 +159,6 @@ def run(
         "eventos": eventos,
         "precos_manuais": precos_manuais,
         "precos_publicos": precos_publicos,
-        "benchmarks": benchmarks,
         "posicoes": posicoes,
         "vendas_rv": vendas_rv,
         "vendas_rf": vendas_rf,

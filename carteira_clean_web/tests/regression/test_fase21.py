@@ -36,13 +36,12 @@ def resultado(dados):
     """Executa o engine completo sem API."""
     from datetime import date
     ativos, eventos, precos_manuais = dados
-    # sem API → sem preços públicos e sem benchmarks
+    # sem API → sem preços públicos; benchmarks lidos da tabela (podem ser vazios em CI)
     precos_publicos = {}
-    benchmarks = {}
     posicoes, vendas_rv, vendas_rf, proventos = calc_posicoes_e_vendas(eventos, ativos)
     aportes_inferidos, saldo_residual = inferir_fluxos_externos_retroativos(eventos, ativos)
     df_evo = calc_evolucao_diaria(eventos, ativos, precos_publicos, precos_manuais, date(2026, 5, 15))
-    df_evo = calc_twr_e_benchmarks(df_evo, eventos, benchmarks, aportes_inferidos, ativos)
+    df_evo = calc_twr_e_benchmarks(df_evo, eventos, aportes_inferidos, ativos)
     df_atrib = calc_atribuicao_mensal(eventos, ativos, precos_publicos, precos_manuais, date(2026, 5, 15))
     return {
         "ativos": ativos,
