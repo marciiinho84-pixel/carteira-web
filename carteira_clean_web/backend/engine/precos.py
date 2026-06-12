@@ -225,6 +225,68 @@ def carregar_precos_da_tabela(db_path: str = None) -> dict:
     return out
 
 
+def _gravar_benchmarks(nome: str, serie: dict, source: str) -> None:
+    """Persiste série de benchmark na tabela append-only benchmarks (variante A).
+
+    Tolerância RELATIVA: insere nova linha somente se (nome, date) é inédito
+    ou abs(novo - último) / abs(último) > 1e-5. Funciona em qualquer escala:
+    IBOV ~130 000, CDI diário ~5e-5. último=0 → trata como inédito (sem divisão).
+    Nunca UPDATE/DELETE. Falhas são logadas e silenciadas.
+    """
+    if not serie:
+        return
+    try:
+        import sqlite3 as _sqlite3
+
+        _db_env = os.environ.get("DB_PATH")
+        db_path = _db_env if _db_env else str(
+            Path(__file__).resolve().parents[2] / "carteira.db"
+        )
+
+        con = _sqlite3.connect(db_path)
+        try:
+            rows = con.execute(
+                "SELECT date, valor FROM benchmarks b "
+                "WHERE nome = ? AND fetched_at = ("
+                "  SELECT MAX(fetched_at) FROM benchmarks "
+                "  WHERE nome = b.nome AND date = b.date"
+                ")",
+                (nome,),
+            ).fetchall()
+        except _sqlite3.OperationalError:
+            log.debug("benchmarks: tabela não existe ainda — gravação pulada")
+            con.close()
+            return
+
+        ultimos: dict = {r[0]: r[1] for r in rows}  # {date_str: valor}
+        agora = datetime.now().isoformat(timespec="seconds")
+        inserir: list = []
+
+        for dt, valor in serie.items():
+            dt_str = dt.isoformat() if hasattr(dt, "isoformat") else str(dt)
+            ultimo = ultimos.get(dt_str)
+            novo = float(valor)
+            if ultimo is None or abs(float(ultimo)) < 1e-12:
+                inserir.append((nome, dt_str, novo, agora, source))
+            elif abs(novo - float(ultimo)) / abs(float(ultimo)) > 1e-5:
+                inserir.append((nome, dt_str, novo, agora, source))
+
+        if inserir:
+            con.executemany(
+                "INSERT INTO benchmarks (nome, date, valor, fetched_at, source) "
+                "VALUES (?, ?, ?, ?, ?)",
+                inserir,
+            )
+            con.commit()
+            log.info(f"benchmarks: {len(inserir)} linhas gravadas ({nome}/{source})")
+        else:
+            log.debug(f"benchmarks: nenhum valor novo ou alterado para {nome} — skip")
+
+        con.close()
+    except Exception as e:
+        log.warning(f"benchmarks: gravação falhou para {nome} (não crítico) — {e}")
+
+
 def baixar_benchmarks(
     data_ini: date,
     data_fim: date,
@@ -234,7 +296,13 @@ def baixar_benchmarks(
         return {}
     out = {}
     log.info("Baixando benchmarks…")
-    for nome, tkr in [("IBOV", "^BVSP"), ("SP500", "^GSPC"), ("USDBRL", "BRL=X")]:
+    for nome, tkr in [
+        ("IBOV",   "^BVSP"),
+        ("SP500",  "^GSPC"),
+        ("USDBRL", "BRL=X"),
+        ("NASDAQ", "^NDX"),
+        ("OURO",   "IAU"),
+    ]:
         try:
             df = yf.download(
                 tkr,
@@ -254,6 +322,7 @@ def baixar_benchmarks(
                 for idx, v in close.items()
                 if pd.notna(v)
             }
+            _gravar_benchmarks(nome, out[nome], "yfinance")
             log.debug(f"  ✓ {nome}: {len(out[nome])} dias")
         except Exception as e:
             log.warning(f"  ✗ {nome}: {e}")
@@ -270,6 +339,7 @@ def baixar_benchmarks(
             df["data"] = pd.to_datetime(df["data"], format="%d/%m/%Y").dt.date
             df["valor"] = df["valor"].astype(float) / 100
             out[nome] = dict(zip(df["data"], df["valor"]))
+            _gravar_benchmarks(nome, out[nome], "bcb")
             log.debug(f"  ✓ {nome}: {len(out[nome])} pontos")
         except Exception as e:
             log.warning(f"  ✗ {nome}: {e}")
