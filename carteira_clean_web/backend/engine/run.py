@@ -91,7 +91,7 @@ def run(
 
     # Injeta cotas CVM (fundos com cnpj_cvm preenchido) — CVM preenche, manual tem prioridade
     cnpj_map = {t: info["cnpj_cvm"] for t, info in ativos.items() if info.get("cnpj_cvm")}
-    if cnpj_map and not precos_externos:
+    if cnpj_map and not no_api:
         precos_cvm = baixar_precos_cvm(cnpj_map, DATA_INICIO, hoje, no_api)
         for tkr, serie in precos_cvm.items():
             if tkr not in precos_manuais:
@@ -107,7 +107,7 @@ def run(
         if ev.get("tipo") == "COMPRA" and str(ev.get("obs") or "").startswith("CDI:")
         and ativos.get(ev["ativo"], {}).get("familia") in AGREGADO_PRIVADO
     }
-    if lci_tickers and not precos_externos:
+    if lci_tickers and not no_api:
         for tkr in lci_tickers:
             saldos = calcular_saldo_lci(tkr, eventos, hoje, no_api)
             if saldos:
