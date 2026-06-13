@@ -251,6 +251,18 @@ class AtribuicaoOut(BaseModel):
     bloco_ips: Optional[str] = None
 
 
+class BrissonFachlerOut(BaseModel):
+    mes: str
+    bloco_ips: str
+    w_real: float
+    w_alvo: float
+    R_real_bloco: float
+    R_bench_bloco: float
+    R_bench_total: float
+    efeito_alocacao: float
+    efeito_selecao: float
+
+
 class CarteiraRVOut(BaseModel):
     caixa_atual: float
     entrando_5d: float

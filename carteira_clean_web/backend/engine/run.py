@@ -29,6 +29,7 @@ from carteira_clean_web.backend.engine.posicoes import calc_posicoes_e_vendas
 from carteira_clean_web.backend.engine.inferencia import inferir_fluxos_externos_retroativos
 from carteira_clean_web.backend.engine.twr import calc_evolucao_diaria, calc_twr_e_benchmarks
 from carteira_clean_web.backend.engine.atribuicao import calc_atribuicao_mensal
+from carteira_clean_web.backend.engine.brinson import calc_brinson_fachler
 from carteira_clean_web.backend.engine.validacao import validar, validar_reconciliacao_caixa
 
 
@@ -138,9 +139,11 @@ def run(
         log.info(f"    — FUNCEF: R$ {ult['patrimonio_funcef']:,.2f}")
         log.info(f"  • TWR Gerida: {ult['twr_gerida']*100:+.2f}%  CDI: {ult['cdi_acum']*100:+.2f}%")
 
-    log.info("\n[5/6] Calculando atribuição mensal...")
+    log.info("\n[5/6] Calculando atribuição mensal + Brinson-Fachler...")
     df_atrib = calc_atribuicao_mensal(eventos, ativos, precos_publicos, precos_manuais, hoje)
     log.info(f"  • {len(df_atrib)} linhas (mês × ativo)")
+    df_bf = calc_brinson_fachler(df_atrib, data_fim=hoje)
+    log.info(f"  • {len(df_bf)} linhas Brinson-Fachler")
 
     log.info("\n[6/6] Validações ativas...")
     alertas = validar(posicoes, eventos, ativos, df_evo)
@@ -167,6 +170,7 @@ def run(
         "saldo_residual": saldo_residual,
         "df_evo": df_evo,
         "df_atrib": df_atrib,
+        "df_bf": df_bf,
         "alertas": alertas,
         "hoje": hoje,
     }

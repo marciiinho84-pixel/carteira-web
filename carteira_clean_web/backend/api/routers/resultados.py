@@ -22,7 +22,7 @@ from fastapi import APIRouter, HTTPException, Query
 from carteira_clean_web.backend.api import cache as engine_cache
 from carteira_clean_web.backend.api.schemas import (
     PosicaoOut, VendaOut, EvolucaoDiariaOut, AlertaOut,
-    DashboardOut, MetaOut, AtribuicaoOut, CarteiraRVOut,
+    DashboardOut, MetaOut, AtribuicaoOut, CarteiraRVOut, BrissonFachlerOut,
 )
 from carteira_clean_web.backend.engine.constantes import COTIZADO_PUBLICO, AGREGADO_PRIVADO, DATA_INICIO
 from carteira_clean_web.backend.engine.ir_mensal import calc_ir_mensal
@@ -495,6 +495,36 @@ def atribuicao_mensal(
     if bloco_ips:
         df = df[df["bloco_ips"].fillna("") == bloco_ips]
     return _atrib_rows(df)
+
+
+@router.get("/brinson-fachler", response_model=list[BrissonFachlerOut])
+def brinson_fachler(
+    mes: Optional[str] = Query(None, description="Formato YYYY-MM"),
+    bloco_ips: Optional[str] = Query(None, description="SWING_TRADE / GROWTH / DEFENSIVOS / RENDA_FIXA / TOTAL"),
+):
+    """Decomposição Brinson-Fachler por bloco IPS. Inclui linha TOTAL por mês."""
+    estado = _exige_cache()
+    df = estado.get("df_bf")
+    if df is None or df.empty:
+        return []
+    if mes:
+        df = df[df["mes"] == mes]
+    if bloco_ips:
+        df = df[df["bloco_ips"] == bloco_ips]
+    return [
+        BrissonFachlerOut(
+            mes=row.mes,
+            bloco_ips=row.bloco_ips,
+            w_real=float(row.w_real),
+            w_alvo=float(row.w_alvo),
+            R_real_bloco=float(row.R_real_bloco),
+            R_bench_bloco=float(row.R_bench_bloco),
+            R_bench_total=float(row.R_bench_total),
+            efeito_alocacao=float(row.efeito_alocacao),
+            efeito_selecao=float(row.efeito_selecao),
+        )
+        for row in df.itertuples(index=False)
+    ]
 
 
 # ─── Relatório de vendas ──────────────────────────────────────────

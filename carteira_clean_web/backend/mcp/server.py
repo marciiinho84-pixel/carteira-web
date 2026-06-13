@@ -11,7 +11,7 @@ Uso:
 from fastmcp import FastMCP
 from carteira_clean_web.backend.mcp.tools.portfolio import (
     fn_obter_posicoes, fn_obter_performance, fn_obter_cotacao,
-    fn_atribuicao,
+    fn_atribuicao, fn_brinson,
 )
 
 mcp = FastMCP(
@@ -110,6 +110,36 @@ def obter_atribuicao(
     bloco_ips: str = None,
 ) -> dict:
     return fn_atribuicao(mes, composite, bloco_ips)
+
+
+@mcp.tool(
+    description="""
+    Retorna a decomposição Brinson-Fachler da carteira Gerida:
+    quanto do excesso de retorno (vs benchmark IPS) veio de
+    ALOCAÇÃO (apostas táticas nos blocos) vs SELEÇÃO (escolha de ativos).
+
+    Benchmark IPS composto: 30%IBOV + 20%NasdaqBRL + 20%OuroBRL + 30%CDI.
+    Blocos IPS: SWING_TRADE (alvo 30%, bench IBOV),
+                GROWTH (alvo 20%, bench NasdaqBRL),
+                DEFENSIVOS (alvo 20%, bench OuroBRL),
+                RENDA_FIXA (alvo 30%, bench CDI).
+
+    Parâmetros opcionais:
+    - mes: "YYYY-MM". Sem filtro → todos os meses disponíveis.
+    - bloco_ips: filtrar por bloco específico ou "TOTAL".
+
+    Use quando o usuário perguntar sobre:
+    excesso de retorno, alpha, de onde veio a performance,
+    efeito alocação, efeito seleção, apostei bem nos setores?,
+    o Growth contribuiu positivamente?, estou batendo o benchmark?,
+    Brinson, decomposição de performance.
+    """
+)
+def obter_brinson(
+    mes: str = None,
+    bloco_ips: str = None,
+) -> dict:
+    return fn_brinson(mes, bloco_ips)
 
 
 if __name__ == "__main__":

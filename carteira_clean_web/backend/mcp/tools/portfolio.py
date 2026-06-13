@@ -711,6 +711,68 @@ def fn_obter_analise_rv() -> dict:
 
 # ── TOOL 9 — ATRIBUIÇÃO MENSAL ───────────────────────────────────
 
+def fn_brinson(
+    mes: str | None = None,
+    bloco_ips: str | None = None,
+) -> dict:
+    """Retorna decomposição Brinson-Fachler por bloco IPS.
+
+    Parâmetros opcionais:
+      - mes: "YYYY-MM". Sem filtro → todos os meses.
+      - bloco_ips: "SWING_TRADE", "GROWTH", "DEFENSIVOS", "RENDA_FIXA" ou "TOTAL".
+
+    Cada linha inclui:
+      - w_real, w_alvo (pesos real e IPS em %)
+      - R_real_bloco, R_bench_bloco, R_bench_total (retornos em %)
+      - efeito_alocacao, efeito_selecao (em pp)
+    Linha TOTAL por mês resume o excesso de retorno vs benchmark composto IPS.
+    """
+    if not engine_cache.esta_calculado():
+        engine_cache.carregar_disco()
+    if not engine_cache.esta_calculado():
+        return {"erro": "Cache vazio. Recalcule a carteira antes de usar o assistente."}
+
+    estado = engine_cache.get_estado()
+    df = estado.get("df_bf")
+    if df is None or df.empty:
+        return {"erro": "Sem dados Brinson-Fachler. Recalcule a carteira."}
+
+    if mes:
+        df = df[df["mes"] == mes]
+    if bloco_ips:
+        df = df[df["bloco_ips"] == bloco_ips]
+
+    if df.empty:
+        return {"total": 0, "brinson": [], "totais": []}
+
+    rows = []
+    for row in df.itertuples(index=False):
+        rows.append({
+            "mes":              row.mes,
+            "bloco_ips":        row.bloco_ips,
+            "w_real_pct":       round(row.w_real * 100, 1),
+            "w_alvo_pct":       round(row.w_alvo * 100, 1),
+            "desvio_pct":       round((row.w_real - row.w_alvo) * 100, 1),
+            "R_real_pct":       round(row.R_real_bloco * 100, 2),
+            "R_bench_bloco_pct": round(row.R_bench_bloco * 100, 2),
+            "R_bench_total_pct": round(row.R_bench_total * 100, 2),
+            "efeito_alocacao_pp": round(row.efeito_alocacao * 100, 3),
+            "efeito_selecao_pp":  round(row.efeito_selecao * 100, 3),
+            "excesso_total_pp":   round((row.efeito_alocacao + row.efeito_selecao) * 100, 3),
+        })
+
+    totais = [r for r in rows if r["bloco_ips"] == "TOTAL"]
+    blocos  = [r for r in rows if r["bloco_ips"] != "TOTAL"]
+    meses_disp = sorted(df["mes"].unique().tolist())
+
+    return {
+        "total": len(rows),
+        "meses_disponiveis": meses_disp,
+        "totais": totais,
+        "brinson": blocos,
+    }
+
+
 def fn_atribuicao(
     mes: str | None = None,
     composite: str | None = None,
