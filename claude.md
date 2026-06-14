@@ -96,18 +96,24 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ---
 
-## 6. Visão de longo prazo — inspirado em produtos do mercado
+## 6. Documentação de produto (constituição)
 
-### Roadmap pós-MCP (Fase 5+)
-- IRPF: DARF, isentômetro, declaração pronta para Receita
-- Agenda visual de proventos com previsão de renda passiva
-- Comparador interno: ativos lado a lado com fundamentos
-- Rebalanceamento inteligente baseado em alocação alvo
-- PWA mobile: instalável, offline-first
+A visão, o conceito e a estrutura do produto estão em docs/produto/.
+Esses documentos são a referência autoritativa — em caso de conflito
+entre algo neste arquivo e algo em docs/produto/, os documentos de
+produto vencem.
 
-### Diferenciais a preservar
-- TWR GIPS com CAIXA central (FIC FUNC)
-- FUNCEF e ativos sem cotação pública
-- Privacidade total (100% local, self-hosted)
-- Assistente IA com tools sobre dados pessoais reais
-- Open source — usuário é dono dos dados
+Arquivos:
+- docs/produto/01-conceito.md — O QUE o app é e POR QUÊ. Fechado.
+  Leia em toda sessão. Nunca contrarie.
+- docs/produto/02-estrutura.md — COMO construir. Macro fechado,
+  detalhes por fatia. Inclui protocolo de execução, fontes e
+  fronteira de autoridade.
+- docs/produto/05-brief-fatia-1.md — Brief da fatia em implementação.
+  Escopo fechado, critérios de aceite, lista do que NÃO fazer.
+
+Regras:
+- Decisões visíveis ao usuário ou que tocam o conceito são fechadas
+  em chat, nunca decididas aqui no Code.
+- Sessões de Code recebem um brief específico por fatia.
+- Na dúvida, consulte 01-conceito.md antes de agir.

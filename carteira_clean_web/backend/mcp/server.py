@@ -11,7 +11,7 @@ Uso:
 from fastmcp import FastMCP
 from carteira_clean_web.backend.mcp.tools.portfolio import (
     fn_obter_posicoes, fn_obter_performance, fn_obter_cotacao,
-    fn_atribuicao, fn_brinson,
+    fn_atribuicao, fn_brinson, fn_analise_aderencia_setorial,
 )
 
 mcp = FastMCP(
@@ -140,6 +140,30 @@ def obter_brinson(
     bloco_ips: str = None,
 ) -> dict:
     return fn_brinson(mes, bloco_ips)
+
+
+@mcp.tool(
+    description="""
+    Analisa a aderência setorial da Carteira Gerida à IPS v1.0.
+
+    Cruza duas lentes:
+    - Espelho (Peça B): exposição real por bloco IPS vs. alvos e bandas da IPS
+      (Swing Trade 30% ±10pp, Growth 20% ±10pp, Defensivos 20% ±5pp, Renda Fixa 30% ±5pp).
+      Detalha os setores que compõem cada bloco.
+    - Janela (Peça A): desempenho recente (último mês) dos índices setoriais B3
+      correspondentes a cada setor (IEE, UTIL, ICON, IFNC, IMOB, INDX, AGFS, IMAT).
+
+    Todo número retornado é rastreável: vem do cache da carteira ou da tabela
+    de índices — nada é estimado pelo modelo.
+
+    Use quando o usuário perguntar sobre:
+    alocação por bloco, aderência à IPS, estou dentro da banda?,
+    qual bloco está fora do alvo, concentração setorial, bloco Growth acima do limite,
+    como está o Swing Trade vs. IPS, setor X está pesando muito, aderência setorial.
+    """
+)
+def analise_aderencia_setorial() -> dict:
+    return fn_analise_aderencia_setorial()
 
 
 if __name__ == "__main__":

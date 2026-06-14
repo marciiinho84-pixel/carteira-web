@@ -830,3 +830,157 @@ def fn_atribuicao(
         "resumo_totais": totais,
         "atribuicao": individuais,
     }
+
+
+# ── TOOL 10 — ADERÊNCIA SETORIAL (Fatia 1) ───────────────────────────────────
+
+def _retorno_recente_idx(serie: dict, dias_corridos: int = 30) -> dict | None:
+    """Retorno de uma série {date: valor} nos últimos N dias corridos.
+
+    Busca a data mais próxima <= hoje - N dias como base; retorna None se a
+    série tiver menos de 2 pontos ou o valor base for zero.
+    """
+    if len(serie) < 2:
+        return None
+    datas = sorted(serie.keys())
+    data_fim = datas[-1]
+    data_ini_alvo = data_fim - timedelta(days=dias_corridos)
+    candidatos = [d for d in datas if d <= data_ini_alvo]
+    data_ini = candidatos[-1] if candidatos else datas[0]
+    v_ini = serie[data_ini]
+    v_fim = serie[data_fim]
+    if v_ini <= 0:
+        return None
+    return {
+        "retorno_pct": round((v_fim / v_ini - 1) * 100, 2),
+        "data_ini": str(data_ini),
+        "data_fim": str(data_fim),
+        "fonte": "tabela benchmarks (IDX_*)",
+    }
+
+
+def fn_analise_aderencia_setorial() -> dict:
+    """Cruza exposição setorial real vs. IPS com desempenho recente dos índices B3.
+
+    Peça A (janela externa): índices setoriais B3 lidos da tabela benchmarks
+                             via carregar_indices_setoriais_da_tabela().
+    Peça B (espelho interno): concentração setorial calculada por
+                              calc_concentracao_setorial() a partir do cache.
+
+    Todo número na observação é rastreável a Peça A ou Peça B — nada estimado.
+    """
+    from carteira_clean_web.backend.engine.aderencia_ips import calc_concentracao_setorial
+    from carteira_clean_web.backend.engine.precos import carregar_indices_setoriais_da_tabela
+
+    # ── Cache ──────────────────────────────────────────────────────────────────
+    if not engine_cache.esta_calculado():
+        engine_cache.carregar_disco()
+    if not engine_cache.esta_calculado():
+        return {"erro": "Cache vazio. Clique em Recalcular antes de usar o assistente."}
+
+    estado = engine_cache.get_estado()
+    posicoes_dict = estado["posicoes"]
+    ativos        = estado["ativos"]
+    precos_pub    = estado.get("precos_publicos", {})
+    precos_man    = estado.get("precos_manuais", {})
+    hoje          = estado["hoje"]
+
+    # bloco_ips pode não estar no cache se o pickle é anterior à migração 0002.
+    # Lê diretamente do banco (campo estático, padrão já usado em fn_obter_diario).
+    from carteira_clean_web.backend.db.session import get_session
+    from carteira_clean_web.backend.db.models import Ativo as AtivoModel
+    _session = get_session()
+    try:
+        bloco_ips_db = {
+            row.ticker: row.bloco_ips
+            for row in _session.query(AtivoModel.ticker, AtivoModel.bloco_ips).all()
+        }
+    finally:
+        _session.close()
+
+    # ── Montar posicoes_raw com valor_atual (Fonte B) ──────────────────────────
+    posicoes_raw: list[dict] = []
+    for tkr, p in posicoes_dict.items():
+        info    = ativos.get(tkr, {})
+        familia = info.get("familia", "")
+        if p.qtd < 1e-9 and familia not in AGREGADO_PRIVADO:
+            continue
+
+        preco_atual = None
+        if familia in COTIZADO_PUBLICO:
+            preco_atual = preco_em(precos_pub.get(tkr, {}), hoje)
+        if preco_atual is None:
+            preco_atual = preco_em(precos_man.get(tkr, {}), hoje, max_lookback_dias=60)
+
+        if familia in AGREGADO_PRIVADO:
+            valor_atual = preco_atual if preco_atual else p.custo_total
+        else:
+            valor_atual = p.qtd * preco_atual if preco_atual else p.custo_total
+
+        posicoes_raw.append({
+            "composite":   info.get("composite", "Gerida"),
+            "bloco_ips":   bloco_ips_db.get(tkr) or "FORA_IPS",
+            "setor":       info.get("setor") or "—",
+            "valor_atual": valor_atual,
+        })
+
+    # ── Peça B: concentração setorial vs. IPS ─────────────────────────────────
+    blocos = calc_concentracao_setorial(posicoes_raw)
+    if not blocos:
+        return {"erro": "Sem posições Gerida com bloco IPS definido. Recalcule a carteira."}
+
+    patrimonio_gerida = sum(
+        p["valor_atual"] for p in posicoes_raw
+        if p["composite"] == "Gerida" and p["valor_atual"] > 0
+    )
+
+    # ── Peça A: desempenho recente dos índices B3 ──────────────────────────────
+    indices_tabela   = carregar_indices_setoriais_da_tabela()
+    indices_recentes = {nome: _retorno_recente_idx(serie) for nome, serie in indices_tabela.items()}
+
+    # ── Cruzar A + B → observação textual ─────────────────────────────────────
+    secoes: list[str] = []
+    for b in blocos:
+        bloco  = b["bloco_ips"]
+        status = b["status"]
+        w_real = b["w_real_pct"]
+        w_alvo = b["w_alvo_pct"]
+        b_inf  = b["banda_inf_pct"]
+        b_sup  = b["banda_sup_pct"]
+        desvio = b["desvio_pp"]
+
+        if status == "fora_superior":
+            cabec = (f"[FORA BANDA ↑] {bloco}: {w_real}% real / alvo {w_alvo}% "
+                     f"/ banda {b_inf}%–{b_sup}% ({desvio:+.1f}pp)")
+        elif status == "fora_inferior":
+            cabec = (f"[FORA BANDA ↓] {bloco}: {w_real}% real / alvo {w_alvo}% "
+                     f"/ banda {b_inf}%–{b_sup}% ({desvio:+.1f}pp)")
+        else:
+            cabec = (f"[DENTRO] {bloco}: {w_real}% real / alvo {w_alvo}% "
+                     f"/ banda {b_inf}%–{b_sup}% ({desvio:+.1f}pp)")
+
+        linhas_set: list[str] = []
+        for s in b["setores"][:3]:
+            idx = s["indice_referencia"]
+            ir  = indices_recentes.get(idx) if idx else None
+            trecho = f"  • {s['setor']}: {s['w_bloco_pct']}% do bloco"
+            if ir:
+                trecho += f" | {idx.replace('IDX_', '')} {ir['retorno_pct']:+.2f}% (1m)"
+            elif idx:
+                trecho += f" | {idx.replace('IDX_', '')} sem dados ainda"
+            linhas_set.append(trecho)
+
+        secoes.append(cabec + ("\n" + "\n".join(linhas_set) if linhas_set else ""))
+
+    return {
+        "data_referencia":      str(hoje),
+        "patrimonio_gerida_rs": round(patrimonio_gerida, 2),
+        "observacao":           "\n\n".join(secoes),
+        "blocos":               blocos,           # Peça B — rastreável ao cache
+        "indices_recentes":     indices_recentes, # Peça A — rastreável à tabela benchmarks
+        "rastreabilidade": {
+            "fonte_A": "tabela benchmarks, nomes IDX_*, carregar_indices_setoriais_da_tabela()",
+            "fonte_B": "engine cache, posicoes + ativos, calc_concentracao_setorial()",
+            "anti_alucinacao": "todo número na observacao deriva de fonte_A ou fonte_B",
+        },
+    }

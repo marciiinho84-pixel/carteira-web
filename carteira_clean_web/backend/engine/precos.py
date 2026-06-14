@@ -334,6 +334,19 @@ _BENCH_YF_MAP = {
     "IAU":   "OURO",
 }
 
+# Índices setoriais B3 — persistidos na mesma tabela benchmarks com prefixo IDX_
+# IMAT = proxy materiais básicos (inclui mineração/metais; não é ouro puro)
+_SETORIAL_YF_MAP = {
+    "IMOB.SA": "IDX_IMOB",
+    "UTIL.SA": "IDX_UTIL",
+    "^IEE":    "IDX_IEE",
+    "INDX.SA": "IDX_INDX",
+    "IFNC.SA": "IDX_IFNC",
+    "ICON.SA": "IDX_ICON",
+    "AGFS.SA": "IDX_AGFS",
+    "IMAT.SA": "IDX_IMAT",
+}
+
 
 def baixar_benchmarks(
     data_ini: date,
@@ -414,6 +427,80 @@ def baixar_benchmarks(
         except Exception as e:
             log.warning(f"  ✗ {nome}: {e}")
     return out
+
+
+def baixar_indices_setoriais(
+    data_ini: date,
+    data_fim: date,
+    no_api: bool = False,
+) -> dict:
+    """Baixa índices setoriais B3 e persiste na tabela benchmarks (prefixo IDX_).
+
+    Mesma mecânica de baixar_benchmarks: lote yfinance → retry sequencial →
+    _gravar_benchmarks com tolerância relativa. Falhas individuais são
+    silenciadas; nunca lança exceção.
+    """
+    if no_api or not HAS_NETWORK:
+        return {}
+    out = {}
+    log.info("Baixando índices setoriais B3 via yfinance em lote…")
+
+    yf_tickers = list(_SETORIAL_YF_MAP.keys())
+    end_str = str(data_fim + timedelta(days=1))
+
+    faltantes: list = []
+    try:
+        df = yf.download(
+            yf_tickers,
+            start=str(data_ini),
+            end=end_str,
+            progress=False,
+            auto_adjust=True,
+        )
+    except Exception as e:
+        log.warning(f"  yfinance lote setorial falhou — {e}")
+        df = pd.DataFrame()
+
+    close_df = _normalizar_close(df, yf_tickers)
+    batch_out = _extrair(close_df, _SETORIAL_YF_MAP, faltantes)
+    out.update(batch_out)
+
+    if faltantes:
+        log.info(f"  Retry sequencial para {len(faltantes)} índice(s) setorial(is)…")
+        for yf_tkr in faltantes:
+            nome = _SETORIAL_YF_MAP[yf_tkr]
+            time.sleep(1)
+            try:
+                df_r = yf.download(
+                    [yf_tkr],
+                    start=str(data_ini),
+                    end=end_str,
+                    progress=False,
+                    auto_adjust=True,
+                )
+                close_r = _normalizar_close(df_r, [yf_tkr])
+                sem_retry: list = []
+                recuperado = _extrair(close_r, {yf_tkr: nome}, sem_retry)
+                if recuperado:
+                    out.update(recuperado)
+                    log.info(f"  ✓ {nome}: recuperado no retry")
+                else:
+                    log.warning(f"  ✗ {nome}: vazio no retry")
+            except Exception as e:
+                log.warning(f"  ✗ {nome}: retry falhou — {e}")
+
+    for nome, serie in out.items():
+        _gravar_benchmarks(nome, serie, "yfinance")
+        log.debug(f"  ✓ {nome}: {len(serie)} dias")
+    log.info(f"  → {len(out)}/{len(_SETORIAL_YF_MAP)} índices setoriais via yfinance")
+
+    return out
+
+
+def carregar_indices_setoriais_da_tabela(db_path: str = None) -> dict:
+    """Retorna {nome: {date: valor}} apenas para índices setoriais (prefixo IDX_)."""
+    todos = carregar_benchmarks_da_tabela(db_path)
+    return {k: v for k, v in todos.items() if k.startswith("IDX_")}
 
 
 _URL_CVM_BASE = (

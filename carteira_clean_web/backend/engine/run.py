@@ -22,8 +22,9 @@ sys.path.insert(0, str(ROOT))
 from carteira_clean_web.backend.engine.io import carregar_dados
 from carteira_clean_web.backend.engine.constantes import COTIZADO_PUBLICO
 from carteira_clean_web.backend.engine.precos import (
-    baixar_precos_publicos, baixar_benchmarks, baixar_precos_tesouro,
-    baixar_precos_cvm, calcular_saldo_lci, carregar_precos_da_tabela,
+    baixar_precos_publicos, baixar_benchmarks, baixar_indices_setoriais,
+    baixar_precos_tesouro, baixar_precos_cvm, calcular_saldo_lci,
+    carregar_precos_da_tabela,
 )
 from carteira_clean_web.backend.engine.posicoes import calc_posicoes_e_vendas
 from carteira_clean_web.backend.engine.inferencia import inferir_fluxos_externos_retroativos
@@ -74,7 +75,8 @@ def run(
 
     # Fase B: cotações e benchmarks vêm da tabela; downloads inserem lá (no_api respeita flag)
     baixar_precos_publicos(tickers_pub, DATA_INICIO, hoje, no_api)
-    baixar_benchmarks(DATA_INICIO, hoje, no_api)  # insere na tabela; retorno descartado
+    baixar_benchmarks(DATA_INICIO, hoje, no_api)        # insere na tabela; retorno descartado
+    baixar_indices_setoriais(DATA_INICIO, hoje, no_api) # índices setoriais B3; mesmo padrão
 
     # Fase B: precos_publicos vem da tabela cotacoes (fonte única de verdade)
     db_str = str(db_path) if db_path else None
