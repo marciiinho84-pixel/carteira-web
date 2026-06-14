@@ -68,6 +68,13 @@ def render():
                     "Observação (opcional)", placeholder="Ex: Banco do Brasil",
                     key="cfg_novo_obs",
                 )
+                novo_bloco_ips = st.selectbox(
+                    "Bloco IPS",
+                    options=["", "SWING_TRADE", "GROWTH", "DEFENSIVOS", "RENDA_FIXA", "FORA_IPS"],
+                    index=0,
+                    help="Bloco da IPS: define benchmark e peso-alvo no Brinson-Fachler.",
+                    key="cfg_novo_bloco_ips",
+                )
                 familias_com_vencimento = {"Letra de Crédito", "Tesouro Direto", "Fundo Indexado"}
                 if novo_familia in familias_com_vencimento:
                     novo_vencimento = st.date_input(
@@ -95,6 +102,7 @@ def render():
                     "benchmark": novo_benchmark or None,
                     "observacao": novo_obs or None,
                     "data_vencimento": str(novo_vencimento) if novo_vencimento else None,
+                    "bloco_ips": novo_bloco_ips or None,
                 }
                 res = api.post("ativos", data=payload)
                 if res is not None:
@@ -116,18 +124,20 @@ def render():
             return
 
         COLUNAS_BLOQUEADAS = ["ticker", "familia", "composite", "classe", "indexador"]
-        COLUNAS_EDITAVEIS = ["setor", "benchmark", "observacao", "data_vencimento"]
+        COLUNAS_EDITAVEIS = ["setor", "benchmark", "observacao", "data_vencimento", "bloco_ips"]
 
         df_orig = pd.DataFrame(ativos).reindex(
             columns=["ticker", "familia", "composite", "classe",
-                     "setor", "benchmark", "indexador", "observacao", "data_vencimento"],
+                     "setor", "benchmark", "bloco_ips", "indexador", "observacao", "data_vencimento"],
         )
         string_cols = ["ticker", "familia", "composite", "classe",
-                       "setor", "benchmark", "indexador", "observacao"]
+                       "setor", "benchmark", "bloco_ips", "indexador", "observacao"]
         df_orig[string_cols] = df_orig[string_cols].fillna("")
         df_orig["data_vencimento"] = pd.to_datetime(
             df_orig["data_vencimento"], errors="coerce"
         ).dt.date
+
+        _OPCOES_BLOCO = ["", "SWING_TRADE", "GROWTH", "DEFENSIVOS", "RENDA_FIXA", "FORA_IPS"]
 
         df_edit = st.data_editor(
             df_orig,
@@ -143,6 +153,9 @@ def render():
                 "classe":     st.column_config.TextColumn("Classe", width="small"),
                 "setor":      st.column_config.TextColumn("Setor ✏️", width="medium"),
                 "benchmark":  st.column_config.TextColumn("Benchmark ✏️", width="medium"),
+                "bloco_ips":  st.column_config.SelectboxColumn(
+                    "Bloco IPS ✏️", width="medium", options=_OPCOES_BLOCO,
+                ),
                 "indexador":      st.column_config.TextColumn("Indexador", width="small"),
                 "observacao":     st.column_config.TextColumn("Observação ✏️", width="large"),
                 "data_vencimento": st.column_config.DateColumn(
@@ -192,6 +205,7 @@ def render():
                             "benchmark":       row["benchmark"] or None,
                             "observacao":      row["observacao"] or None,
                             "data_vencimento": str(dv) if pd.notna(dv) and dv is not None else None,
+                            "bloco_ips":       row["bloco_ips"] or None,
                         }
                         res = api.patch(f"ativos/{ticker}", data=payload)
                         if res is None:

@@ -10,6 +10,9 @@ from pydantic import BaseModel, field_validator
 
 # ─── Ativos ──────────────────────────────────────────────────────
 
+_BLOCOS_IPS_VALIDOS = {"SWING_TRADE", "GROWTH", "DEFENSIVOS", "RENDA_FIXA", "FORA_IPS"}
+
+
 class AtivoOut(BaseModel):
     ticker: str
     classe: Optional[str] = None
@@ -22,6 +25,7 @@ class AtivoOut(BaseModel):
     composite: str
     observacao: Optional[str] = None
     data_vencimento: Optional[date] = None
+    bloco_ips: Optional[str] = None
 
 
 class AtivoCreate(BaseModel):
@@ -36,6 +40,14 @@ class AtivoCreate(BaseModel):
     composite: str = "Gerida"
     observacao: Optional[str] = None
     data_vencimento: Optional[date] = None
+    bloco_ips: Optional[str] = None
+
+    @field_validator("bloco_ips")
+    @classmethod
+    def bloco_ips_valido(cls, v):
+        if v is not None and v not in _BLOCOS_IPS_VALIDOS:
+            raise ValueError(f"bloco_ips inválido: '{v}'. Valores: {sorted(_BLOCOS_IPS_VALIDOS)}")
+        return v
 
     @field_validator("composite")
     @classmethod
@@ -56,12 +68,20 @@ class AtivoUpdate(BaseModel):
     composite: Optional[str] = None
     observacao: Optional[str] = None
     data_vencimento: Optional[date] = None
+    bloco_ips: Optional[str] = None
 
     @field_validator("composite")
     @classmethod
     def composite_valido(cls, v):
         if v is not None and v not in ("Gerida", "FUNCEF"):
             raise ValueError("composite deve ser 'Gerida' ou 'FUNCEF'")
+        return v
+
+    @field_validator("bloco_ips")
+    @classmethod
+    def bloco_ips_valido(cls, v):
+        if v is not None and v not in _BLOCOS_IPS_VALIDOS:
+            raise ValueError(f"bloco_ips inválido: '{v}'")
         return v
 
 

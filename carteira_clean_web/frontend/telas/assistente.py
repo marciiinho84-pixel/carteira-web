@@ -571,18 +571,18 @@ def render():
         if len(mensagens) == 0:
             api.patch_conversa_titulo(conversa_id, _gerar_titulo(prompt))
 
-        # Construir histórico com janela deslizante
+        # Construir histórico com janela deslizante (máx 20 msgs frescas)
+        _JANELA = 20
         resumo_hist = conv_atual.get("resumo_historico")
         if resumo_hist:
-            # Resumo das msgs antigas + últimas 20 mensagens frescas
             historico = [
                 {"role": "user",
                  "content": f"[RESUMO DAS MENSAGENS ANTERIORES]\n{resumo_hist}"},
                 {"role": "assistant",
                  "content": "Entendido. Continuando a conversa."},
-            ] + [{"role": m["role"], "content": m["content"]} for m in mensagens[-20:]]
+            ] + [{"role": m["role"], "content": m["content"]} for m in mensagens[-_JANELA:]]
         else:
-            historico = [{"role": m["role"], "content": m["content"]} for m in mensagens]
+            historico = [{"role": m["role"], "content": m["content"]} for m in mensagens[-_JANELA:]]
         historico.append({"role": "user", "content": prompt})
 
         client = _get_client()

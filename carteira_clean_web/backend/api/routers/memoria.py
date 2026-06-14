@@ -214,6 +214,21 @@ def criar_memoria(body: MemoriaCreate, db: Session = Depends(get_db)):
     if any(e.conteudo[:80].lower() == prefixo for e in existentes):
         return JSONResponse(status_code=200, content={"deduplicado": True})
 
+    # FIFO: manter no máximo 50 memórias ativas
+    _MAX_MEMORIAS = 50
+    total_ativas = len(existentes)
+    if total_ativas >= _MAX_MEMORIAS:
+        excesso = total_ativas - _MAX_MEMORIAS + 1  # quantas desativar para caber a nova
+        mais_antigas = (
+            db.query(MemoriaAssistente)
+            .filter(MemoriaAssistente.ativa == 1)
+            .order_by(MemoriaAssistente.criada_em.asc())
+            .limit(excesso)
+            .all()
+        )
+        for m_antiga in mais_antigas:
+            m_antiga.ativa = 0
+
     m = MemoriaAssistente(
         tipo=body.tipo,
         conteudo=conteudo,
