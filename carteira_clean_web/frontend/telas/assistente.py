@@ -24,9 +24,11 @@ except ImportError:
 
 MODEL = "claude-opus-4-8"
 
-# Custo Opus 4.8: $5/1M input, $25/1M output
-_CUSTO_IN = 5.0 / 1_000_000
-_CUSTO_OUT = 25.0 / 1_000_000
+# Preços por milhão de tokens — atualize aqui quando o modelo mudar
+PRECO_INPUT_POR_MTOK  = 5.0   # USD / 1M tokens input  (Opus 4.8)
+PRECO_OUTPUT_POR_MTOK = 25.0  # USD / 1M tokens output (Opus 4.8)
+_CUSTO_IN  = PRECO_INPUT_POR_MTOK  / 1_000_000
+_CUSTO_OUT = PRECO_OUTPUT_POR_MTOK / 1_000_000
 _USD_BRL = 5.7
 
 
@@ -543,15 +545,38 @@ def render():
                         pass
                 st.markdown(msg["content"])
 
+        # ── Rastreamento de sessão (reseta ao trocar de conversa) ────
+        _sess_key = f"_sess_{conversa_id}"
+        if st.session_state.get("_sess_conv_id") != conversa_id:
+            st.session_state["_sess_conv_id"] = conversa_id
+            st.session_state[_sess_key] = {"tok_in": 0, "tok_out": 0, "msgs": 0}
+        _sess = st.session_state[_sess_key]
+
         # ── Sidebar de custo ──────────────────────────────────────
         with st.sidebar:
             st.subheader("🤖 Assistente")
             st.caption(f"Modelo: `{MODEL}`")
+
+            # Sessão atual (desde que esta aba foi aberta ou conversa trocada)
+            sess_in  = _sess["tok_in"]
+            sess_out = _sess["tok_out"]
+            sess_tot = sess_in + sess_out
+            custo_sess_usd = sess_in * _CUSTO_IN + sess_out * _CUSTO_OUT
+            custo_sess_brl = custo_sess_usd * _USD_BRL
+            st.caption(f"**Sessão atual**")
+            st.caption(f"Mensagens: {_sess['msgs']}")
+            st.caption(f"Tokens: {sess_tot:,} (in {sess_in:,} / out {sess_out:,})")
+            st.caption(f"Custo sessão: R$ {custo_sess_brl:.4f}")
+
+            st.divider()
+
+            # Acumulado de toda a conversa (gravado no DB)
             tot_t = conv_atual.get("total_tokens", 0)
             custo_usd = conv_atual.get("custo_usd", 0.0)
             custo_brl = custo_usd * _USD_BRL
-            st.caption(f"Tokens (conversa): {tot_t:,}")
-            st.caption(f"Custo conversa: R$ {custo_brl:.4f}")
+            st.caption(f"**Conversa total**")
+            st.caption(f"Tokens: {tot_t:,}")
+            st.caption(f"Custo total: R$ {custo_brl:.4f}")
 
         # ── Input do usuário ──────────────────────────────────────
         prompt = st.chat_input("Pergunte sobre sua carteira...")
@@ -622,6 +647,11 @@ def render():
             tool_calls=json.dumps(tools_usadas) if tools_usadas else None,
             tokens_in=tokens_in, tokens_out=tokens_out, custo_usd=custo_msg,
         )
+
+        # Acumular na sessão atual
+        _sess["tok_in"]  += tokens_in
+        _sess["tok_out"] += tokens_out
+        _sess["msgs"]    += 1
 
         # Extração de memórias em background
         _extrair_em_background(conversa_id)

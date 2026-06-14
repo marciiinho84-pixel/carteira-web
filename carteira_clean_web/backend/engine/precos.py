@@ -24,6 +24,40 @@ except ImportError:
     HAS_NETWORK = False
 
 
+def _normalizar_close(df: pd.DataFrame, syms: list) -> pd.DataFrame:
+    """Devolve DataFrame com colunas = syms e linhas = datas.
+
+    yf.download com N tickers → MultiIndex (campo, ticker) → df["Close"] = DataFrame
+    yf.download com 1 ticker  → colunas planas → df["Close"] = Series
+    Normaliza os dois casos para o mesmo formato de saída.
+    """
+    if df.empty:
+        return pd.DataFrame(columns=syms)
+    if isinstance(df.columns, pd.MultiIndex):
+        close = df["Close"] if "Close" in df.columns.get_level_values(0) else pd.DataFrame(columns=syms)
+    else:
+        close = df[["Close"]].rename(columns={"Close": syms[0]}) if "Close" in df.columns else pd.DataFrame(columns=syms)
+    return close
+
+
+def _extrair(close_df: pd.DataFrame, sym_map: dict, faltantes_out: list) -> dict:
+    """Extrai séries por nome de coluna; NaN total → ticker vai para faltantes_out."""
+    parcial = {}
+    for yf_tkr, tkr in sym_map.items():
+        if yf_tkr not in close_df.columns:
+            log.debug(f"  ✗ {tkr}: ausente no DataFrame")
+            faltantes_out.append(yf_tkr)
+            continue
+        serie = close_df[yf_tkr].dropna()
+        if serie.empty:
+            log.debug(f"  ✗ {tkr}: todos NaN — entra no retry")
+            faltantes_out.append(yf_tkr)
+            continue
+        parcial[tkr] = {pd.Timestamp(idx).date(): float(v) for idx, v in serie.items()}
+        log.debug(f"  ✓ {tkr}: {len(parcial[tkr])} dias")
+    return parcial
+
+
 def baixar_precos_publicos(
     tickers: list,
     data_ini: date,
@@ -41,40 +75,6 @@ def baixar_precos_publicos(
     # Mapeia ticker.SA → ticker interno para reindexar sem trocar símbolos
     yf_map = {tkr + ".SA": tkr for tkr in tickers}
     yf_tickers = list(yf_map.keys())
-
-    def _normalizar_close(df: pd.DataFrame, syms: list) -> pd.DataFrame:
-        """Devolve DataFrame com colunas = syms e linhas = datas.
-
-        yf.download com N tickers → MultiIndex (campo, ticker) → df["Close"] = DataFrame
-        yf.download com 1 ticker  → colunas planas → df["Close"] = Series
-        Normaliza os dois casos para o mesmo formato.
-        """
-        if df.empty:
-            return pd.DataFrame(columns=syms)
-        if isinstance(df.columns, pd.MultiIndex):
-            close = df["Close"] if "Close" in df.columns.get_level_values(0) else pd.DataFrame(columns=syms)
-        else:
-            close = df[["Close"]].rename(columns={"Close": syms[0]}) if "Close" in df.columns else pd.DataFrame(columns=syms)
-        return close
-
-    def _extrair(close_df: pd.DataFrame, sym_map: dict, faltantes_out: list) -> dict:
-        """Extrai séries por nome de coluna; NaN total → ticker vai para faltantes_out."""
-        parcial = {}
-        for yf_tkr, tkr in sym_map.items():
-            if yf_tkr not in close_df.columns:
-                log.debug(f"  ✗ {tkr}: ausente no DataFrame")
-                faltantes_out.append(yf_tkr)
-                continue
-            serie = close_df[yf_tkr].dropna()
-            if serie.empty:
-                # NaN total = falha silenciosa — omite para que o merge em cache.py
-                # preserve o último preço bom automaticamente
-                log.debug(f"  ✗ {tkr}: todos NaN — entra no retry")
-                faltantes_out.append(yf_tkr)
-                continue
-            parcial[tkr] = {pd.Timestamp(idx).date(): float(v) for idx, v in serie.items()}
-            log.debug(f"  ✓ {tkr}: {len(parcial[tkr])} dias")
-        return parcial
 
     # Tentativa 1: lote completo
     faltantes: list = []
@@ -326,6 +326,15 @@ def _gravar_benchmarks(nome: str, serie: dict, source: str) -> None:
         log.warning(f"benchmarks: gravação falhou para {nome} (não crítico) — {e}")
 
 
+_BENCH_YF_MAP = {
+    "^BVSP": "IBOV",
+    "^GSPC": "SP500",
+    "BRL=X": "USDBRL",
+    "^NDX":  "NASDAQ",
+    "IAU":   "OURO",
+}
+
+
 def baixar_benchmarks(
     data_ini: date,
     data_fim: date,
@@ -334,37 +343,59 @@ def baixar_benchmarks(
     if no_api or not HAS_NETWORK:
         return {}
     out = {}
-    log.info("Baixando benchmarks…")
-    for nome, tkr in [
-        ("IBOV",   "^BVSP"),
-        ("SP500",  "^GSPC"),
-        ("USDBRL", "BRL=X"),
-        ("NASDAQ", "^NDX"),
-        ("OURO",   "IAU"),
-    ]:
-        try:
-            df = yf.download(
-                tkr,
-                start=str(data_ini),
-                end=str(data_fim + timedelta(days=1)),
-                progress=False,
-                auto_adjust=True,
-                threads=False,
-            )
-            if df.empty:
-                continue
-            close = df["Close"] if "Close" in df else df.iloc[:, 0]
-            if isinstance(close, pd.DataFrame):
-                close = close.iloc[:, 0]
-            out[nome] = {
-                pd.Timestamp(idx).date(): float(v)
-                for idx, v in close.items()
-                if pd.notna(v)
-            }
-            _gravar_benchmarks(nome, out[nome], "yfinance")
-            log.debug(f"  ✓ {nome}: {len(out[nome])} dias")
-        except Exception as e:
-            log.warning(f"  ✗ {nome}: {e}")
+    log.info("Baixando benchmarks via yfinance em lote…")
+
+    yf_tickers = list(_BENCH_YF_MAP.keys())
+    end_str = str(data_fim + timedelta(days=1))
+
+    # Tentativa 1: lote completo (5 tickers em uma chamada)
+    faltantes: list = []
+    try:
+        df = yf.download(
+            yf_tickers,
+            start=str(data_ini),
+            end=end_str,
+            progress=False,
+            auto_adjust=True,
+        )
+    except Exception as e:
+        log.warning(f"  yfinance lote benchmarks falhou — {e}")
+        df = pd.DataFrame()
+
+    close_df = _normalizar_close(df, yf_tickers)
+    batch_out = _extrair(close_df, _BENCH_YF_MAP, faltantes)
+    out.update(batch_out)
+
+    # Tentativa 2: retry sequencial apenas para os faltantes
+    if faltantes:
+        log.info(f"  Retry sequencial para {len(faltantes)} benchmark(s) faltante(s)…")
+        for yf_tkr in faltantes:
+            nome = _BENCH_YF_MAP[yf_tkr]
+            time.sleep(1)
+            try:
+                df_r = yf.download(
+                    [yf_tkr],
+                    start=str(data_ini),
+                    end=end_str,
+                    progress=False,
+                    auto_adjust=True,
+                )
+                close_r = _normalizar_close(df_r, [yf_tkr])
+                sem_retry: list = []
+                recuperado = _extrair(close_r, {yf_tkr: nome}, sem_retry)
+                if recuperado:
+                    out.update(recuperado)
+                    log.info(f"  ✓ {nome}: recuperado no retry")
+                else:
+                    log.warning(f"  ✗ {nome}: vazio no retry")
+            except Exception as e:
+                log.warning(f"  ✗ {nome}: retry falhou — {e}")
+
+    for nome, serie in out.items():
+        _gravar_benchmarks(nome, serie, "yfinance")
+        log.debug(f"  ✓ {nome}: {len(serie)} dias")
+    log.info(f"  → {len(out)}/{len(_BENCH_YF_MAP)} benchmarks via yfinance")
+
     for nome, codigo in [("CDI", 12), ("IPCA", 433)]:
         try:
             url = (
