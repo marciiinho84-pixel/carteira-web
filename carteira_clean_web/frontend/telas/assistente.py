@@ -32,194 +32,8 @@ _CUSTO_OUT = PRECO_OUTPUT_POR_MTOK / 1_000_000
 _USD_BRL = 5.7
 
 
-# ── Definição das tools ───────────────────────────────────────────
-
-TOOLS = [
-    {
-        "name": "obter_posicoes",
-        "description": (
-            "Retorna todas as posições ativas da carteira com valor atual, "
-            "custo médio, P&L, alocação percentual por ativo e por classe, "
-            "e alertas automáticos de concentração. "
-            "Use quando o usuário perguntar sobre: posições, portfólio, "
-            "o que tenho, quanto vale, alocação, diversificação, concentração, "
-            "maior posição, P&L, patrimônio."
-        ),
-        "input_schema": {"type": "object", "properties": {}, "required": []},
-    },
-    {
-        "name": "obter_performance",
-        "description": (
-            "Retorna a performance (rentabilidade) da carteira no período "
-            "solicitado, comparada com CDI e IBOV."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "periodo": {
-                    "type": "string",
-                    "description": "Período: 'ytd', '1m', '3m', '6m', '1a'",
-                    "enum": ["ytd", "1m", "3m", "6m", "1a"],
-                },
-                "benchmark": {
-                    "type": "string",
-                    "description": "Benchmark: 'CDI', 'IBOV' ou 'ambos'",
-                    "enum": ["CDI", "IBOV", "ambos"],
-                },
-            },
-            "required": [],
-        },
-    },
-    {
-        "name": "obter_cotacao",
-        "description": (
-            "Busca a cotação atual de qualquer ativo financeiro e cruza com a posição "
-            "do usuário na carteira. Para ativos B3 e BDRs use o código sem .SA "
-            "(ex: 'WEGE3', 'MSFT34'). Para ativos americanos originais use o ticker "
-            "em inglês (ex: 'MSFT')."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "ticker": {
-                    "type": "string",
-                    "description": "Código do ativo (ex: 'WEGE3', 'MSFT34', 'MSFT')",
-                },
-            },
-            "required": ["ticker"],
-        },
-    },
-    {
-        "name": "obter_diario",
-        "description": (
-            "Retorna anotações de estratégia e decisões do diário do investidor. "
-            "Use quando o usuário perguntar sobre estratégias, decisões anteriores, "
-            "planos, teses de compra/venda — ou quando uma análise se beneficiaria "
-            "de contexto histórico do diário."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "periodo": {
-                    "type": "string",
-                    "description": "Período: '7d', '30d', '90d', 'all'",
-                    "enum": ["7d", "30d", "90d", "all"],
-                },
-                "busca": {
-                    "type": "string",
-                    "description": "Texto livre para filtrar entradas",
-                },
-                "ticker": {
-                    "type": "string",
-                    "description": "Filtrar entradas que mencionam este ticker",
-                },
-            },
-            "required": [],
-        },
-    },
-    {
-        "name": "obter_sinais",
-        "description": (
-            "Retorna sinais técnicos (RSI, MACD, Médias Móveis) e indicadores "
-            "fundamentalistas (P/L, P/VP, ROE, EV/EBITDA, Margem Líq., Dív/EBITDA) "
-            "para os ativos da carteira ou lista específica. "
-            "Use quando o usuário perguntar sobre análise técnica, RSI, MACD, médias, "
-            "fundamentos, P/L, ROE de ativos específicos."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "tickers": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Lista de tickers (ex: ['WEGE3','ITUB4']). "
-                                   "Se vazio, usa todos os ativos RV da carteira.",
-                },
-                "apenas_ativos": {
-                    "type": "boolean",
-                    "description": "Se true, retorna apenas ativos com sinal diferente de NEUTRO.",
-                },
-            },
-            "required": [],
-        },
-    },
-    {
-        "name": "obter_fundamentos",
-        "description": (
-            "Retorna indicadores fundamentalistas detalhados (P/L, P/VP, EV/EBITDA, "
-            "ROE, Margem Líquida, Dívida/EBITDA) para ativos da carteira ou lista. "
-            "Use para comparação entre ativos, triagem por múltiplos, ou análise "
-            "fundamentalista focada."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "tickers": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Lista de tickers. Se vazio, usa todos os ativos RV da carteira.",
-                },
-            },
-            "required": [],
-        },
-    },
-    {
-        "name": "obter_watchlist",
-        "description": (
-            "Retorna a watchlist do investidor com cotações ao vivo, preço-alvo, "
-            "stop-loss, distância percentual ao alvo e sinal (NA_ZONA / PROXIMO / ACIMA). "
-            "Use quando o usuário perguntar sobre ativos que está monitorando, "
-            "watchlist, candidatos a compra, alvos de preço."
-        ),
-        "input_schema": {"type": "object", "properties": {}, "required": []},
-    },
-    {
-        "name": "obter_analise_rv",
-        "description": (
-            "ANÁLISE COMPLETA da carteira de Renda Variável. "
-            "Combina em paralelo: posições RV + sinais técnicos + fundamentos + watchlist. "
-            "Use quando o usuário pedir análise geral da carteira RV, avaliação de ativos, "
-            "revisão de portfólio, ou qualquer análise que precise de múltiplos indicadores. "
-            "PREFIRA esta tool a chamar obter_posicoes + obter_sinais separadamente."
-        ),
-        "input_schema": {"type": "object", "properties": {}, "required": []},
-    },
-]
-
-
-def _executar_tool(nome: str, entrada: dict) -> str:
-    from carteira_clean_web.backend.mcp.tools.portfolio import (
-        fn_obter_posicoes, fn_obter_performance, fn_obter_cotacao, fn_obter_diario,
-        fn_obter_sinais, fn_obter_fundamentos, fn_obter_watchlist, fn_obter_analise_rv,
-    )
-    if nome == "obter_posicoes":
-        resultado = fn_obter_posicoes()
-    elif nome == "obter_performance":
-        resultado = fn_obter_performance(
-            entrada.get("periodo", "ytd"), entrada.get("benchmark", "ambos"),
-        )
-    elif nome == "obter_cotacao":
-        resultado = fn_obter_cotacao(entrada.get("ticker", ""))
-    elif nome == "obter_diario":
-        resultado = fn_obter_diario(
-            periodo=entrada.get("periodo", "30d"),
-            busca=entrada.get("busca"),
-            ticker=entrada.get("ticker"),
-        )
-    elif nome == "obter_sinais":
-        resultado = fn_obter_sinais(
-            tickers=entrada.get("tickers"),
-            apenas_ativos=entrada.get("apenas_ativos", False),
-        )
-    elif nome == "obter_fundamentos":
-        resultado = fn_obter_fundamentos(tickers=entrada.get("tickers"))
-    elif nome == "obter_watchlist":
-        resultado = fn_obter_watchlist()
-    elif nome == "obter_analise_rv":
-        resultado = fn_obter_analise_rv()
-    else:
-        resultado = {"erro": f"Tool desconhecida: {nome}"}
-    return json.dumps(resultado, ensure_ascii=False, default=str)
+# Tools gerenciadas pelo MCP server (minhacarteira.duckdns.org/mcp).
+# Fonte de verdade: carteira_clean_web/backend/mcp/server.py
 
 
 # ── System prompt com injeção de contexto ─────────────────────────
@@ -232,6 +46,17 @@ Você traduz entre duas lentes — o mundo lá fora (contexto de mercado, ativos
 oportunidades) e a carteira aqui dentro (posições, comportamento, IPS). A
 decisão de alocação é sempre dele; ele dá o enter. Seu trabalho é fazer com
 que essa decisão seja a mais bem-informada possível.
+
+═══════════════════════════════════════════════════════════
+REGRA FIXA SOBRE A CARTEIRA
+═══════════════════════════════════════════════════════════
+
+A FUNCEF (previdência fechada) está FORA do seu escopo de análise.
+O investidor não a gere e já determinou que seja desconsiderada.
+Todas as análises de alocação, aderência à IPS, concentração e
+rebalanceamento são sobre a Carteira Gerida (excluindo FUNCEF).
+Não mencione a FUNCEF a menos que o investidor pergunte
+explicitamente sobre ela.
 
 ═══════════════════════════════════════════════════════════
 PRINCÍPIOS INEGOCIÁVEIS
@@ -356,16 +181,20 @@ def build_system_prompt() -> str:
         blocos.append(f"## Suas anotações recentes no diário (últimas 5)\n" + "\n".join(itens))
 
     blocos.append(
-        "Ferramentas disponíveis:\n"
+        "Ferramentas disponíveis (via MCP server):\n"
         "- obter_posicoes: todas as posições com P&L e alertas\n"
         "- obter_performance: rentabilidade vs CDI/IBOV\n"
         "- obter_cotacao: cotação ao vivo de um ativo + cruzamento com carteira\n"
+        "- obter_atribuicao: atribuição mensal de performance por ativo/bloco IPS\n"
+        "- obter_brinson: decomposição Brinson-Fachler (efeito alocação vs seleção)\n"
+        "- analise_aderencia_setorial: USE ESTA (nunca obter_posicoes) para aderência à IPS, "
+        "concentração setorial, blocos fora da banda, rebalanceamento entre blocos\n"
         "- obter_diario: decisões e anotações do diário\n"
         "- obter_sinais: sinais técnicos (RSI/MACD/MM) + fundamentos por ativo\n"
         "- obter_fundamentos: múltiplos fundamentalistas (P/L, P/VP, ROE...)\n"
         "- obter_watchlist: watchlist com cotações ao vivo e distância ao alvo\n"
         "- obter_analise_rv: análise completa RV (posições+sinais+fundamentos+watchlist). "
-        "USE ESTA quando o usuário pedir análise geral da carteira."
+        "USE ESTA quando o usuário pedir análise geral da carteira RV."
     )
     return "\n\n".join(blocos)
 
@@ -385,41 +214,37 @@ def _get_client():
 
 
 def _enviar_mensagem(client, mensagens_api: list, system: str) -> tuple[str, list[str], object]:
-    """Loop de tool use. Retorna: (texto, tools_usadas, usage)."""
-    tools_usadas = []
-    msgs = list(mensagens_api)
-
-    while True:
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=1500,
-            system=system,
-            messages=msgs,
-            tools=TOOLS,
-        )
-
-        if response.stop_reason == "end_turn":
-            texto = "".join(b.text for b in response.content if hasattr(b, "text"))
-            return texto, tools_usadas, response.usage
-
-        if response.stop_reason == "tool_use":
-            msgs.append({"role": "assistant", "content": response.content})
-            resultados = []
-            for block in response.content:
-                if not hasattr(block, "type") or block.type != "tool_use":
-                    continue
-                tools_usadas.append(block.name)
-                saida = _executar_tool(block.name, getattr(block, "input", {}))
-                resultados.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": saida,
-                })
-            msgs.append({"role": "user", "content": resultados})
-            continue
-
-        texto = "".join(b.text for b in response.content if hasattr(b, "text"))
-        return texto, tools_usadas, response.usage
+    """Chama a API via MCP server (Anthropic beta). Retorna: (texto, tools_usadas, usage)."""
+    mcp_token = os.environ.get("MCP_TOKEN", "")
+    if not mcp_token:
+        env_path = Path(__file__).resolve().parents[3] / ".env"
+        if env_path.exists():
+            for line in env_path.read_text().splitlines():
+                if line.startswith("MCP_TOKEN="):
+                    mcp_token = line.split("=", 1)[1].strip()
+                    break
+    response = client.beta.messages.create(
+        model=MODEL,
+        max_tokens=1500,
+        system=system,
+        messages=mensagens_api,
+        betas=["mcp-client-2025-04-04"],
+        mcp_servers=[{
+            "type": "url",
+            "url": "https://minhacarteira.duckdns.org/mcp",
+            "name": "carteira",
+            "authorization_token": mcp_token,
+        }],
+    )
+    texto = "".join(
+        b.text for b in response.content
+        if getattr(b, "type", "") == "text"
+    )
+    tools_usadas = [
+        b.name for b in response.content
+        if getattr(b, "type", "") in ("tool_use", "server_tool_use") and hasattr(b, "name")
+    ]
+    return texto, tools_usadas, response.usage
 
 
 # ── Auto-título e extração ────────────────────────────────────────

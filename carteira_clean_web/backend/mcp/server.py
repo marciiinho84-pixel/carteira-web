@@ -12,6 +12,8 @@ from fastmcp import FastMCP
 from carteira_clean_web.backend.mcp.tools.portfolio import (
     fn_obter_posicoes, fn_obter_performance, fn_obter_cotacao,
     fn_atribuicao, fn_brinson, fn_analise_aderencia_setorial,
+    fn_obter_diario, fn_obter_sinais, fn_obter_fundamentos,
+    fn_obter_watchlist, fn_obter_analise_rv,
 )
 
 mcp = FastMCP(
@@ -164,6 +166,99 @@ def obter_brinson(
 )
 def analise_aderencia_setorial() -> dict:
     return fn_analise_aderencia_setorial()
+
+
+@mcp.tool(
+    description="""
+    Retorna anotações de estratégia e decisões do diário do investidor.
+
+    Parâmetros opcionais:
+    - periodo: "7d", "30d" (padrão), "90d" ou "all"
+    - busca: texto livre para filtrar entradas (pesquisa no conteúdo e no ticker)
+    - ticker: filtrar entradas que mencionam especificamente este ticker
+
+    Use quando o usuário perguntar sobre:
+    estratégias registradas, decisões anteriores, planos, teses de compra/venda,
+    histórico de decisões, o que decidi sobre X, quando comprei Y, minhas notas.
+    """
+)
+def obter_diario(
+    periodo: str = "30d",
+    busca: str = None,
+    ticker: str = None,
+) -> dict:
+    return fn_obter_diario(periodo=periodo, busca=busca, ticker=ticker)
+
+
+@mcp.tool(
+    description="""
+    Retorna sinais técnicos (RSI, MACD, Médias Móveis) e indicadores
+    fundamentalistas (P/L, P/VP, ROE, EV/EBITDA, Margem Líq., Dív/EBITDA)
+    para os ativos da carteira ou lista específica.
+
+    Parâmetros opcionais:
+    - tickers: lista de tickers (ex: ["WEGE3", "ITUB4"]). Se vazio, usa todos
+      os ativos de Renda Variável da carteira.
+    - apenas_ativos: se true, retorna apenas ativos com sinal diferente de NEUTRO.
+
+    Use quando o usuário perguntar sobre:
+    análise técnica, RSI, MACD, médias móveis, sinais de compra/venda,
+    fundamentos, P/L, ROE de ativos específicos ou da carteira geral.
+    """
+)
+def obter_sinais(
+    tickers: list[str] = None,
+    apenas_ativos: bool = False,
+) -> dict:
+    return fn_obter_sinais(tickers=tickers, apenas_ativos=apenas_ativos)
+
+
+@mcp.tool(
+    description="""
+    Retorna indicadores fundamentalistas detalhados (P/L, P/VP, EV/EBITDA,
+    ROE, Margem Líquida, Dívida/EBITDA) para ativos da carteira ou lista.
+
+    Parâmetro opcional:
+    - tickers: lista de tickers. Se vazio, usa todos os ativos RV da carteira.
+
+    Use quando o usuário quiser comparar múltiplos entre ativos, fazer triagem
+    por fundamentos, ou análise fundamentalista focada sem sinais técnicos.
+    Prefira obter_sinais quando quiser fundamentos + técnicos juntos.
+    """
+)
+def obter_fundamentos(tickers: list[str] = None) -> dict:
+    return fn_obter_fundamentos(tickers=tickers)
+
+
+@mcp.tool(
+    description="""
+    Retorna a watchlist do investidor com cotações ao vivo, preço-alvo,
+    stop-loss, distância percentual ao alvo e sinal (NA_ZONA / PROXIMO / ACIMA).
+
+    Use quando o usuário perguntar sobre:
+    ativos que está monitorando, watchlist, candidatos a compra,
+    alvos de preço, qual ativo está próximo do alvo, stop-loss.
+    """
+)
+def obter_watchlist() -> dict:
+    return fn_obter_watchlist()
+
+
+@mcp.tool(
+    description="""
+    ANÁLISE COMPLETA da carteira de Renda Variável.
+    Combina em paralelo: posições RV + sinais técnicos + fundamentos + watchlist.
+
+    Use quando o usuário pedir análise geral da carteira RV, avaliação de ativos,
+    revisão de portfólio, ou qualquer análise que precise de múltiplos indicadores.
+    PREFIRA esta tool a chamar obter_posicoes + obter_sinais separadamente.
+
+    NÃO use para aderência à IPS ou concentração por bloco — use
+    analise_aderencia_setorial para isso.
+    """
+)
+def obter_analise_rv() -> dict:
+    return fn_obter_analise_rv()
 
 
 if __name__ == "__main__":
