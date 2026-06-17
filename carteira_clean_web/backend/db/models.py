@@ -335,6 +335,33 @@ class Mensagem(Base):
         }
 
 
+class Fundamento(Base):
+    """Indicadores fundamentalistas por ativo — append-only, mesmo padrão de cotacoes.
+
+    Múltiplas linhas por (ticker, indicador) são permitidas; a leitura
+    usa MAX(fetched_at) para o valor mais recente.
+    """
+    __tablename__ = "fundamentos"
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    ticker         = Column(Text, nullable=False)
+    data_referencia = Column(Date, nullable=False)
+    indicador      = Column(Text, nullable=False)
+    valor          = Column(Float, nullable=True)
+    fonte          = Column(Text, nullable=False, server_default="yfinance")
+    fetched_at     = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "indicador IN ('PL','PVP','ROE','ROIC','DY',"
+            "'MARGEM_EBITDA','DIV_LIQ_EBITDA','MARGEM_LIQUIDA','LPA','VPA')",
+            name="ck_fundamentos_indicador",
+        ),
+        Index("ix_fundamentos_ticker_indicador", "ticker", "indicador"),
+        Index("ix_fundamentos_ticker_data", "ticker", "data_referencia"),
+    )
+
+
 class Cotacao(Base):
     """Histórico de cotações públicas — append-only log, sem UPDATE/DELETE.
 

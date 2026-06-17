@@ -602,6 +602,125 @@ def fn_obter_fundamentos(tickers: list[str] | None = None) -> dict:
     }
 
 
+# ── TOOL 6b — CONSULTAR FUNDAMENTOS (do DB) ──────────────────────
+
+def fn_consultar_fundamentos(tickers: list[str] | None = None) -> dict:
+    """Retorna os últimos indicadores fundamentalistas persistidos no DB.
+
+    Lê da tabela `fundamentos` (MAX fetched_at por ticker+indicador).
+    Para tickers sem dados no DB, faz fallback via live yfinance e persiste.
+    """
+    from sqlalchemy import func
+
+    from carteira_clean_web.backend.db.models import Fundamento
+    from carteira_clean_web.backend.db.session import get_session
+    from carteira_clean_web.backend.engine.constantes import COTIZADO_PUBLICO
+
+    if not tickers:
+        if not engine_cache.esta_calculado():
+            engine_cache.carregar_disco()
+        if not engine_cache.esta_calculado():
+            return {"erro": "Cache vazio. Recalcule a carteira."}
+        estado = engine_cache.get_estado()
+        tickers = [
+            t
+            for t, p in estado["posicoes"].items()
+            if estado["ativos"].get(t, {}).get("familia", "") in COTIZADO_PUBLICO
+            and p.qtd > 1e-9
+        ]
+
+    if not tickers:
+        return {"erro": "Nenhum ticker encontrado."}
+
+    session = get_session()
+    try:
+        # Subquery: MAX(fetched_at) por (ticker, indicador)
+        subq = (
+            session.query(
+                Fundamento.ticker,
+                Fundamento.indicador,
+                func.max(Fundamento.fetched_at).label("max_fa"),
+            )
+            .filter(Fundamento.ticker.in_(tickers))
+            .group_by(Fundamento.ticker, Fundamento.indicador)
+            .subquery()
+        )
+        rows = (
+            session.query(Fundamento)
+            .join(
+                subq,
+                (Fundamento.ticker == subq.c.ticker)
+                & (Fundamento.indicador == subq.c.indicador)
+                & (Fundamento.fetched_at == subq.c.max_fa),
+            )
+            .all()
+        )
+    finally:
+        session.close()
+
+    # Agrupa por ticker
+    por_ticker: dict[str, dict] = {}
+    for row in rows:
+        t = row.ticker
+        if t not in por_ticker:
+            por_ticker[t] = {
+                "ticker": t,
+                "data_referencia": str(row.data_referencia),
+                "fetched_at": row.fetched_at.strftime("%Y-%m-%d %H:%M"),
+            }
+        por_ticker[t][row.indicador] = row.valor
+
+    # Tickers sem dados no DB → fallback live + persiste
+    sem_dados = [t for t in tickers if t not in por_ticker]
+    if sem_dados:
+        from carteira_clean_web.backend.engine.fundamentals_client import salvar_fundamentos_db
+        salvar_fundamentos_db(sem_dados)
+        # Re-read after save
+        session2 = get_session()
+        try:
+            subq2 = (
+                session2.query(
+                    Fundamento.ticker,
+                    Fundamento.indicador,
+                    func.max(Fundamento.fetched_at).label("max_fa"),
+                )
+                .filter(Fundamento.ticker.in_(sem_dados))
+                .group_by(Fundamento.ticker, Fundamento.indicador)
+                .subquery()
+            )
+            rows2 = (
+                session2.query(Fundamento)
+                .join(
+                    subq2,
+                    (Fundamento.ticker == subq2.c.ticker)
+                    & (Fundamento.indicador == subq2.c.indicador)
+                    & (Fundamento.fetched_at == subq2.c.max_fa),
+                )
+                .all()
+            )
+            for row in rows2:
+                t = row.ticker
+                if t not in por_ticker:
+                    por_ticker[t] = {
+                        "ticker": t,
+                        "data_referencia": str(row.data_referencia),
+                        "fetched_at": row.fetched_at.strftime("%Y-%m-%d %H:%M"),
+                    }
+                por_ticker[t][row.indicador] = row.valor
+        finally:
+            session2.close()
+
+    for t in tickers:
+        if t not in por_ticker:
+            por_ticker[t] = {"ticker": t, "sem_dados": True}
+
+    return {
+        "total": len(tickers),
+        "com_dados": sum(1 for v in por_ticker.values() if not v.get("sem_dados")),
+        "fundamentos": list(por_ticker.values()),
+    }
+
+
 # ── TOOL 7 — WATCHLIST ────────────────────────────────────────────
 
 def fn_obter_watchlist() -> dict:

@@ -161,6 +161,16 @@ de relevância / análise de impacto" prometido ≠ pertinência para o usuário
 estabilidade não verificados; adotar como fonte central cria ponto único de
 falha e custo recorrente. Avaliar em paralelo, sem travar a primeira fatia.
 
+**Dados de Mercado (dadosdemercado.com.br/api/docs) — candidata a 1b (a avaliar).**
+Mais técnica e verificável que a Partnr (documentação real, não marketing).
+Endpoints úteis: **Índices de mercado / Detalhes de um índice** (cobre os
+setoriais B3 desta fatia), balanços, indicadores financeiros, dividendos, macro
+(Focus, curvas de juros), notícias. Token Bearer, JSON, versão 1 estável, base
+`api.dadosdemercado.com.br/v1`. **Ressalvas:** limites de requisição e preço sob
+contato (api@dadosdemercado.com.br); cobertura setorial a confirmar. Candidata
+preferencial para avaliar — inclusive como fonte dos índices setoriais se a
+coleta direta da B3 se mostrar trabalhosa.
+
 ## Camada de interface — Generative UI
 
 Interface desenhada em parte pelo agente, em tempo real. Três padrões:
@@ -192,33 +202,57 @@ decisão.*
 
 ## Decisões de estrutura em aberto
 
-- **Caminho de construção detalhado** — o que entra em cada etapa abaixo, à
-  medida que se aterrissa em dados, orçamento e quem constrói.
+- **Fonte do substrato exógeno** — avaliar Dados de Mercado e Partnr como APIs
+  de fundamentos/macro/notícias; NotebookLM como digestor qualitativo. Próxima
+  ação concreta.
+- **Instrumentistas** — quantos, quais, quando nascem (teste de admissão: só se
+  tem substrato e método próprios). Primeiro candidato natural: fundamentalista.
+- **Caminho Streamlit → React** — decisão tomada (React), execução não iniciada.
+  Bloqueia mobile e Generative UI.
+- **Rotação do MCP_TOKEN** — tarefa de higiene pendente (token exposto nesta
+  conversa).
 
 ## Decisões de estrutura já fechadas
 
 - **Cinco blocos estruturais:** substrato endógeno (1a) + substrato exógeno
-  (1b) → memória dupla (2) → agente/maestro (3) → interface (4). "Quatro
-  camadas" com a Camada 1 desdobrada em duas metades de natureza distinta.
-- **Aprender é propriedade transversal** — vive em 1b e 2 (contexto do mundo +
-  comportamento do usuário, ambos persistidos), não é detalhe do agente.
+  (1b) → memória dupla (2) → agente/maestro (3) → interface (4).
+- **Aprender é propriedade transversal** — vive em 1b e 2.
 - **A2A dentro da Camada 3** — coordenação é fiação interna, não camada própria.
 - **Instrumentistas independentes** — reportam ao maestro, não se ouvem.
 - **Generative UI:** Declarativo como base; Controlado nos poucos fluxos de
-  precisão (ex.: patrimônio consolidado, tela de alocação); Aberto só para
-  visualizações descartáveis, nunca como principal.
-- **Exibir convergência/divergência:** o maestro sintetiza primeiro, com
-  expansão para cada instrumentista. O sinal de convergência/divergência é
-  visível sem precisar abrir nada; o raciocínio completo fica a um clique.
-- **Multiplataforma:** web responsivo (análise densa) + app mobile nativo
-  (notificação push, realiza o temperamento do §4).
+  precisão; Aberto só para visualizações descartáveis.
+- **Exibir convergência/divergência:** maestro sintetiza, sinal visível sem
+  abrir, detalhe a um clique.
+- **Multiplataforma:** web responsivo + app mobile nativo.
+- **Assistente migrado para MCP** — 11 tools numa fonte única (server.py),
+  sem duplicação no assistente. Conexão via API beta com Bearer token.
+- **Maestro v2 (system prompt)** — propositivo, vai além do óbvio, busca fora
+  da carteira, regra FUNCEF explícita. Modelo Opus 4.8.
 - **Caminho de construção (sequência macro):**
-  1. **Consolidação** — já existe (MVP funcional atual).
-  2. **Memória dupla** — integrar ao app atual.
-  3. **IA** — maestro + primeiro instrumentista, depois os demais e a autonomia.
-  4. **Interface (UI)** — Generative UI conforme decidido.
-  Cada etapa é usável antes da seguinte. Ponto de partida real: integrar
-  memória ao MVP existente, não construir a base do zero.
+  1. **Consolidação** — ✅ feita (event sourcing).
+  2. **Substrato exógeno** — 🟡 mínimo (8 índices setoriais B3 numéricos).
+     NotebookLM previsto como camada de digestão de conteúdo pesado (calls de
+     RI, entrevistas, releases). APIs candidatas: Dados de Mercado
+     (dadosdemercado.com.br) e Partnr (partnr.ai) — a avaliar.
+  3. **Memória dupla** — 🟡 declarada existe; inferência zero.
+  4. **IA (maestro + instrumentistas)** — 🟡 maestro v2 operacional; zero
+     instrumentistas especializados.
+  5. **Interface (UI)** — 🔴 Streamlit; React + mobile não iniciados.
+  Cada etapa usável antes da seguinte. Fatias verticais finas, não camadas
+  inteiras.
+
+## Implementado (commits de referência)
+
+- **Fatia Vertical 1** (117a85a): substrato setorial + aderência IPS + tool MCP
+- **Maestro v2 + migração MCP** (4de1f04): prompt refinado, 11 tools fonte
+  única, regra FUNCEF, -225 linhas de duplicação
+
+## Próxima fatia (Fatia 2) — direção definida
+
+Enriquecer o substrato exógeno: avaliar APIs (Dados de Mercado / Partnr),
+integrar fundamentos ao vivo, nova tool MCP para consulta real. NotebookLM
+como digestor de conteúdo qualitativo (calls, RI, entrevistas) — previsto no
+conceito original e ainda não implementado.
 
 ---
 

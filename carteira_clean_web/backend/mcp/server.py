@@ -13,7 +13,7 @@ from carteira_clean_web.backend.mcp.tools.portfolio import (
     fn_obter_posicoes, fn_obter_performance, fn_obter_cotacao,
     fn_atribuicao, fn_brinson, fn_analise_aderencia_setorial,
     fn_obter_diario, fn_obter_sinais, fn_obter_fundamentos,
-    fn_obter_watchlist, fn_obter_analise_rv,
+    fn_obter_watchlist, fn_obter_analise_rv, fn_consultar_fundamentos,
 )
 
 mcp = FastMCP(
@@ -259,6 +259,30 @@ def obter_watchlist() -> dict:
 )
 def obter_analise_rv() -> dict:
     return fn_obter_analise_rv()
+
+
+@mcp.tool(
+    description="""
+    Retorna os indicadores fundamentalistas completos persistidos no banco de dados
+    para os ativos da carteira ou lista específica de tickers.
+
+    Indicadores disponíveis: P/L, P/VP, ROE, ROIC, DY (Dividend Yield),
+    Margem EBITDA, Dívida Líquida/EBITDA, Margem Líquida, LPA, VPA.
+    Inclui data de referência e quando os dados foram coletados.
+
+    Parâmetro opcional:
+    - tickers: lista de tickers. Se vazio, usa todos os ativos RV da carteira.
+
+    ETFs e fundos retornam NULL para indicadores não aplicáveis (esperado).
+
+    Use quando o usuário quiser:
+    análise fundamentalista detalhada com todos os indicadores, comparar valuations,
+    ver ROIC, dividend yield, ou LPA/VPA de ativos da carteira.
+    Prefira obter_sinais para uma visão técnica + fundamentalista combinada.
+    """
+)
+def consultar_fundamentos(tickers: list[str] = None) -> dict:
+    return fn_consultar_fundamentos(tickers)
 
 
 if __name__ == "__main__":
