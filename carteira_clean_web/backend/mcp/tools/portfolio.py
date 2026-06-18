@@ -1103,3 +1103,382 @@ def fn_analise_aderencia_setorial() -> dict:
             "anti_alucinacao": "todo número na observacao deriva de fonte_A ou fonte_B",
         },
     }
+
+
+# ── TOOL 11 — CONSULTAR TESES (Fatia 4) ──────────────────────────
+
+def fn_consultar_teses(ticker: str | None = None) -> dict:
+    """Retorna teses de investimento ativas (ou de um ticker específico)."""
+    from carteira_clean_web.backend.db.models import Tese
+    from carteira_clean_web.backend.db.session import get_session
+
+    session = get_session()
+    try:
+        q = session.query(Tese).order_by(Tese.data_criacao.desc())
+        if ticker:
+            q = q.filter(Tese.ticker == ticker.upper())
+        else:
+            q = q.filter(Tese.status == "ATIVA")
+        teses = q.all()
+        from datetime import date
+        hoje = date.today()
+        itens = []
+        for t in teses:
+            dias = (hoje - t.data_criacao).days if t.data_criacao else None
+            itens.append({
+                **t.to_dict(),
+                "dias_desde_criacao": dias,
+            })
+        return {"total": len(itens), "teses": itens}
+    finally:
+        session.close()
+
+
+# ── TOOL 12 — CONSULTAR DIÁRIO DE DECISÕES (Fatia 5) ─────────────
+
+def fn_consultar_diario_decisoes(
+    ticker: str | None = None,
+    periodo: str = "90d",
+) -> dict:
+    """Retorna entradas do diário de decisão estruturado.
+
+    resultado_percentual é calculado dinamicamente (preco_entrada vs cotação atual).
+    """
+    from datetime import date, timedelta
+
+    from carteira_clean_web.backend.db.models import DiarioDecisao
+    from carteira_clean_web.backend.db.session import get_session
+
+    _periodos = {"7d": 7, "30d": 30, "90d": 90, "all": None}
+    dias = _periodos.get(periodo, 90)
+    data_min = date.today() - timedelta(days=dias) if dias else None
+
+    session = get_session()
+    try:
+        q = session.query(DiarioDecisao).order_by(DiarioDecisao.data_decisao.desc())
+        if ticker:
+            q = q.filter(DiarioDecisao.ticker == ticker.upper())
+        if data_min:
+            q = q.filter(DiarioDecisao.data_decisao >= data_min)
+        entradas = q.limit(50).all()
+
+        # Calcular resultado_percentual dinamicamente
+        from carteira_clean_web.backend.api import cache as ec
+        if not ec.esta_calculado():
+            ec.carregar_disco()
+        precos_pub = {}
+        precos_man = {}
+        hoje_dt = date.today()
+        if ec.esta_calculado():
+            est = ec.get_estado()
+            precos_pub = est.get("precos_publicos", {})
+            precos_man = est.get("precos_manuais", {})
+            hoje_dt = est.get("hoje", hoje_dt)
+
+        itens = []
+        for e in entradas:
+            d = e.to_dict()
+            if e.preco_entrada:
+                preco_atual = (
+                    preco_em(precos_pub.get(e.ticker, {}), hoje_dt)
+                    or preco_em(precos_man.get(e.ticker, {}), hoje_dt, max_lookback_dias=60)
+                )
+                if preco_atual:
+                    d["resultado_percentual"] = round(
+                        (preco_atual - e.preco_entrada) / e.preco_entrada * 100, 2
+                    )
+                    d["preco_atual"] = round(preco_atual, 2)
+            itens.append(d)
+        return {"total": len(itens), "entradas": itens}
+    finally:
+        session.close()
+
+
+# ── TOOL 13 — RISCO EX-ANTE (Fatia 6) ───────────────────────────
+
+def fn_risco_carteira(tipo: str = "todos") -> dict:
+    """Risco ex-ante: exposição por fator, drawdown, liquidez e stress."""
+    import math
+    import numpy as np
+
+    if not engine_cache.esta_calculado():
+        engine_cache.carregar_disco()
+    if not engine_cache.esta_calculado():
+        return {"erro": "Cache vazio. Recalcule a carteira."}
+
+    estado = engine_cache.get_estado()
+    posicoes_dict = estado["posicoes"]
+    ativos = estado["ativos"]
+    precos_pub = estado.get("precos_publicos", {})
+    precos_man = estado.get("precos_manuais", {})
+    hoje = estado["hoje"]
+    df_evo = estado["df_evo"]
+
+    # Patrimônio e valores por ativo (Gerida apenas)
+    valores: dict[str, float] = {}
+    for tkr, pos in posicoes_dict.items():
+        info = ativos.get(tkr, {})
+        if info.get("composite") != "Gerida":
+            continue
+        familia = info.get("familia", "")
+        if pos.qtd < 1e-9 and familia not in AGREGADO_PRIVADO:
+            continue
+        preco = preco_em(precos_pub.get(tkr, {}), hoje)
+        if preco is None:
+            preco = preco_em(precos_man.get(tkr, {}), hoje, max_lookback_dias=60)
+        if familia in AGREGADO_PRIVADO:
+            valores[tkr] = preco if preco else pos.custo_total
+        else:
+            valores[tkr] = pos.qtd * preco if preco else pos.custo_total
+
+    patrimonio_gerida = sum(valores.values()) or 1.0
+
+    result: dict = {"patrimonio_gerida": round(patrimonio_gerida, 2)}
+
+    # ── EXPOSIÇÃO ────────────────────────────────────────────────
+    if tipo in ("exposicao", "todos"):
+        # Bloco IPS
+        por_bloco: dict[str, float] = {}
+        for tkr, val in valores.items():
+            bloco = ativos.get(tkr, {}).get("bloco_ips") or "FORA_IPS"
+            por_bloco[bloco] = por_bloco.get(bloco, 0.0) + val
+
+        # Moeda
+        usd_familias = {"BDR", "BDR de ETF"}
+        val_usd = sum(v for t, v in valores.items()
+                      if ativos.get(t, {}).get("familia") in usd_familias)
+        val_brl = patrimonio_gerida - val_usd
+
+        # Classe
+        por_classe: dict[str, float] = {}
+        for tkr, val in valores.items():
+            cls = ativos.get(tkr, {}).get("classe") or "Outros"
+            por_classe[cls] = por_classe.get(cls, 0.0) + val
+
+        result["exposicao"] = {
+            "bloco_ips": {
+                b: {"valor": round(v, 2), "pct": round(v / patrimonio_gerida * 100, 1)}
+                for b, v in sorted(por_bloco.items(), key=lambda x: -x[1])
+            },
+            "moeda": {
+                "BRL": {"valor": round(val_brl, 2), "pct": round(val_brl / patrimonio_gerida * 100, 1)},
+                "USD": {"valor": round(val_usd, 2), "pct": round(val_usd / patrimonio_gerida * 100, 1)},
+            },
+            "classe": {
+                c: {"valor": round(v, 2), "pct": round(v / patrimonio_gerida * 100, 1)}
+                for c, v in sorted(por_classe.items(), key=lambda x: -x[1])
+            },
+        }
+
+    # ── DRAWDOWN ─────────────────────────────────────────────────
+    if tipo in ("drawdown", "todos") and not df_evo.empty:
+        import pandas as pd
+        df = df_evo.copy()
+        df["ano"] = pd.to_datetime(df["data"]).dt.year
+        ano_atual = pd.to_datetime(str(hoje)).year
+
+        mdd_ytd = float(df[df["ano"] == ano_atual]["drawdown"].min()) if not df[df["ano"] == ano_atual].empty else 0.0
+        mdd_12m = float(df.tail(252)["drawdown"].min())
+        mdd_total = float(df["drawdown"].min())
+
+        # Duração aproximada: dias entre último pico (drawdown=0) antes do maior vale
+        dd_series = df["drawdown"].values
+        idx_min = int(np.argmin(dd_series))
+        # Pico antes do mínimo
+        pico_idx = next(
+            (i for i in range(idx_min - 1, -1, -1) if dd_series[i] >= -0.001),
+            0,
+        )
+        # Recuperação após o mínimo (próximo valor >= 0)
+        rec_idx = next(
+            (i for i in range(idx_min + 1, len(dd_series)) if dd_series[i] >= -0.001),
+            len(dd_series) - 1,
+        )
+        dur_queda = idx_min - pico_idx
+        dur_recuperacao = rec_idx - idx_min if rec_idx < len(dd_series) - 1 else None
+
+        result["drawdown"] = {
+            "mdd_ytd_pct": round(mdd_ytd * 100, 2),
+            "mdd_12m_pct": round(mdd_12m * 100, 2),
+            "mdd_desde_inicio_pct": round(mdd_total * 100, 2),
+            "maior_queda_duracao_dias": dur_queda,
+            "recuperacao_dias": dur_recuperacao,
+        }
+
+    # ── LIQUIDEZ ─────────────────────────────────────────────────
+    if tipo in ("liquidez", "todos"):
+        mapa_liq = {"Alta": "D+0", "Média": "D+3", "Baixa": "D+30"}
+        por_liq: dict[str, float] = {"D+0": 0.0, "D+3": 0.0, "D+30": 0.0, "D+30+": 0.0}
+        for tkr, val in valores.items():
+            liq_raw = ativos.get(tkr, {}).get("liquidez")
+            bucket = mapa_liq.get(liq_raw, "D+30+")
+            por_liq[bucket] = por_liq.get(bucket, 0.0) + val
+
+        cum_d3 = por_liq["D+0"] + por_liq["D+3"]
+        alerta = cum_d3 / patrimonio_gerida * 100 < 20
+
+        result["liquidez"] = {
+            "por_bucket": {
+                k: {"valor": round(v, 2), "pct": round(v / patrimonio_gerida * 100, 1)}
+                for k, v in por_liq.items()
+            },
+            "disponivel_ate_d3_pct": round(cum_d3 / patrimonio_gerida * 100, 1),
+            "alerta_liquidez_baixa": alerta,
+        }
+
+    # ── CENÁRIOS DE STRESS ────────────────────────────────────────
+    if tipo in ("stress", "todos") and not df_evo.empty:
+        # Beta implícito (regressão 60 dias)
+        try:
+            df_r = df_evo.tail(62).copy()
+            df_r["ret_port"] = df_r["twr_gerida"].diff() / (1 + df_r["twr_gerida"].shift(1))
+            df_r["ret_ibov"] = df_r["ibov_acum"].diff() / (1 + df_r["ibov_acum"].shift(1))
+            df_r = df_r.dropna(subset=["ret_port", "ret_ibov"]).tail(60)
+            if len(df_r) >= 20:
+                cov = np.cov(df_r["ret_port"], df_r["ret_ibov"])
+                beta = float(cov[0, 1] / cov[1, 1]) if cov[1, 1] != 0 else 0.8
+                beta = max(-2.0, min(3.0, beta))  # cap razoável
+            else:
+                beta = 0.8
+        except Exception:
+            beta = 0.8
+
+        # Pesos para stress
+        usd_familias = {"BDR", "BDR de ETF"}
+        peso_usd = sum(v for t, v in valores.items()
+                       if ativos.get(t, {}).get("familia") in usd_familias) / patrimonio_gerida
+        peso_rv_brl = sum(v for t, v in valores.items()
+                          if ativos.get(t, {}).get("classe") == "Renda Variável"
+                          and ativos.get(t, {}).get("familia") == "Ação BR") / patrimonio_gerida
+        peso_rf_pos = sum(v for t, v in valores.items()
+                          if ativos.get(t, {}).get("indexador") in ("CDI", "SELIC")) / patrimonio_gerida
+        peso_rf_pre = sum(v for t, v in valores.items()
+                          if ativos.get(t, {}).get("indexador") in ("IPCA", "Prefixado")) / patrimonio_gerida
+
+        impacto_ibov = beta * (-0.20) * (1 - peso_usd)
+        impacto_usd = peso_usd * 0.30
+        impacto_selic_pos = peso_rf_pos * 0.01  # +1% retorno pós-fixados
+        impacto_selic_pre = peso_rf_pre * (-0.05)  # aprox -5% mark-to-market duração média
+
+        result["stress"] = {
+            "beta_implicito": round(beta, 2),
+            "cenarios": {
+                "IBOV_menos_20pct": {
+                    "descricao": "IBOV cai 20%",
+                    "impacto_estimado_pct": round(impacto_ibov * 100, 1),
+                    "impacto_rs": round(impacto_ibov * patrimonio_gerida, 2),
+                },
+                "USD_mais_30pct": {
+                    "descricao": "USD sobe 30% (BDRs sobem 30%)",
+                    "impacto_estimado_pct": round(impacto_usd * 100, 1),
+                    "impacto_rs": round(impacto_usd * patrimonio_gerida, 2),
+                },
+                "Selic_mais_300bps": {
+                    "descricao": "Selic sobe 3pp (pós-fixados +, prefixados/IPCA+ -)",
+                    "impacto_pos_fixados_pct": round(impacto_selic_pos * 100, 1),
+                    "impacto_pre_ipca_pct": round(impacto_selic_pre * 100, 1),
+                    "impacto_liquido_pct": round((impacto_selic_pos + impacto_selic_pre) * 100, 1),
+                },
+            },
+            "nota": "Aproximações de ordem de grandeza. Beta calculado via regressão 60 dias.",
+        }
+
+    return result
+
+
+# ── TOOL 14 — DISCIPLINA DE CAIXA (Fatia 7) ─────────────────────
+
+def fn_disciplina_caixa() -> dict:
+    """Monitoramento de caixa e aderência ao plano de aportes."""
+    from datetime import date
+
+    from carteira_clean_web.backend.db.models import Evento, RegraAporte
+    from carteira_clean_web.backend.db.session import get_session
+
+    if not engine_cache.esta_calculado():
+        engine_cache.carregar_disco()
+    if not engine_cache.esta_calculado():
+        return {"erro": "Cache vazio. Recalcule a carteira."}
+
+    estado = engine_cache.get_estado()
+    posicoes_dict = estado["posicoes"]
+    ativos = estado["ativos"]
+    precos_pub = estado.get("precos_publicos", {})
+    precos_man = estado.get("precos_manuais", {})
+    hoje = estado["hoje"]
+    df_evo = estado["df_evo"]
+
+    # Patrimônio gerido
+    patrimonio_gerida = float(df_evo.iloc[-1]["patrimonio_gerida"]) if not df_evo.empty else 0.0
+
+    # Caixa: ativos com setor "Caixa/Conservador"
+    caixa_val = 0.0
+    for tkr, pos in posicoes_dict.items():
+        info = ativos.get(tkr, {})
+        if info.get("composite") != "Gerida":
+            continue
+        if info.get("setor", "").lower() not in ("caixa/conservador", "caixa"):
+            continue
+        familia = info.get("familia", "")
+        preco = preco_em(precos_pub.get(tkr, {}), hoje)
+        if preco is None:
+            preco = preco_em(precos_man.get(tkr, {}), hoje, max_lookback_dias=60)
+        if familia in AGREGADO_PRIVADO:
+            caixa_val += preco if preco else pos.custo_total
+        elif pos.qtd > 1e-9:
+            caixa_val += pos.qtd * preco if preco else pos.custo_total
+
+    caixa_pct = caixa_val / patrimonio_gerida * 100 if patrimonio_gerida > 0 else 0.0
+    limiar_pct = 15.0
+
+    # Dias acima do limiar (usando histórico df_evo como proxy de caixa — aproximação)
+    dias_acima = 0
+    if not df_evo.empty and "patrimonio_rv" in df_evo.columns:
+        for _, row in df_evo.iterrows():
+            pat = row["patrimonio_gerida"]
+            pat_rv = row.get("patrimonio_rv", 0.0)
+            if pat > 0:
+                caixa_hist_pct = (pat - pat_rv) / pat * 100
+                if caixa_hist_pct > limiar_pct:
+                    dias_acima += 1
+
+    # Status
+    if caixa_pct <= limiar_pct:
+        status_caixa = "SAUDAVEL"
+    elif dias_acima <= 42:  # 6 semanas
+        status_caixa = "ELEVADO_TEMPORARIO"
+    else:
+        status_caixa = "REQUER_REVISAO"
+
+    # Aporte do mês corrente
+    session = get_session()
+    try:
+        mes_ini = hoje.replace(day=1)
+        aportes_mes = session.query(Evento).filter(
+            Evento.tipo.in_(("APORTE_EXTERNO", "CONTRIBUICAO", "APORTE")),
+            Evento.data >= mes_ini,
+            Evento.data <= hoje,
+        ).all()
+        total_aporte_mes = sum(e.valor or 0 for e in aportes_mes)
+
+        # Regra ativa
+        regra = session.query(RegraAporte).filter(RegraAporte.ativo == 1).first()
+        regra_dict = regra.to_dict() if regra else None
+        alvo_mes = regra.valor_mensal_alvo if regra else None
+    finally:
+        session.close()
+
+    return {
+        "caixa_atual_rs": round(caixa_val, 2),
+        "caixa_pct": round(caixa_pct, 1),
+        "limiar_alerta_pct": limiar_pct,
+        "dias_acima_do_limiar": dias_acima,
+        "status": status_caixa,
+        "aporte_mes_atual_rs": round(total_aporte_mes, 2),
+        "alvo_mensal_rs": alvo_mes,
+        "aderencia_aporte": (
+            round(total_aporte_mes / alvo_mes * 100, 1) if alvo_mes else None
+        ),
+        "regra_ativa": regra_dict,
+        "patrimonio_gerida": round(patrimonio_gerida, 2),
+    }

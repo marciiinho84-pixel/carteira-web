@@ -335,6 +335,100 @@ class Mensagem(Base):
         }
 
 
+class Tese(Base):
+    """Tese de investimento com critério de invalidação (Fatia 4)."""
+    __tablename__ = "teses"
+
+    id                      = Column(Integer, primary_key=True, autoincrement=True)
+    ticker                  = Column(Text, nullable=False)
+    bloco_ips               = Column(Text, nullable=True)
+    racional                = Column(Text, nullable=False)
+    cenario_esperado        = Column(Text, nullable=True)
+    criterio_invalidacao    = Column(Text, nullable=True)
+    nivel_invalidacao       = Column(Text, nullable=False, default="VERDE")
+    data_criacao            = Column(Date, nullable=False)
+    data_atualizacao        = Column(Date, nullable=True)
+    status                  = Column(Text, nullable=False, default="ATIVA")
+    observacao_encerramento = Column(Text, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("nivel_invalidacao IN ('VERDE','AMARELO','VERMELHO')", name="ck_tese_nivel"),
+        CheckConstraint("status IN ('ATIVA','INVALIDADA','ENCERRADA')", name="ck_tese_status"),
+        Index("ix_teses_ticker", "ticker"),
+        Index("ix_teses_status", "status"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id, "ticker": self.ticker, "bloco_ips": self.bloco_ips,
+            "racional": self.racional, "cenario_esperado": self.cenario_esperado,
+            "criterio_invalidacao": self.criterio_invalidacao,
+            "nivel_invalidacao": self.nivel_invalidacao,
+            "data_criacao": str(self.data_criacao) if self.data_criacao else None,
+            "data_atualizacao": str(self.data_atualizacao) if self.data_atualizacao else None,
+            "status": self.status,
+            "observacao_encerramento": self.observacao_encerramento,
+        }
+
+
+class DiarioDecisao(Base):
+    """Diário de decisão estruturado com convicção e link a teses (Fatia 5)."""
+    __tablename__ = "diario_decisoes"
+
+    id               = Column(Integer, primary_key=True, autoincrement=True)
+    data_decisao     = Column(Date, nullable=False)
+    ticker           = Column(Text, nullable=False)
+    acao             = Column(Text, nullable=False)
+    racional         = Column(Text, nullable=False)
+    cenario_esperado = Column(Text, nullable=True)
+    conviccao        = Column(Integer, nullable=False, default=3)
+    preco_entrada    = Column(Float, nullable=True)
+    tese_id          = Column(Integer, ForeignKey("teses.id", ondelete="SET NULL"), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "acao IN ('COMPRA','VENDA','AUMENTO','REDUCAO','MANTER','WATCHLIST')",
+            name="ck_diario_acao",
+        ),
+        CheckConstraint("conviccao BETWEEN 1 AND 5", name="ck_diario_conviccao"),
+        Index("ix_diario_ticker", "ticker"),
+        Index("ix_diario_data", "data_decisao"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "data_decisao": str(self.data_decisao) if self.data_decisao else None,
+            "ticker": self.ticker, "acao": self.acao, "racional": self.racional,
+            "cenario_esperado": self.cenario_esperado, "conviccao": self.conviccao,
+            "preco_entrada": self.preco_entrada, "tese_id": self.tese_id,
+        }
+
+
+class RegraAporte(Base):
+    """Regra de aporte mensal (Fatia 7). Apenas 1 ativa por vez."""
+    __tablename__ = "regra_aportes"
+
+    id                   = Column(Integer, primary_key=True, autoincrement=True)
+    valor_mensal_alvo    = Column(Float, nullable=False)
+    tipo                 = Column(Text, nullable=False, default="PROGRAMADO")
+    criterio_oportunismo = Column(Text, nullable=True)
+    data_criacao         = Column(Date, nullable=False)
+    ativo                = Column(Integer, nullable=False, default=1)
+
+    __table_args__ = (
+        CheckConstraint("tipo IN ('PROGRAMADO','OPORTUNISTICO','MISTO')", name="ck_regra_tipo"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id, "valor_mensal_alvo": self.valor_mensal_alvo,
+            "tipo": self.tipo, "criterio_oportunismo": self.criterio_oportunismo,
+            "data_criacao": str(self.data_criacao) if self.data_criacao else None,
+            "ativo": bool(self.ativo),
+        }
+
+
 class Fundamento(Base):
     """Indicadores fundamentalistas por ativo — append-only, mesmo padrão de cotacoes.
 

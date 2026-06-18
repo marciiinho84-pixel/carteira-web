@@ -14,6 +14,8 @@ from carteira_clean_web.backend.mcp.tools.portfolio import (
     fn_atribuicao, fn_brinson, fn_analise_aderencia_setorial,
     fn_obter_diario, fn_obter_sinais, fn_obter_fundamentos,
     fn_obter_watchlist, fn_obter_analise_rv, fn_consultar_fundamentos,
+    fn_consultar_teses, fn_consultar_diario_decisoes,
+    fn_risco_carteira, fn_disciplina_caixa,
 )
 
 mcp = FastMCP(
@@ -283,6 +285,87 @@ def obter_analise_rv() -> dict:
 )
 def consultar_fundamentos(tickers: list[str] = None) -> dict:
     return fn_consultar_fundamentos(tickers)
+
+
+@mcp.tool(
+    description="""
+    Retorna as teses de investimento ativas da carteira (ou de um ticker específico).
+
+    Parâmetro opcional:
+    - ticker: filtrar teses de um ativo específico.
+      Sem ticker → retorna TODAS as teses com status ATIVA.
+
+    Cada tese inclui: racional, critério de invalidação, nível de alerta
+    (VERDE/AMARELO/VERMELHO), bloco IPS, data de criação e dias desde criação.
+
+    Use quando o usuário perguntar sobre:
+    teses de investimento, por que comprei X, critério de saída, nível de convicção,
+    qual a tese do WEGE3, quais teses estão em alerta.
+    """
+)
+def consultar_teses(ticker: str = None) -> dict:
+    return fn_consultar_teses(ticker)
+
+
+@mcp.tool(
+    description="""
+    Retorna o diário de decisões estruturado da carteira.
+
+    Parâmetros opcionais:
+    - ticker: filtrar decisões de um ativo específico.
+    - periodo: "7d", "30d" (padrão: "90d"), "all".
+
+    Inclui resultado_percentual calculado dinamicamente (preço de entrada vs. preço atual).
+
+    Use quando o usuário perguntar sobre:
+    decisões de compra/venda, histórico de operações, quando comprei, convicção,
+    razão de uma decisão, cenário esperado, diário de operações.
+    """
+)
+def consultar_diario(ticker: str = None, periodo: str = "90d") -> dict:
+    return fn_consultar_diario_decisoes(ticker, periodo)
+
+
+@mcp.tool(
+    description="""
+    Análise de risco ex-ante da Carteira Gerida.
+
+    Parâmetro:
+    - tipo: "exposicao" | "drawdown" | "liquidez" | "stress" | "todos" (padrão)
+
+    Retorna conforme o tipo:
+    - exposicao: % por bloco IPS, moeda (BRL/USD) e classe de ativo
+    - drawdown: MDD YTD, 12m e desde início + duração da maior queda
+    - liquidez: % disponível por prazo (D+0, D+3, D+30, D+30+) e alerta se <20% em D+3
+    - stress: IBOV -20%, USD +30%, Selic +300bps — impactos estimados em R$ e %
+
+    Use quando o usuário perguntar sobre:
+    risco, exposição cambial, liquidez, drawdown, stress test, quanto perderia se IBOV cair,
+    concentração em dólar, quanto tenho disponível para resgatar, beta da carteira.
+    """
+)
+def risco_carteira(tipo: str = "todos") -> dict:
+    return fn_risco_carteira(tipo)
+
+
+@mcp.tool(
+    description="""
+    Monitoramento de caixa e disciplina de aportes.
+
+    Retorna:
+    - Caixa atual em R$ e % da Carteira Gerida
+    - Status: SAUDAVEL | ELEVADO_TEMPORARIO (<6 sem) | REQUER_REVISAO (>6 sem)
+    - Dias acima do limiar de 15%
+    - Aporte realizado no mês atual vs. meta mensal (se regra cadastrada)
+    - Regra de aporte ativa
+
+    Use quando o usuário perguntar sobre:
+    caixa, cash drag, quanto tenho parado, quanto aportei este mês, meta de aporte,
+    preciso investir o caixa, estou dentro do plano de aportes.
+    """
+)
+def disciplina_caixa() -> dict:
+    return fn_disciplina_caixa()
 
 
 if __name__ == "__main__":
