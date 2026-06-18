@@ -456,6 +456,69 @@ class Fundamento(Base):
     )
 
 
+class MacroIndicador(Base):
+    """Indicadores macro persistidos — append-only. Leitura via MAX(fetched_at)."""
+    __tablename__ = "macro_indicadores"
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    indicador      = Column(Text, nullable=False)
+    data_referencia = Column(Date, nullable=False)
+    valor          = Column(Float, nullable=True)
+    fonte          = Column(Text, nullable=True)
+    fetched_at     = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "indicador IN ('SELIC_META','SELIC_DIARIA','IPCA','USD_BRL','IPCA_FOCUS')",
+            name="ck_macro_indicador",
+        ),
+        Index("ix_macro_indicador_data", "indicador", "data_referencia"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "indicador": self.indicador,
+            "data_referencia": self.data_referencia.isoformat() if self.data_referencia else None,
+            "valor": self.valor,
+            "fonte": self.fonte,
+            "fetched_at": self.fetched_at.isoformat() if self.fetched_at else None,
+        }
+
+
+class EventoCorporativo(Base):
+    """Eventos corporativos (earnings, dividendos) — append-only."""
+    __tablename__ = "eventos_corporativos"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    ticker      = Column(Text, nullable=False)
+    tipo        = Column(Text, nullable=False)
+    data_evento = Column(Date, nullable=False)
+    descricao   = Column(Text, nullable=True)
+    fonte       = Column(Text, nullable=True)
+    fetched_at  = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "tipo IN ('EARNINGS_DATE','EX_DIVIDEND_DATE','DIVIDENDO','JCP','RESULTADO')",
+            name="ck_eventos_corp_tipo",
+        ),
+        Index("ix_eventos_corp_ticker_data", "ticker", "data_evento"),
+        Index("ix_eventos_corp_data", "data_evento"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "ticker": self.ticker,
+            "tipo": self.tipo,
+            "data_evento": self.data_evento.isoformat() if self.data_evento else None,
+            "descricao": self.descricao,
+            "fonte": self.fonte,
+            "fetched_at": self.fetched_at.isoformat() if self.fetched_at else None,
+        }
+
+
 class Cotacao(Base):
     """Histórico de cotações públicas — append-only log, sem UPDATE/DELETE.
 

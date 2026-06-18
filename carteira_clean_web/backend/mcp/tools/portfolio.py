@@ -1482,3 +1482,85 @@ def fn_disciplina_caixa() -> dict:
         "regra_ativa": regra_dict,
         "patrimonio_gerida": round(patrimonio_gerida, 2),
     }
+
+
+# ─── Fatia 3: Macro e eventos corporativos ───────────────────────────────────
+
+def fn_consultar_macro(
+    indicadores: list[str] | None = None,
+    ultimos_n: int = 12,
+) -> dict:
+    """
+    Retorna os últimos pontos de cada indicador macro persistido.
+
+    Indicadores disponíveis:
+      SELIC_META   — Taxa Selic meta (% a.a.), BCB SGS 432
+      SELIC_DIARIA — CDI / Selic over diária (% a.d.), BCB SGS 12
+      IPCA         — Inflação mensal (% a.m.), BCB SGS 433
+      USD_BRL      — Câmbio USD/BRL PTAX venda, BCB SGS 1
+      IPCA_FOCUS   — Expectativa mediana IPCA anual (Focus), BCB Olinda
+
+    Args:
+        indicadores: lista de indicadores ou None (retorna todos)
+        ultimos_n: quantas observações retornar por indicador (default 12)
+    """
+    try:
+        from carteira_clean_web.backend.engine.macro_client import ler_macro
+        dados = ler_macro(indicadores=indicadores, ultimos_n=ultimos_n)
+    except Exception as e:
+        return {"erro": str(e), "dados": {}}
+
+    resumo = {}
+    for ind, pontos in dados.items():
+        if not pontos:
+            resumo[ind] = {"ultimo": None, "data": None, "historico": []}
+            continue
+        mais_recente = pontos[0]
+        resumo[ind] = {
+            "ultimo": mais_recente["valor"],
+            "data": mais_recente["data"],
+            "historico": pontos,
+        }
+
+    return {
+        "indicadores": resumo,
+        "total_pontos": sum(len(v["historico"]) for v in resumo.values()),
+        "nota": (
+            "Dados persistidos via BCB SGS + Olinda (Focus). "
+            "Para coletar dados mais recentes: POST /api/v1/macro/coletar"
+        ),
+    }
+
+
+def fn_consultar_eventos_corporativos(
+    ticker: str | None = None,
+    janela_dias: int = 60,
+) -> dict:
+    """
+    Retorna eventos corporativos futuros (earnings, ex-dividend) dos ativos em carteira.
+
+    Args:
+        ticker: filtrar por ativo específico (ex: "WEGE3"). None = todos.
+        janela_dias: horizonte em dias (default 60)
+    """
+    try:
+        from carteira_clean_web.backend.engine.macro_client import ler_eventos_corporativos
+        eventos = ler_eventos_corporativos(ticker=ticker, janela_dias=janela_dias)
+    except Exception as e:
+        return {"erro": str(e), "eventos": []}
+
+    por_ticker: dict[str, list] = {}
+    for ev in eventos:
+        t = ev["ticker"]
+        por_ticker.setdefault(t, []).append(ev)
+
+    return {
+        "eventos": eventos,
+        "por_ticker": por_ticker,
+        "total": len(eventos),
+        "janela_dias": janela_dias,
+        "nota": (
+            "Fonte: yfinance (earnings_date, ex_dividend_date). "
+            "Para coletar dados mais recentes: POST /api/v1/macro/coletar-eventos"
+        ),
+    }

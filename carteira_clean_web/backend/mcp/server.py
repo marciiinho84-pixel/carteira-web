@@ -16,6 +16,7 @@ from carteira_clean_web.backend.mcp.tools.portfolio import (
     fn_obter_watchlist, fn_obter_analise_rv, fn_consultar_fundamentos,
     fn_consultar_teses, fn_consultar_diario_decisoes,
     fn_risco_carteira, fn_disciplina_caixa,
+    fn_consultar_macro, fn_consultar_eventos_corporativos,
 )
 
 mcp = FastMCP(
@@ -366,6 +367,59 @@ def risco_carteira(tipo: str = "todos") -> dict:
 )
 def disciplina_caixa() -> dict:
     return fn_disciplina_caixa()
+
+
+@mcp.tool(
+    description="""
+    Retorna indicadores macro persistidos no banco (fonte: BCB SGS + Focus/Olinda).
+
+    Indicadores disponíveis:
+    - SELIC_META: taxa Selic meta (% a.a.) — BCB SGS 432
+    - SELIC_DIARIA: CDI / Selic over (% a.d.) — BCB SGS 12
+    - IPCA: inflação mensal (% a.m.) — BCB SGS 433
+    - USD_BRL: câmbio USD/BRL PTAX — BCB SGS 1
+    - IPCA_FOCUS: expectativa mediana IPCA anual (Focus) — BCB Olinda
+
+    Parâmetros opcionais:
+    - indicadores: lista de indicadores. None = todos.
+    - ultimos_n: quantas observações por indicador (default 12)
+
+    Use quando o usuário perguntar sobre:
+    Selic, juros, IPCA, inflação, câmbio, dólar, Focus, expectativas de mercado,
+    ambiente macro, cenário de juros, PTAX, CDI histórico.
+    """
+)
+def consultar_macro(
+    indicadores: list[str] = None,
+    ultimos_n: int = 12,
+) -> dict:
+    return fn_consultar_macro(indicadores, ultimos_n)
+
+
+@mcp.tool(
+    description="""
+    Retorna eventos corporativos futuros dos ativos da carteira.
+
+    Inclui:
+    - EARNINGS_DATE: próximas datas de divulgação de resultados
+    - EX_DIVIDEND_DATE: próximas datas ex-dividendo
+
+    Parâmetros opcionais:
+    - ticker: filtrar por ativo específico (ex: "WEGE3"). None = todos.
+    - janela_dias: horizonte em dias à frente (default 60)
+
+    Fonte: yfinance.
+
+    Use quando o usuário perguntar sobre:
+    próximos resultados, divulgação de balanço, data ex-dividendo,
+    agenda corporativa, quando sai o resultado de X, calendário de proventos.
+    """
+)
+def consultar_eventos_corporativos(
+    ticker: str = None,
+    janela_dias: int = 60,
+) -> dict:
+    return fn_consultar_eventos_corporativos(ticker, janela_dias)
 
 
 if __name__ == "__main__":
