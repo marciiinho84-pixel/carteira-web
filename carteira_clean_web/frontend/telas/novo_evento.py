@@ -1,10 +1,12 @@
 """
-Página: Novo Evento — formulário com validação em tempo real.
+Página: Novo Evento — formulário com validação em tempo real + importação de extratos.
 
 Features:
   - Dropdown de ativos do CAD_ATIVOS
   - Dropdown dos 12 tipos de evento
   - Date picker com auto-cálculo Qtd × Preço
+  - Campos opcionais de decisão (racional, convicção, tese) para COMPRA/VENDA
+  - Aba de importação de extratos via Claude API
   - Seção "Corrigir / Remover Evento": edição e exclusão dos últimos 20 eventos
 """
 
@@ -13,6 +15,14 @@ from datetime import date
 import streamlit as st
 
 from carteira_clean_web.frontend.utils import api, fmt
+
+_CONV_LABEL = {
+    1: "1 — Especulação",
+    2: "2 — Convicção Baixa",
+    3: "3 — Convicção Média",
+    4: "4 — Convicção Alta",
+    5: "5 — Alta Convicção",
+}
 
 TIPOS_EVENTO = [
     "COMPRA", "VENDA", "DIVIDENDO", "JCP", "RENDIMENTO",
@@ -101,6 +111,45 @@ def _form_novo_evento(tickers, ativos_info):
         obs = st.text_input("Observação",
                             placeholder="Ex: IRRF: R$ 12,50 | nota fiscal 1234",
                             max_chars=200, key="ne_obs")
+
+        # ── Decisão inline (opcional, só para COMPRA/VENDA) ───────────────────
+        racional_inline = ""
+        conviccao_inline = 3
+        tese_id_inline = None
+        if tipo_sel in {"COMPRA", "VENDA"}:
+            st.divider()
+            st.markdown("**📓 Registrar decisão** *(opcional)*")
+            c_r1, c_r2 = st.columns([3, 1])
+            with c_r1:
+                racional_inline = st.text_area(
+                    "Racional",
+                    placeholder="Por que está fazendo esta operação?",
+                    max_chars=500,
+                    key="ne_racional",
+                    height=80,
+                )
+            with c_r2:
+                conviccao_inline = st.selectbox(
+                    "Convicção",
+                    options=[1, 2, 3, 4, 5],
+                    index=2,
+                    format_func=lambda x: _CONV_LABEL[x],
+                    key="ne_conviccao",
+                )
+            teses_ativas = api.get("teses", params={"status_f": "ATIVA"}) or []
+            opcoes_tese = {0: "— não vincular —"}
+            opcoes_tese.update({t["id"]: f"{t['ticker']} — {t['hipotese'][:50]}"
+                                 for t in teses_ativas if t.get("ticker") == (ticker_sel or "")})
+            if len(opcoes_tese) == 1:
+                opcoes_tese.update({t["id"]: f"{t['ticker']} — {t['hipotese'][:50]}"
+                                     for t in teses_ativas})
+            tese_sel_id = st.selectbox(
+                "Vincular a tese",
+                options=list(opcoes_tese.keys()),
+                format_func=lambda x: opcoes_tese[x],
+                key="ne_tese_inline",
+            )
+            tese_id_inline = tese_sel_id if tese_sel_id != 0 else None
 
         # ── FIC FUNC auto-liquidação ──────────────────────────────────────────
         fic_func_ticker = "CAIXA FIC FUNC"
@@ -203,13 +252,20 @@ def _form_novo_evento(tickers, ativos_info):
                         f"Patrimônio: {fmt.moeda(recalc.get('patrimonio_total'))} | "
                         f"P&L RV: {fmt.moeda(recalc.get('pnl_vendas_rv'), sinal=True)}"
                     )
-                # Oferta opcional de registrar tese (apenas COMPRA)
-                if tipo_sel == "COMPRA":
-                    if st.button("📓 Registrar tese para esta compra (opcional)",
-                                 key="ne_btn_tese"):
-                        st.session_state["ne_tese_ev_id"] = ev_id_salvo
-                        st.session_state["ne_tese_ativo"] = ticker_sel
-                        st.rerun()
+                # Salvar decisão inline se racional preenchido
+                if tipo_sel in {"COMPRA", "VENDA"} and racional_inline.strip():
+                    payload_dec = {
+                        "data_decisao": str(data_sel),
+                        "ticker": ticker_sel,
+                        "acao": tipo_sel,
+                        "racional": racional_inline.strip(),
+                        "conviccao": conviccao_inline,
+                        "preco_entrada": preco if preco and preco > 0 else None,
+                        "tese_id": tese_id_inline,
+                    }
+                    res_dec = api.post("diario-decisoes", data=payload_dec)
+                    if res_dec is not None:
+                        st.success("📓 Decisão registrada!")
                 st.balloons()
 
     with col_ajuda:
@@ -447,38 +503,29 @@ def _painel_exclusao(ev):
 
 def render():
     st.title("➕ Novo Evento")
-    st.caption(
-        "Adicione um evento ao event log. "
-        "Após salvar, o engine recalcula automaticamente toda a carteira."
-    )
 
-    ativos_lista = api.get("ativos")
-    if ativos_lista is None:
-        st.error("Não foi possível carregar a lista de ativos. Verifique a API.")
-        return
+    aba_ev, aba_imp = st.tabs(["➕ Novo Evento", "📥 Importar Extrato"])
 
-    tickers = sorted(a["ticker"] for a in ativos_lista)
-    ativos_info = {a["ticker"]: a for a in ativos_lista}
+    with aba_ev:
+        st.caption(
+            "Adicione um evento ao event log. "
+            "Após salvar, o engine recalcula automaticamente toda a carteira."
+        )
 
-    st.divider()
-    _form_novo_evento(tickers, ativos_info)
+        ativos_lista = api.get("ativos")
+        if ativos_lista is None:
+            st.error("Não foi possível carregar a lista de ativos. Verifique a API.")
+            return
 
-    # Formulário de tese (aparece após COMPRA, opcional)
-    if st.session_state.get("ne_tese_ev_id"):
-        ev_id_tese = st.session_state["ne_tese_ev_id"]
-        ativo_tese = st.session_state.get("ne_tese_ativo", "")
+        tickers = sorted(a["ticker"] for a in ativos_lista)
+        ativos_info = {a["ticker"]: a for a in ativos_lista}
+
         st.divider()
-        with st.expander("📓 Registrar tese de investimento", expanded=True):
-            from carteira_clean_web.frontend.telas.diario import _form_nova_decisao
-            salvo = _form_nova_decisao(tickers, ev_id=ev_id_tese,
-                                       ativo_pre=ativo_tese, acao_pre="COMPRA")
-            if salvo:
-                st.session_state.pop("ne_tese_ev_id", None)
-                st.session_state.pop("ne_tese_ativo", None)
-            if st.button("⏭️ Pular — registrar depois", key="ne_btn_pular_tese"):
-                st.session_state.pop("ne_tese_ev_id", None)
-                st.session_state.pop("ne_tese_ativo", None)
-                st.rerun()
+        _form_novo_evento(tickers, ativos_info)
 
-    st.divider()
-    _secao_corrigir(tickers, ativos_info)
+        st.divider()
+        _secao_corrigir(tickers, ativos_info)
+
+    with aba_imp:
+        from carteira_clean_web.frontend.telas import importar
+        importar.render()

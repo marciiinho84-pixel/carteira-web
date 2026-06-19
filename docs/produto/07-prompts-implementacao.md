@@ -267,16 +267,175 @@ alocação; não alterar alertas existentes.
 
 ## Sequência recomendada
 
-```
-Sessão 1: Fatia 2 (etapa 2.1 — avaliação) → ⛔ STOP
-Sessão 2: Fatias 4 + 5 + 6 + 7 (disciplinas — paralelas, mesmo padrão)
-Sessão 3: Fatia 2 (etapa 2.2 — implementação, após aprovação)
-Sessão 4: Fatia 3 (macro/eventos — depende da API da Fatia 2)
-```
+A sequência completa e atualizada está no final deste documento.
 
-As Fatias 4-7 não dependem das APIs e podem rodar enquanto a avaliação
-da Fatia 2 está em análise.
+## Fase 3 — Inferência comportamental (Fatias 8-9)
+
+*Realiza: "espelho para dentro" (§2), "dito vs. feito" (§3).*
+*O diferencial que ninguém no mercado tem.*
+*Depende de: 1a (event log) + Fatias 4-5 (teses e diário = o "dito").*
+
+### Fatia 8 — Leitura do event log para padrões de comportamento
+
+O event log existe e é rico, mas é usado apenas para calcular performance.
+Esta fatia o transforma em fonte de conhecimento sobre o *investidor* —
+como ele se comporta, não como a carteira performa.
+
+**Módulo `comportamento.py`** — funções que leem o event log e calculam:
+
+1. **Giro real (turnover) por bloco IPS**
+   - Fórmula: (valor total de vendas no período) / (patrimônio médio
+     do bloco no período).
+   - Período: mensal, trimestral, anual.
+   - Separar por bloco IPS (Swing Trade deve ter giro maior que Growth
+     ou Defensivos — se Growth tiver giro alto, é sinal).
+
+2. **Holding period médio por bloco**
+   - Para posições encerradas: dias entre compra e venda.
+   - Para posições abertas: dias desde a compra até hoje.
+   - Separar por bloco IPS.
+   - Comparar com o horizonte declarado do bloco na IPS (Swing = semanas
+     a meses; Growth = multi-ano).
+
+3. **Frequência de operações**
+   - Número de operações por mês (compras + vendas).
+   - Tendência: acelerando ou desacelerando?
+   - Picos: meses com frequência anormalmente alta (>2σ da média).
+
+4. **Concentração efetiva vs. IPS**
+   - Já existe parcialmente na Fatia 1 (aderência setorial).
+   - Expandir: concentração por ativo individual — top 5 posições
+     como % da Carteira Gerida.
+   - Herfindahl-Hirschman simplificado (soma dos quadrados dos pesos)
+     como proxy de diversificação.
+
+**Persistência:**
+- Tabela `metricas_comportamento` — migration Alembic.
+- Colunas: metrica (enum), bloco_ips (nullable), periodo_inicio,
+  periodo_fim, valor, calculado_em.
+- Atualização: sob demanda via tool (não cron — teste das 4 condições:
+  frequência real < semanal, custo de cálculo baixo, não justifica
+  automação ainda).
+
+**Tool MCP `perfil_comportamental`:**
+- Input: métrica (turnover | holding | frequencia | concentracao | todos),
+  período (default: últimos 12 meses).
+- Output: métricas calculadas, com comparação vs. IPS onde aplicável.
+- Recalcula na hora se dados novos desde último cálculo; senão retorna
+  cache.
+
+**Referência conceitual:** FinCon/FinMem — memória em camadas. Implementar
+três horizontes nas métricas: curto (último mês), médio (último trimestre),
+longo (desde início). O maestro escolhe o horizonte relevante.
+
+**Critérios de aceite:**
+1. Tabela `metricas_comportamento` criada via Alembic.
+2. Turnover calculado e verificado manualmente para 1 bloco (Swing Trade)
+   — conferir valor de vendas vs. patrimônio médio.
+3. Holding period calculado para ≥5 posições (abertas e encerradas).
+4. Frequência mensal conferida contra contagem manual do event log.
+5. Concentração top-5 conferida contra posições atuais.
+6. Tool MCP `perfil_comportamental` acessível via Claude Desktop,
+   retornando dados nos 3 horizontes.
+7. Testes de regressão passando.
+
+**Não fazer:**
+- NÃO interpretar os padrões — esta fatia só computa. A interpretação
+  é da Fatia 9 (cruzamento) e do maestro.
+- NÃO criar alertas ou notificações.
+- NÃO alterar engine de performance ou event log.
+- NÃO implementar detecção de vieses cognitivos (ancoragem, FOMO) —
+  fica para fatias futuras.
 
 ---
 
-*Próximas fatias (8+) serão definidas após as Fases 1-2 estarem entregues.*
+### Fatia 9 — Cruzamento dito-vs-feito
+
+*O insight central do conceito (§3): "A divergência entre o dito e o*
+*feito é o material mais valioso."*
+
+**Módulo `dito_vs_feito.py`** — cruza o "feito" (Fatia 8) com o "dito"
+(Fatias 4-5) e reporta divergências como fatos, sem juízo.
+
+**4 cruzamentos no MVP:**
+
+1. **Horizonte declarado vs. holding period real**
+   - Fonte "dito": bloco IPS (Growth = multi-ano, Swing = semanas/meses)
+     + tese do ativo (se existir, campo cenario_esperado).
+   - Fonte "feito": holding period da Fatia 8.
+   - Divergência: "Bloco Growth — holding period médio: 45 dias.
+     Horizonte declarado: multi-ano."
+
+2. **Alocação declarada vs. concentração real**
+   - Fonte "dito": IPS (alvos e bandas por bloco).
+   - Fonte "feito": concentração efetiva da Fatia 8 + aderência Fatia 1.
+   - Divergência: "Growth está em 32% (alvo 20%, banda 10-30%) — acima
+     da banda superior."
+   - Nota: a aderência por bloco já existe na Fatia 1. Aqui o que se
+     adiciona é a *persistência temporal* — não só "está fora agora",
+     mas "está fora há 3 meses consecutivos."
+
+3. **Convicção declarada vs. resultado**
+   - Fonte "dito": diário de decisão (convicção 1-5, cenário esperado).
+   - Fonte "feito": resultado_percentual calculado na Fatia 5.
+   - Divergência: "Suas 5 operações com convicção 5 tiveram resultado
+     médio de -3%. Suas 8 operações com convicção 2-3 tiveram resultado
+     médio de +12%."
+
+4. **Critério de invalidação vs. dados atuais**
+   - Fonte "dito": teses ativas com critério de invalidação (Fatia 4).
+   - Fonte "feito": dados do substrato (fundamentos Fatia 2, cotações,
+     macro Fatia 3).
+   - Divergência: "Tese de PRIO3: critério de invalidação = 'petróleo
+     abaixo de USD 60.' Petróleo atual: USD 62. Proximidade: 3%."
+   - Este cruzamento é o mais rico — é onde o maestro vira **auditor**
+     da própria disciplina do investidor (§7 do conceito).
+
+**Tool MCP `divergencias_dito_feito`:**
+- Input: tipo (horizonte | alocacao | conviccao | invalidacao | todos),
+  período (default: últimos 6 meses para padrões, atual para invalidação).
+- Output: lista de divergências encontradas, cada uma com:
+  - descricao (texto factual, sem juízo)
+  - fonte_dito (de onde veio a declaração)
+  - fonte_feito (de onde veio o dado real)
+  - severidade (INFO | ATENCAO | CRITICO)
+    - INFO: divergência existe mas dentro de margem razoável
+    - ATENCAO: divergência significativa, monitorar
+    - CRITICO: critério de invalidação atingido ou banda IPS violada
+
+**⛔ STOP após implementação. Mostrar ao usuário as divergências reais
+encontradas na carteira antes de considerar esta fatia concluída.**
+O objetivo é validar que os cruzamentos fazem sentido com dados reais,
+não sintéticos.
+
+**Critérios de aceite:**
+1. Os 4 cruzamentos implementados e retornando dados.
+2. Tool MCP acessível via Claude Desktop.
+3. Pelo menos 1 divergência real encontrada na carteira (se a carteira
+   estiver perfeitamente alinhada com a IPS e não houver teses, criar
+   dados de teste que simulem divergência).
+4. Output factual — nenhuma recomendação, nenhum juízo. O maestro pode
+   contextualizar, o módulo apenas reporta fatos.
+5. Testes de regressão passando.
+
+**Não fazer:**
+- NÃO recomendar ações ("você deveria vender" — nunca).
+- NÃO atribuir vieses cognitivos ("isso é ancoragem" — futuro).
+- NÃO criar alertas automáticos ou push — reportar sob demanda via tool.
+- NÃO alterar as Fatias 4-5 (teses e diário).
+- NÃO implementar proatividade — o maestro consulta quando relevante.
+
+---
+
+## Sequência atualizada
+
+```
+Sessão 1: Fatia 2 (etapa 2.1 — avaliação) → ⛔ STOP          ✅ ENTREGUE
+Sessão 2: Fatias 4 + 5 + 6 + 7 (disciplinas)                 ✅ ENTREGUE
+Sessão 3: Fatia 2 (etapa 2.2 — yfinance estendido)            ✅ ENTREGUE
+Sessão 4: Fatia 3 (macro/eventos com BCB)                     ✅ ENTREGUE
+Sessão 5: Fatia 8 (inferência event log)                      🔜 PRÓXIMA
+Sessão 6: Fatia 9 (dito vs. feito) → ⛔ STOP                  ─
+```
+
+*Próximas fatias (10+) serão definidas após a Fase 3 estar entregue.*

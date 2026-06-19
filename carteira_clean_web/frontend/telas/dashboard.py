@@ -407,3 +407,32 @@ def render():
             + "</table></div>",
             unsafe_allow_html=True,
         )
+
+    # ─── Proventos ───────────────────────────────────────────────
+    st.divider()
+    st.subheader("💰 Proventos")
+
+    total_hist = prov_data.get("total_historico", 0)
+    total_proj = prov_data.get("total_projetado_12m", 0)
+    historico  = prov_data.get("historico", [])
+    aviso      = prov_data.get("aviso", "")
+
+    p1, p2, p3 = st.columns(3)
+    with p1:
+        _kpi("Total recebido", fmt.moeda(total_hist), cor=_POS)
+    with p2:
+        _kpi("Projeção 12 meses", fmt.moeda(total_proj), cor=_NEUT)
+    with p3:
+        media_mensal = total_proj / 12 if total_proj else 0
+        _kpi("Média mensal projetada", fmt.moeda(media_mensal), cor=_TXT2)
+
+    if aviso:
+        st.caption(f"⚠️ {aviso}")
+
+    if historico:
+        with st.expander("Ver histórico mensal de proventos"):
+            df_prov = pd.DataFrame(historico[-12:])
+            if "mes" in df_prov.columns and "total" in df_prov.columns:
+                df_prov = df_prov.rename(columns={"mes": "Mês", "total": "Total"})
+                df_prov["Total"] = df_prov["Total"].apply(fmt.moeda)
+                st.dataframe(df_prov, use_container_width=True, hide_index=True)

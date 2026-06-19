@@ -32,9 +32,8 @@ from carteira_clean_web.frontend.telas import (
 
 # Força reload dos módulos de tela para que edições em desenvolvimento
 # sejam sempre refletidas sem reiniciar o processo Streamlit.
-for _mod in [carteira_rv, novo_evento, dashboard, posicoes, vendas, meta,
-             evolucao, proventos, diario, correlacao, whatif, configuracoes, importar, assistente,
-             teses, decisoes_estruturadas, risco, aportes, macro]:
+for _mod in [dashboard, carteira_rv, posicoes, evolucao, meta,
+             novo_evento, teses, risco, assistente, configuracoes]:
     importlib.reload(_mod)
 
 # Backup automático: uma vez por dia, não bloqueia se falhar
@@ -116,24 +115,16 @@ st.markdown(f"""
 
 # ─── Mapeamento de páginas (ordem da navbar) ─────────────────────────────────
 PAGINAS = {
-    "🏠 Dashboard":        dashboard,
-    "🤖 Assistente":       assistente,
-    "📊 Carteira RV":      carteira_rv,
-    "📋 Posições":         posicoes,
-    "💰 Proventos":        proventos,
-    "📈 Evolução":         evolucao,
-    "🎯 Meta":             meta,
-    "🔗 Correlação":       correlacao,
-    "🔮 What-If":          whatif,
-    "➕ Novo Evento":       novo_evento,
-    "📥 Importar Extrato": importar,
-    "📓 Diário":           diario,
-    "🔬 Teses":            teses,
-    "🧭 Decisões":         decisoes_estruturadas,
-    "⚠️ Risco":            risco,
-    "💵 Aportes":          aportes,
-    "🌍 Macro":            macro,
-    "⚙️ Configurações":    configuracoes,
+    "🏠 Dashboard":       dashboard,
+    "📊 Renda Variável":  carteira_rv,
+    "📋 Posições":        posicoes,
+    "📈 Evolução":        evolucao,
+    "🎯 Meta":            meta,
+    "➕ Novo Evento":      novo_evento,
+    "🔬 Teses":           teses,
+    "⚠️ Risco":           risco,
+    "🤖 Maestro":         assistente,
+    "⚙️ Configurações":   configuracoes,
 }
 
 # ─── Navbar horizontal ───────────────────────────────────────────────────────
@@ -155,17 +146,22 @@ pagina_sel = option_menu(
             "background-color": "#0F1117",
             "flex-wrap": "nowrap",
             "overflow-x": "auto",
+            "justify-content": "space-evenly",
+            "width": "100%",
         },
         "icon": {
             "display": "none",
             "font-size": "0",
         },
         "nav-link": {
-            "font-size": "0.76rem",
+            "font-size": "0.92rem",
+            "font-weight": "500",
             "color": "#787B86",
-            "padding": "10px 8px",
+            "padding": "10px 0",
             "border-radius": "0",
             "white-space": "nowrap",
+            "flex": "1",
+            "text-align": "center",
             "--hover-color": "#252D3D",
         },
         "nav-link-selected": {

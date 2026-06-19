@@ -21,7 +21,7 @@ def _premissas_default():
 
 def render():
     st.title("⚙️ Configurações")
-    aba = st.tabs(["📋 CAD_ATIVOS", "🎯 Premissas da Meta", "📊 Preços Manuais", "ℹ️ Sistema"])
+    aba = st.tabs(["📋 CAD_ATIVOS", "🎯 Premissas da Meta", "📊 Preços Manuais", "💵 Aportes", "🌍 Coleta Macro", "ℹ️ Sistema"])
 
     # ─── Aba 1: Edição de Ativos ──────────────────────────────────
     with aba[0]:
@@ -401,7 +401,98 @@ def render():
                     st.error("❌ Erro ao salvar. Verifique os campos.")
 
     # ─── Aba 4: Informações do Sistema ────────────────────────────
+    # ─── Aba 3: Aportes ──────────────────────────────────────────
     with aba[3]:
+        _TIPOS_AP = ["PROGRAMADO", "OPORTUNISTICO", "MISTO"]
+
+        regra_ativa = api.get("regra-aportes/ativa")
+
+        if regra_ativa:
+            st.info(
+                f"Regra ativa desde **{regra_ativa.get('data_criacao', '?')}** — "
+                f"alvo: **{fmt.moeda(regra_ativa.get('valor_mensal_alvo', 0))}** · "
+                f"tipo: **{regra_ativa.get('tipo', '—')}**"
+            )
+
+        st.markdown("#### ⚙️ Configurar Regra")
+        valor_ap = float(regra_ativa.get("valor_mensal_alvo", 0.0)) if regra_ativa else 0.0
+        tipo_ap  = regra_ativa.get("tipo", "PROGRAMADO") if regra_ativa else "PROGRAMADO"
+        crit_ap  = regra_ativa.get("criterio_oportunismo", "") if regra_ativa else ""
+
+        valor_ap_sel = st.number_input("Valor mensal alvo (R$) *", min_value=0.0,
+                                        value=valor_ap, step=100.0, format="%.2f",
+                                        key="cfg_ap_valor")
+        tipo_ap_sel  = st.selectbox("Tipo *", options=_TIPOS_AP,
+                                     index=_TIPOS_AP.index(tipo_ap) if tipo_ap in _TIPOS_AP else 0,
+                                     key="cfg_ap_tipo")
+        crit_ap_sel = ""
+        if tipo_ap_sel in ("MISTO", "OPORTUNISTICO"):
+            crit_ap_sel = st.text_area("Critério de oportunismo", value=crit_ap,
+                                        placeholder="Ex: aportar extra quando queda > 5%",
+                                        key="cfg_ap_criterio")
+
+        if st.button("💾 Salvar Regra", type="primary",
+                     disabled=valor_ap_sel <= 0, key="cfg_ap_salvar"):
+            payload_ap = {
+                "valor_mensal_alvo": valor_ap_sel,
+                "tipo": tipo_ap_sel,
+                "criterio_oportunismo": crit_ap_sel.strip() or None,
+            }
+            res_ap = (api.patch(f"regra-aportes/{regra_ativa['id']}", data=payload_ap)
+                      if regra_ativa else api.post("regra-aportes", data=payload_ap))
+            if res_ap is not None:
+                st.success("✅ Regra de aporte salva!")
+                st.rerun()
+
+        st.divider()
+        st.markdown("#### 📜 Histórico de Regras")
+        todas_ap = api.get("regra-aportes") or []
+        if todas_ap:
+            rows_ap = []
+            for r in todas_ap:
+                rows_ap.append({
+                    "Criada em": r.get("data_criacao", "—"),
+                    "Valor alvo": fmt.moeda(r.get("valor_mensal_alvo", 0)),
+                    "Tipo": r.get("tipo", "—"),
+                    "Ativa": "✅" if r.get("ativo") else "—",
+                    "Critério": (r.get("criterio_oportunismo") or "—")[:60],
+                })
+            st.dataframe(pd.DataFrame(rows_ap), use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhuma regra registrada ainda.")
+
+    # ─── Aba 4: Coleta Macro ─────────────────────────────────────
+    with aba[4]:
+        st.markdown("#### 🌍 Coletar dados macro e eventos corporativos")
+        st.info(
+            "Usa APIs gratuitas do Banco Central (BCB SGS + Focus/Olinda) "
+            "e yfinance. Pode levar 30–60 segundos."
+        )
+        c_m1, c_m2 = st.columns(2)
+        with c_m1:
+            st.markdown("**Indicadores Macro**")
+            st.caption("Selic, IPCA, USD/BRL, Focus — BCB SGS + Olinda")
+            if st.button("📥 Coletar Macro", key="cfg_btn_macro"):
+                with st.spinner("Coletando indicadores macro (BCB)..."):
+                    res_m = api.post("macro/coletar")
+                if res_m is not None:
+                    st.success("✅ Coleta macro iniciada em background!")
+                else:
+                    st.error("Erro ao iniciar coleta. Verifique logs do backend.")
+        with c_m2:
+            st.markdown("**Eventos Corporativos**")
+            st.caption("Earnings dates, ex-dividend dates — yfinance")
+            if st.button("📅 Coletar Eventos", key="cfg_btn_eventos"):
+                with st.spinner("Coletando eventos corporativos (yfinance)..."):
+                    res_ev = api.post("macro/coletar-eventos")
+                if res_ev is not None:
+                    st.success("✅ Coleta de eventos iniciada em background!")
+                else:
+                    st.error("Erro ao iniciar coleta. Verifique logs do backend.")
+        st.caption("Após a coleta (30–60s), consulte o Maestro: 'dados macro da carteira'.")
+
+    # ─── Aba 5: Sistema ──────────────────────────────────────────
+    with aba[5]:
         st.subheader("Informações do Sistema")
 
         status = api.get("status")
