@@ -7,6 +7,30 @@ e mapeamento para o índice B3 de referência de cada setor.
 
 from __future__ import annotations
 
+# ── Mapa canonical ticker → bloco IPS (38 ativos, Fatia 1 confirmado em prod) ─
+# Fonte única de verdade para comportamento.py, dito_vs_feito.py e risco.py.
+_BLOCO_MAP: dict[str, str] = {
+    # SWING_TRADE — 20 ativos
+    "ALOS3": "SWING_TRADE", "AURA33": "SWING_TRADE", "AXIA3": "SWING_TRADE",
+    "AZZA3": "SWING_TRADE", "CSMG3": "SWING_TRADE", "DIVO11": "SWING_TRADE",
+    "EMBJ3": "SWING_TRADE", "INBR32": "SWING_TRADE", "ITUB3": "SWING_TRADE",
+    "MDNE3": "SWING_TRADE", "PETR4": "SWING_TRADE", "PLPL3": "SWING_TRADE",
+    "POMO4": "SWING_TRADE", "PRIO3": "SWING_TRADE", "RDOR3": "SWING_TRADE",
+    "ROXO34": "SWING_TRADE", "SEER3": "SWING_TRADE", "SMAL11": "SWING_TRADE",
+    "TTEN3": "SWING_TRADE", "WEGE3": "SWING_TRADE",
+    # GROWTH — 12 ativos
+    "ASML34": "GROWTH", "BAER39": "GROWTH", "BOTZ39": "GROWTH",
+    "BURA39": "GROWTH", "D1EL34": "GROWTH", "ETHE11": "GROWTH",
+    "G1LW34": "GROWTH", "IBMB34": "GROWTH", "M2PM34": "GROWTH",
+    "MSFT34": "GROWTH", "NOKI34": "GROWTH", "S2GM34": "GROWTH",
+    # DEFENSIVOS — 2 ativos
+    "BSLV39": "DEFENSIVOS", "CAIXA OURO": "DEFENSIVOS",
+    # RENDA_FIXA — 2 ativos
+    "C6 RENDA+": "RENDA_FIXA", "CAIXA LCI": "RENDA_FIXA",
+    # FORA_IPS — 2 ativos
+    "CAIXA FIC FUNC": "FORA_IPS", "FUNCEF": "FORA_IPS",
+}
+
 # ── IPS v1.0 — Carteira Gerida ────────────────────────────────────────────────
 # Fonte: docs/IPS.md — Seção 2. Bandas exatas; não alterar sem revisão da IPS.
 _IPS: dict[str, dict] = {

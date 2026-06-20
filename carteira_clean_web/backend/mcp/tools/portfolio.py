@@ -1564,3 +1564,260 @@ def fn_consultar_eventos_corporativos(
             "Para coletar dados mais recentes: POST /api/v1/macro/coletar-eventos"
         ),
     }
+
+
+# ─── Fatia 8: Perfil comportamental ──────────────────────────────────────────
+
+def fn_perfil_comportamental(
+    metrica: str = "todos",
+    periodo_meses: int = 12,
+) -> dict:
+    """
+    Perfil comportamental calculado sobre o event log.
+    Métricas disponíveis: turnover, holding, frequencia, concentracao.
+    Não interpreta — apenas computa fatos.
+
+    Args:
+        metrica:        "turnover" | "holding" | "frequencia" | "concentracao" | "todos"
+        periodo_meses:  janela de análise em meses (default 12)
+    """
+    from datetime import date, timedelta
+    from carteira_clean_web.backend.db.models import Evento as EventoModel, Ativo as AtivoModel
+    from carteira_clean_web.backend.db.session import get_session
+    from carteira_clean_web.backend.engine.comportamento import (
+        calcular_turnover, calcular_holding_period,
+        calcular_frequencia, calcular_concentracao,
+    )
+    from carteira_clean_web.backend.engine.aderencia_ips import _BLOCO_MAP
+
+    if not engine_cache.esta_calculado():
+        engine_cache.carregar_disco()
+    if not engine_cache.esta_calculado():
+        return {"erro": "Cache vazio. Clique em Recalcular antes de usar o assistente."}
+
+    estado = engine_cache.get_estado()
+    posicoes_dict = estado["posicoes"]
+    ativos = estado["ativos"]
+    precos_pub = estado.get("precos_publicos", {})
+    precos_man = estado.get("precos_manuais", {})
+    hoje = estado["hoje"]
+
+    periodo_fim = hoje
+    periodo_ini = date(
+        hoje.year - ((periodo_meses - 1 + (12 - hoje.month)) // 12),
+        ((hoje.month - periodo_meses - 1) % 12) + 1,
+        1
+    ) if periodo_meses >= 12 else date(
+        hoje.year if hoje.month > periodo_meses else hoje.year - 1,
+        ((hoje.month - periodo_meses - 1) % 12) + 1,
+        1,
+    )
+    # Simpler: subtract months directly
+    m = hoje.month - periodo_meses
+    y = hoje.year
+    while m <= 0:
+        m += 12
+        y -= 1
+    periodo_ini = date(y, m, 1)
+
+    session = get_session()
+    try:
+        eventos_db = session.query(EventoModel).filter(
+            EventoModel.data >= periodo_ini,
+        ).order_by(EventoModel.data).all()
+        eventos_dicts = [e.to_dict() for e in eventos_db]
+
+        # Para holding: precisamos de todo o histórico (compras antes do período)
+        eventos_todos = session.query(EventoModel).order_by(EventoModel.data).all()
+        eventos_todos_dicts = [e.to_dict() for e in eventos_todos]
+
+        bloco_ips_db = {
+            row.ticker: row.bloco_ips
+            for row in session.query(AtivoModel.ticker, AtivoModel.bloco_ips).all()
+        }
+    finally:
+        session.close()
+
+    # Montar valor_por_ticker e composite_por_ticker a partir do cache
+    valor_por_ticker: dict[str, float] = {}
+    composite_por_ticker: dict[str, str] = {}
+    valor_por_bloco: dict[str, float] = defaultdict(float)
+
+    for tkr, pos in posicoes_dict.items():
+        info = ativos.get(tkr, {})
+        familia = info.get("familia", "")
+        if pos.qtd < 1e-9 and familia not in AGREGADO_PRIVADO:
+            continue
+        preco = preco_em(precos_pub.get(tkr, {}), hoje)
+        if preco is None:
+            preco = preco_em(precos_man.get(tkr, {}), hoje, max_lookback_dias=60)
+        if familia in AGREGADO_PRIVADO:
+            val = preco if preco else pos.custo_total
+        else:
+            val = pos.qtd * preco if preco else pos.custo_total
+        valor_por_ticker[tkr] = val
+        composite_por_ticker[tkr] = info.get("composite", "Gerida")
+
+        bloco = _BLOCO_MAP.get(tkr) or bloco_ips_db.get(tkr) or "FORA_IPS"
+        if info.get("composite", "Gerida") == "Gerida":
+            valor_por_bloco[bloco] += val
+
+    resultado: dict = {
+        "periodo": f"{periodo_ini} a {periodo_fim}",
+        "periodo_meses": periodo_meses,
+        "calculado_em": str(hoje),
+    }
+
+    metricas_req = {"turnover", "holding", "frequencia", "concentracao"} \
+        if metrica == "todos" else {metrica}
+
+    if "turnover" in metricas_req:
+        resultado["turnover"] = calcular_turnover(
+            eventos_dicts, dict(valor_por_bloco), periodo_ini, periodo_fim,
+        )
+
+    if "holding" in metricas_req:
+        resultado["holding"] = calcular_holding_period(eventos_todos_dicts, hoje)
+
+    if "frequencia" in metricas_req:
+        resultado["frequencia"] = calcular_frequencia(eventos_dicts, periodo_ini, periodo_fim)
+
+    if "concentracao" in metricas_req:
+        resultado["concentracao"] = calcular_concentracao(
+            valor_por_ticker, composite_por_ticker,
+        )
+
+    return resultado
+
+
+# ─── Fatia 9: Dito vs feito ──────────────────────────────────────────────────
+
+def fn_divergencias_dito_feito(
+    tipo: str = "todos",
+    periodo_meses: int = 6,
+) -> dict:
+    """
+    Cruzamento dito-vs-feito: compara declarações (IPS, teses, diário)
+    com comportamento real (Fatia 8). Retorna fatos — sem recomendações.
+
+    Args:
+        tipo:           "horizonte" | "alocacao" | "conviccao" | "invalidacao" | "todos"
+        periodo_meses:  janela para padrões comportamentais (default 6 meses)
+    """
+    from datetime import date
+    from carteira_clean_web.backend.db.models import (
+        Tese, DiarioDecisao, Ativo as AtivoModel,
+    )
+    from carteira_clean_web.backend.db.session import get_session
+    from carteira_clean_web.backend.engine.dito_vs_feito import (
+        cruzar_horizonte_holding,
+        cruzar_alocacao_ips,
+        cruzar_conviccao_resultado,
+        cruzar_invalidacao_teses,
+    )
+    from carteira_clean_web.backend.engine.aderencia_ips import calc_concentracao_setorial, _BLOCO_MAP
+
+    if not engine_cache.esta_calculado():
+        engine_cache.carregar_disco()
+    if not engine_cache.esta_calculado():
+        return {"erro": "Cache vazio. Clique em Recalcular antes de usar o assistente."}
+
+    hoje = engine_cache.get_estado()["hoje"]
+
+    tipos_req = {"horizonte", "alocacao", "conviccao", "invalidacao"} \
+        if tipo == "todos" else {tipo}
+
+    divergencias: list[dict] = []
+
+    # ── Dados comuns ────────────────────────────────────────────────────────
+    perfil = fn_perfil_comportamental(metrica="todos", periodo_meses=periodo_meses)
+    if "erro" in perfil:
+        return perfil
+
+    session = get_session()
+    try:
+        teses_db = session.query(Tese).all()
+        teses = [t.to_dict() for t in teses_db]
+
+        decisoes_db = session.query(DiarioDecisao).all()
+        decisoes = [d.to_dict() for d in decisoes_db]
+
+        bloco_ips_db = {
+            row.ticker: row.bloco_ips
+            for row in session.query(AtivoModel.ticker, AtivoModel.bloco_ips).all()
+        }
+    finally:
+        session.close()
+
+    estado = engine_cache.get_estado()
+    posicoes_dict = estado["posicoes"]
+    ativos = estado["ativos"]
+    precos_pub = estado.get("precos_publicos", {})
+    precos_man = estado.get("precos_manuais", {})
+
+    # ── Cruzamento 1: horizonte vs holding period ──────────────────────────
+    if "horizonte" in tipos_req and "holding" in perfil:
+        divs = cruzar_horizonte_holding(perfil["holding"])
+        divergencias.extend(divs)
+
+    # ── Cruzamento 2: alocação declarada vs real ───────────────────────────
+    if "alocacao" in tipos_req:
+        posicoes_raw = []
+        for tkr, pos in posicoes_dict.items():
+            info = ativos.get(tkr, {})
+            familia = info.get("familia", "")
+            if pos.qtd < 1e-9 and familia not in AGREGADO_PRIVADO:
+                continue
+            preco = preco_em(precos_pub.get(tkr, {}), hoje)
+            if preco is None:
+                preco = preco_em(precos_man.get(tkr, {}), hoje, max_lookback_dias=60)
+            if familia in AGREGADO_PRIVADO:
+                val = preco if preco else pos.custo_total
+            else:
+                val = pos.qtd * preco if preco else pos.custo_total
+            bloco = _BLOCO_MAP.get(tkr) or bloco_ips_db.get(tkr) or "FORA_IPS"
+            posicoes_raw.append({
+                "composite": info.get("composite", "Gerida"),
+                "bloco_ips": bloco,
+                "setor": info.get("setor") or "—",
+                "valor_atual": val,
+            })
+        blocos_ips = calc_concentracao_setorial(posicoes_raw)
+        divs = cruzar_alocacao_ips(blocos_ips)
+        divergencias.extend(divs)
+
+    # ── Cruzamento 3: convicção vs resultado ───────────────────────────────
+    if "conviccao" in tipos_req and decisoes:
+        preco_atual: dict[str, float] = {}
+        for tkr, pos in posicoes_dict.items():
+            info = ativos.get(tkr, {})
+            familia = info.get("familia", "")
+            p = preco_em(precos_pub.get(tkr, {}), hoje)
+            if p is None:
+                p = preco_em(precos_man.get(tkr, {}), hoje, max_lookback_dias=60)
+            if p:
+                preco_atual[tkr] = p
+        divs = cruzar_conviccao_resultado(decisoes, preco_atual)
+        divergencias.extend(divs)
+
+    # ── Cruzamento 4: critério de invalidação vs estado das teses ─────────
+    if "invalidacao" in tipos_req and teses:
+        divs = cruzar_invalidacao_teses(teses, hoje)
+        divergencias.extend(divs)
+
+    # ── Ordenar: CRITICO → ATENCAO → INFO ─────────────────────────────────
+    ordem = {"CRITICO": 0, "ATENCAO": 1, "INFO": 2}
+    divergencias.sort(key=lambda d: ordem.get(d.get("severidade", "INFO"), 2))
+
+    criticos = sum(1 for d in divergencias if d.get("severidade") == "CRITICO")
+    atencoes = sum(1 for d in divergencias if d.get("severidade") == "ATENCAO")
+
+    return {
+        "divergencias": divergencias,
+        "total": len(divergencias),
+        "criticos": criticos,
+        "atencoes": atencoes,
+        "periodo_analise": perfil.get("periodo"),
+        "calculado_em": str(hoje),
+        "nota": "Fatos apenas — sem recomendações. O maestro contextualiza ao ser consultado.",
+    }

@@ -519,6 +519,25 @@ class EventoCorporativo(Base):
         }
 
 
+class MetricaComportamento(Base):
+    """Cache de métricas comportamentais calculadas sob demanda (Fatia 8)."""
+    __tablename__ = "metricas_comportamento"
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    metrica        = Column(Text, nullable=False)
+    bloco_ips      = Column(Text, nullable=True)
+    periodo        = Column(Text, nullable=False)
+    periodo_inicio = Column(Date, nullable=False)
+    periodo_fim    = Column(Date, nullable=False)
+    valor_json     = Column(Text, nullable=True)
+    calculado_em   = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        Index("ix_mc_metrica_periodo", "metrica", "periodo"),
+        Index("ix_mc_calculado", "calculado_em"),
+    )
+
+
 class Cotacao(Base):
     """Histórico de cotações públicas — append-only log, sem UPDATE/DELETE.
 

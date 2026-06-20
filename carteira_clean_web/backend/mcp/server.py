@@ -17,6 +17,7 @@ from carteira_clean_web.backend.mcp.tools.portfolio import (
     fn_consultar_teses, fn_consultar_diario_decisoes,
     fn_risco_carteira, fn_disciplina_caixa,
     fn_consultar_macro, fn_consultar_eventos_corporativos,
+    fn_perfil_comportamental, fn_divergencias_dito_feito,
 )
 
 mcp = FastMCP(
@@ -420,6 +421,65 @@ def consultar_eventos_corporativos(
     janela_dias: int = 60,
 ) -> dict:
     return fn_consultar_eventos_corporativos(ticker, janela_dias)
+
+
+@mcp.tool(
+    description="""
+    Perfil comportamental do investidor, calculado sobre o event log histórico.
+
+    Calcula (sem interpretar — fatos apenas):
+    - turnover: giro real por bloco IPS (valor vendas / patrimônio do bloco)
+    - holding: tempo médio de permanência nas posições por bloco IPS,
+      comparado ao horizonte declarado na IPS
+    - frequencia: operações por mês, tendência, picos (> média + 2σ)
+    - concentracao: top-5 posições como % da Carteira Gerida + HHI
+
+    Parâmetros:
+    - metrica: "turnover" | "holding" | "frequencia" | "concentracao" | "todos"
+    - periodo_meses: janela de análise (default 12 meses)
+
+    Use quando o usuário perguntar sobre:
+    meu perfil de investidor, giro da carteira, quanto tempo fico nas posições,
+    frequência de operações, concentração, como me comporto, padrões de comportamento.
+    """
+)
+def perfil_comportamental(
+    metrica: str = "todos",
+    periodo_meses: int = 12,
+) -> dict:
+    return fn_perfil_comportamental(metrica, periodo_meses)
+
+
+@mcp.tool(
+    description="""
+    Cruzamento dito-vs-feito: divergências entre o que foi declarado
+    (IPS, teses de investimento, diário de decisão) e o comportamento real.
+
+    Retorna fatos — sem recomendações, sem juízo de valor.
+    Cada divergência tem: descricao, fonte_dito, fonte_feito, severidade.
+    Severidade: INFO | ATENCAO | CRITICO.
+
+    4 cruzamentos disponíveis:
+    - horizonte: horizonte declarado no IPS vs holding period real por bloco
+    - alocacao: bandas IPS vs alocação real atual
+    - conviccao: convicção registrada no diário vs resultado % real
+    - invalidacao: teses com critério de invalidação atingido ou sem revisão
+
+    Parâmetros:
+    - tipo: "horizonte" | "alocacao" | "conviccao" | "invalidacao" | "todos"
+    - periodo_meses: janela para padrões comportamentais (default 6 meses)
+
+    Use quando o usuário perguntar sobre:
+    dito vs feito, coerência, disciplina, estou seguindo a IPS,
+    teses válidas, critério de invalidação, convicção vs resultado,
+    quanto tempo fico nas posições vs o que planejei.
+    """
+)
+def divergencias_dito_feito(
+    tipo: str = "todos",
+    periodo_meses: int = 6,
+) -> dict:
+    return fn_divergencias_dito_feito(tipo, periodo_meses)
 
 
 if __name__ == "__main__":
