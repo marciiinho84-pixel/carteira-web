@@ -50,3 +50,83 @@ export const auth = {
 
 export const apiStatus = () =>
   apiFetch<{ status: string; version: string }>("/health");
+
+export type KPIs = {
+  engine_ok: boolean;
+  patrimonio_total?: number;
+  patrimonio_gerida?: number;
+  patrimonio_funcef?: number;
+  twr_ytd?: number;
+  twr_total_ytd?: number;
+  cdi_ytd?: number;
+  ibov_ytd?: number;
+  excesso_cdi?: number;
+  twr_anualizado?: number;
+  var_dia_pct?: number | null;
+  nivel_automacao?: string;
+  calculado_em?: string;
+  data_referencia?: string;
+};
+
+export type Tese = {
+  id: number;
+  ticker: string;
+  bloco_ips?: string;
+  racional?: string;
+  criterio_invalidacao?: string;
+  nivel_invalidacao: "VERDE" | "AMARELO" | "VERMELHO";
+  status: string;
+  dias_desde_criacao?: number;
+};
+
+export type Vies = {
+  nome_vies: string;
+  detectado: boolean;
+  severidade: "INFO" | "ATENCAO" | "CRITICO";
+  fato_mensuravel: string;
+};
+
+export type BlocoIPS = {
+  bloco: string;
+  pct_real: number;
+  pct_alvo: number;
+  banda_min: number;
+  banda_max: number;
+  status: "OK" | "ABAIXO" | "ACIMA";
+};
+
+export type Comportamental = {
+  indice_coerencia: number;
+  vieses: Vies[];
+  blocos: BlocoIPS[];
+};
+
+export type Observacao = {
+  id: number;
+  content: string;
+  criada_em?: string;
+  conversa_id?: number;
+};
+
+export type Meta = {
+  engine_ok?: boolean;
+  patrimonio_atual?: number;
+  meta?: number;
+  pct_atingido?: number;
+  twr_anualizado?: number;
+  aporte_anual?: number;
+  projecao_ano_meta?: number | null;
+  ritmo_mensal_atual?: number;
+  ritmo_mensal_necessario?: number;
+};
+
+export type SalaDeComandoData = {
+  kpis: KPIs;
+  teses: Tese[];
+  comportamental: Comportamental;
+  observacoes: Observacao[];
+  meta: Meta;
+};
+
+export const salaDeComando = () =>
+  apiFetch<SalaDeComandoData>("/sala-de-comando");

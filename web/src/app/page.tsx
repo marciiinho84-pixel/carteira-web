@@ -9,7 +9,7 @@ export default function Home() {
   useEffect(() => {
     const token = localStorage.getItem("carteira_token");
     if (token) {
-      router.replace("/dashboard");
+      router.replace("/sala-de-comando");
     } else {
       router.replace("/login");
     }
