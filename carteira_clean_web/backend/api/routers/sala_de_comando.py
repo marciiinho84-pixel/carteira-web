@@ -21,10 +21,10 @@ router = APIRouter(tags=["Sala de Comando"])
 
 # IPS alvos e bandas (Carteira Gerida)
 _IPS_BANDS: dict[str, dict] = {
-    "SWING_TRADE": {"alvo": 0.20, "min": 0.10, "max": 0.30},
-    "GROWTH":      {"alvo": 0.30, "min": 0.20, "max": 0.40},
-    "DEFENSIVOS":  {"alvo": 0.15, "min": 0.10, "max": 0.25},
-    "RENDA_FIXA":  {"alvo": 0.30, "min": 0.20, "max": 0.40},
+    "SWING_TRADE": {"alvo": 0.30, "min": 0.20, "max": 0.40},
+    "GROWTH":      {"alvo": 0.20, "min": 0.10, "max": 0.30},
+    "DEFENSIVOS":  {"alvo": 0.20, "min": 0.15, "max": 0.25},
+    "RENDA_FIXA":  {"alvo": 0.30, "min": 0.25, "max": 0.35},
     "FORA_IPS":    {"alvo": 0.05, "min": 0.00, "max": 0.10},
 }
 
