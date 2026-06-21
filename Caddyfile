@@ -1,5 +1,6 @@
 minhacarteira.duckdns.org {
 
+    # MCP — autenticado por Bearer token
     handle /mcp* {
         @no_auth {
             not header Authorization "Bearer {env.MCP_TOKEN}"
@@ -9,6 +10,12 @@ minhacarteira.duckdns.org {
         reverse_proxy mcp:8001
     }
 
+    # API REST — autenticada por JWT (magic link), acessível pelo Next.js/Vercel
+    handle /api* {
+        reverse_proxy backend:8000
+    }
+
+    # Streamlit (frontend legado) — basic_auth durante coexistência
     handle {
         basic_auth {
             marcio $2a$14$Ju7nt6OFddcyMf9JxcGm3eOQD/avQ61dKGWVdF4g2Qs/Y5dUXyAH6

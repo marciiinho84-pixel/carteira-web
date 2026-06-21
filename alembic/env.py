@@ -13,14 +13,17 @@ config = context.config
 fileConfig(config.config_file_name)
 
 # ── URL do banco ────────────────────────────────────────────────────────────
-# Prioridade: DB_PATH env var (Docker) → default igual ao session.py
-_db_env = os.environ.get("DB_PATH")
-if _db_env:
-    _url = f"sqlite:///{_db_env}"
+# Prioridade: DATABASE_URL → DB_PATH → default SQLite
+_database_url = os.environ.get("DATABASE_URL")
+if _database_url:
+    _url = _database_url
 else:
-    # Mirrors session.py: carteira_clean_web/carteira.db (relativo à raiz do projeto)
-    _default = Path(__file__).resolve().parents[1] / "carteira_clean_web" / "carteira.db"
-    _url = f"sqlite:///{_default}"
+    _db_path = os.environ.get("DB_PATH")
+    if _db_path:
+        _url = f"sqlite:///{_db_path}"
+    else:
+        _default = Path(__file__).resolve().parents[1] / "carteira_clean_web" / "carteira.db"
+        _url = f"sqlite:///{_default}"
 
 config.set_main_option("sqlalchemy.url", _url)
 

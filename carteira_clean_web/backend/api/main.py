@@ -8,6 +8,7 @@ Executa com:
 """
 
 import logging
+import os
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -22,6 +23,7 @@ from carteira_clean_web.backend.api.routers import (
     ativos, eventos, precos_manuais, calcular, resultados, backup, decisoes, importacao, agenda,
     watchlist, sinais, memoria, teses, diario_decisoes, regra_aportes, macro, comportamento,
 )
+from carteira_clean_web.backend.api.routers import auth
 
 log = logging.getLogger("api.main")
 
@@ -78,9 +80,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# CORS: ALLOWED_ORIGINS env var (comma-separated) ou wildcard para dev
+_raw_origins = os.environ.get("ALLOWED_ORIGINS", "*")
+_origins = [o.strip() for o in _raw_origins.split(",")] if _raw_origins != "*" else ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -104,13 +111,20 @@ app.include_router(diario_decisoes.router, prefix=PREFIX)
 app.include_router(regra_aportes.router, prefix=PREFIX)
 app.include_router(macro.router, prefix=PREFIX)
 app.include_router(comportamento.router, prefix=PREFIX)
+app.include_router(auth.router, prefix=PREFIX)
+
+
+@app.get("/api/v1/status", include_in_schema=False)
+def status():
+    """Health check usado pelo Docker Compose e Cloud Run."""
+    return {"status": "ok", "version": "2.5.1"}
 
 
 @app.get("/", include_in_schema=False)
 def root():
     return {
         "projeto": "Carteira Clean",
-        "versao": "2.2.0",
+        "versao": "2.5.1",
         "docs": "/docs",
         "dica": "Chame POST /api/v1/calcular para inicializar o engine.",
     }
