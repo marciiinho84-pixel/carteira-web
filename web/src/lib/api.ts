@@ -49,4 +49,4 @@ export const auth = {
 };
 
 export const apiStatus = () =>
-  apiFetch<{ status: string; version: string }>("/status");
+  apiFetch<{ status: string; version: string }>("/health");

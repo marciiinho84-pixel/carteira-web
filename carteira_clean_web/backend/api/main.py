@@ -114,9 +114,9 @@ app.include_router(comportamento.router, prefix=PREFIX)
 app.include_router(auth.router, prefix=PREFIX)
 
 
-@app.get("/api/v1/status", include_in_schema=False)
-def status():
-    """Health check usado pelo Docker Compose e Cloud Run."""
+@app.get("/api/v1/health", include_in_schema=False)
+def health():
+    """Health check para o Next.js dashboard e Docker Compose."""
     return {"status": "ok", "version": "2.5.1"}
 
 
