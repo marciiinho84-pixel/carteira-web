@@ -58,10 +58,7 @@ def upgrade():
             sa.Column("logica",     sa.Text, nullable=True),
             sa.Column("criado_em",  sa.DateTime, nullable=False),
         )
-        try:
-            op.create_index("ix_matriz_ind_setor", "matriz_sensibilidade", ["indicador", "setor"])
-        except Exception:
-            pass
+        op.create_index("ix_matriz_ind_setor", "matriz_sensibilidade", ["indicador", "setor"], if_not_exists=True)
 
     # Seed data — fora do `if` para cobrir o caso em que create_all() criou a
     # tabela antes da migration rodar (startup do backend em prod).

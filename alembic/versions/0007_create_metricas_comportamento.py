@@ -33,15 +33,9 @@ def upgrade():
             sa.Column("valor_json", sa.Text, nullable=True),
             sa.Column("calculado_em", sa.DateTime, nullable=False),
         )
-    # Índices: ignora se já existem
-    try:
-        op.create_index("ix_mc_metrica_periodo", "metricas_comportamento", ["metrica", "periodo"])
-    except Exception:
-        pass
-    try:
-        op.create_index("ix_mc_calculado", "metricas_comportamento", ["calculado_em"])
-    except Exception:
-        pass
+    # Índices — if_not_exists=True para suportar PostgreSQL (create_all pode tê-los criado)
+    op.create_index("ix_mc_metrica_periodo", "metricas_comportamento", ["metrica", "periodo"], if_not_exists=True)
+    op.create_index("ix_mc_calculado", "metricas_comportamento", ["calculado_em"], if_not_exists=True)
 
 
 def downgrade():
