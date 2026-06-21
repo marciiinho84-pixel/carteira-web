@@ -126,7 +126,7 @@ def migrate(sqlite_url: str, pg_url: str, dry_run: bool = False):
                 # INSERT sem erro se a linha já existir (chave duplicada)
                 col_str = ", ".join(f'"{c}"' for c in columns)
                 ph_str  = ", ".join(f":{c}" for c in columns)
-                pk_cols = [pk.name for pk in inspect(src).get_pk_constraint(tname).get("constrained_columns", [])]
+                pk_cols = inspect(src).get_pk_constraint(tname).get("constrained_columns", [])
                 if pk_cols:
                     pk_str = ", ".join(f'"{c}"' for c in pk_cols)
                     stmt = text(
