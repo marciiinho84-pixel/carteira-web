@@ -190,7 +190,10 @@ export default function SalaDeComando() {
       setData(sd);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Erro ao carregar dados";
-      if (msg.includes("401") || msg.includes("Unauthorized")) {
+      if (
+        msg.includes("401") || msg.includes("Unauthorized") ||
+        msg.includes("inválido") || msg.includes("expirado") || msg.includes("Token")
+      ) {
         clearToken();
         router.replace("/login");
         return;
