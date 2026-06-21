@@ -18,6 +18,12 @@ from carteira_clean_web.backend.mcp.tools.portfolio import (
     fn_risco_carteira, fn_disciplina_caixa,
     fn_consultar_macro, fn_consultar_eventos_corporativos,
     fn_perfil_comportamental, fn_divergencias_dito_feito,
+    fn_vieses_comportamentais,
+    fn_analise_fundamentalista, fn_screening_fundamentalista, fn_comparar_multiplos,
+    fn_contexto_setorial, fn_regime_mercado,
+    fn_analise_tecnica, fn_grafico_tecnico,
+    fn_noticias_ativos, fn_impacto_macro,
+    fn_consultar_glossario,
 )
 
 mcp = FastMCP(
@@ -480,6 +486,233 @@ def divergencias_dito_feito(
     periodo_meses: int = 6,
 ) -> dict:
     return fn_divergencias_dito_feito(tipo, periodo_meses)
+
+
+@mcp.tool(
+    description="""
+    Detecta 5 vieses comportamentais a partir do histórico de operações.
+
+    Vieses analisados (com fato mensurável):
+    - disposition_effect: segura perdedores mais que ganhadores (ratio holding)
+    - overtrading: giro excessivo em blocos de horizonte longo
+    - subdiversificacao: concentração (HHI > 15 ou top-1 > 25%)
+    - clustering_temporal: operações agrupadas em poucos meses
+    - trend_chasing: compra após altas e obtém retorno inferior
+
+    Retorna: detectado (true/false), fato_mensuravel, severidade, referencia_glossario.
+    Use quando o usuário perguntar: vieses, padrões de comportamento, disposition effect,
+    overtrading, estou concentrado demais, cluster de operações, trend chasing.
+    """
+)
+def vieses_comportamentais(periodo_meses: int = 12) -> dict:
+    return fn_vieses_comportamentais(periodo_meses)
+
+
+@mcp.tool(
+    description="""
+    Análise fundamentalista em 4 dimensões para um ativo específico.
+
+    Dimensões:
+    - valuation: P/L, P/VP, EV/EBITDA vs peers do setor
+    - rentabilidade: ROE, ROIC, margem EBITDA, margem líquida
+    - saude_financeira: Dív.Líq/EBITDA
+    - proventos: DY, LPA, VPA
+
+    Compara o ativo com peers do mesmo setor cadastrados na carteira.
+    Fonte: tabela fundamentos (yfinance — executar coleta antes).
+
+    Parâmetro:
+    - ticker: código do ativo (ex: "PETR4", "WEGE3")
+
+    Use quando o usuário perguntar: P/L, ROE, fundamentos, análise fundamentalista,
+    múltiplos, ROIC, DY, balanço, rentabilidade de [ativo].
+    """
+)
+def analise_fundamentalista(ticker: str) -> dict:
+    return fn_analise_fundamentalista(ticker)
+
+
+@mcp.tool(
+    description="""
+    Filtra ativos da carteira por critérios fundamentalistas.
+
+    Todos os critérios são opcionais — combine os que quiser.
+    Parâmetros:
+    - roe_min: ROE mínimo (%)
+    - dy_min:  DY mínimo (%)
+    - pl_max:  P/L máximo
+    - div_liq_ebitda_max: Dív.Líq/EBITDA máximo
+    - margem_ebitda_min:  Margem EBITDA mínima (%)
+
+    Use quando o usuário perguntar: screening, quais ativos pagam mais dividendos,
+    filtrar por ROE, baratos por P/L, menos endividados.
+    """
+)
+def screening_fundamentalista(
+    roe_min: float | None = None,
+    dy_min: float | None = None,
+    pl_max: float | None = None,
+    div_liq_ebitda_max: float | None = None,
+    margem_ebitda_min: float | None = None,
+) -> dict:
+    return fn_screening_fundamentalista(roe_min, dy_min, pl_max, div_liq_ebitda_max, margem_ebitda_min)
+
+
+@mcp.tool(
+    description="""
+    Tabela comparativa de múltiplos fundamentalistas para 2 a 5 ativos side-by-side.
+
+    Parâmetro:
+    - tickers: lista de tickers (ex: ["PETR4", "PRIO3", "RRRP3"])
+
+    Útil para comparar ações de um mesmo setor antes de decidir entre elas.
+    Use quando o usuário perguntar: comparar fundamentos, qual está mais barato entre X e Y,
+    P/L de PETR4 vs PRIO3.
+    """
+)
+def comparar_multiplos(tickers: list[str]) -> dict:
+    return fn_comparar_multiplos(tickers)
+
+
+@mcp.tool(
+    description="""
+    Contexto setorial: quais setores estão na carteira, quais indicadores macro
+    são relevantes para cada setor e o valor atual desses indicadores.
+
+    Parâmetro:
+    - setor: nome do setor (ex: "Construção Civil") ou "todos" (default)
+
+    Use quando o usuário perguntar: contexto do setor, macro relevante para bancários,
+    quais indicadores impactam construtoras, análise setorial.
+    """
+)
+def contexto_setorial(setor: str = "todos") -> dict:
+    return fn_contexto_setorial(setor)
+
+
+@mcp.tool(
+    description="""
+    Classifica o regime macroeconômico atual em 4 eixos:
+    juros (subindo/estável/caindo), inflação (acelerando/controlada/desacelerando),
+    câmbio (depreciação/estável/apreciação), indicando o valor atual de cada.
+
+    Dados: BCB SGS + Focus (já coletados na tabela macro_indicadores).
+
+    Use quando o usuário perguntar: regime de mercado, como está a macro,
+    cenário atual, Selic subindo ou caindo, inflação controlada.
+    """
+)
+def regime_mercado() -> dict:
+    return fn_regime_mercado()
+
+
+@mcp.tool(
+    description="""
+    Análise técnica com sistema de votação para um ativo.
+
+    Indicadores calculados:
+    - Médias móveis: MM20, MM50, MM200
+    - Osciladores: RSI 14, MACD (12,26,9), Bollinger (20,2)
+    - Suportes e resistências (pivôs de preço)
+
+    Sistema de votação: cada indicador vota -1/0/+1.
+    rating_geral: média ponderada (−1 = venda forte, +1 = compra forte).
+
+    Também retorna: entrada sugerida, alvo, stop, tendencia.
+
+    Parâmetros:
+    - ticker: código do ativo (ex: "PETR4", "WEGE3")
+    - periodo: "1mo" | "3mo" | "6mo" | "1y" | "2y" (default "6mo")
+
+    Use quando o usuário perguntar: análise técnica, suporte, resistência, RSI,
+    MACD, médias móveis, tendência de [ativo], setup técnico.
+    """
+)
+def analise_tecnica(ticker: str, periodo: str = "6mo") -> dict:
+    return fn_analise_tecnica(ticker, periodo)
+
+
+@mcp.tool(
+    description="""
+    Gera gráfico candlestick interativo (Plotly HTML) com MMs, Bollinger,
+    suportes/resistências, volume e RSI em subplots separados.
+
+    Salva o arquivo em /data/charts/ e retorna o caminho.
+
+    Parâmetros:
+    - ticker: código do ativo
+    - periodo: "1mo" | "3mo" | "6mo" | "1y" | "2y" (default "6mo")
+
+    Use quando o usuário perguntar: mostrar gráfico, gráfico técnico, chart de [ativo],
+    ver candlestick, quero ver o gráfico.
+    """
+)
+def grafico_tecnico(ticker: str, periodo: str = "6mo") -> dict:
+    return fn_grafico_tecnico(ticker, periodo)
+
+
+@mcp.tool(
+    description="""
+    Retorna notícias recentes dos ativos via yfinance.
+
+    Parâmetros:
+    - ticker: código do ativo (ex: "PETR4"), "carteira" (top-10 por patrimônio),
+              ou "watchlist" (default: "carteira")
+    - dias: janela em dias (default 7, máx recomendado 30)
+
+    Use quando o usuário perguntar: notícias de [ativo], o que está acontecendo com [ativo],
+    novidades da carteira, notícias da semana, últimas notícias.
+    """
+)
+def noticias_ativos(ticker: str = "carteira", dias: int = 7) -> dict:
+    return fn_noticias_ativos(ticker, dias)
+
+
+@mcp.tool(
+    description="""
+    Avalia o impacto de um evento macro nos ativos da carteira.
+
+    Consulta a matriz de sensibilidade macro→setor e identifica quais ativos
+    em carteira são afetados positiva ou negativamente.
+
+    Parâmetros (escolha um dos dois modos):
+    Modo 1 — texto livre:
+    - evento: descrição do evento (ex: "queda de 0.5pp na Selic")
+              (indicador e variação são inferidos automaticamente)
+    Modo 2 — estruturado:
+    - indicador: "SELIC_META" | "USD_BRL" | "IPCA"
+    - variacao:  "ALTA" | "QUEDA"
+
+    Use quando o usuário perguntar: impacto da Selic na carteira, o que muda se o dólar subir,
+    como o IPCA afeta meus ativos, análise macro, impacto de [evento] nos meus papéis.
+    """
+)
+def impacto_macro(
+    evento: str = "",
+    indicador: str = "",
+    variacao: str = "QUEDA",
+) -> dict:
+    return fn_impacto_macro(evento, indicador, variacao)
+
+
+@mcp.tool(
+    description="""
+    Consulta o glossário de indicadores e conceitos de investimento.
+
+    Cobre: indicadores fundamentalistas (P/L, ROE, ROIC, DY…),
+    técnicos (RSI, MACD, Bollinger, suporte, resistência…) e
+    vieses comportamentais (disposition effect, overtrading…).
+
+    Parâmetros (escolha um):
+    - termo: busca por nome/código (ex: "P/L", "RSI", "disposition effect", "overtrading")
+    - categoria: "fundamentalista" | "tecnico" | "comportamental" — lista todos
+
+    Use quando o usuário perguntar: o que é [indicador], explica [conceito],
+    o que significa P/L, o que é RSI, o que é disposition effect.
+    """
+)
+def consultar_glossario(termo: str = "", categoria: str = "") -> dict:
+    return fn_consultar_glossario(termo, categoria)
 
 
 if __name__ == "__main__":

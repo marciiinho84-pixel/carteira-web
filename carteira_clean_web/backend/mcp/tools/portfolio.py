@@ -1821,3 +1821,585 @@ def fn_divergencias_dito_feito(
         "calculado_em": str(hoje),
         "nota": "Fatos apenas — sem recomendações. O maestro contextualiza ao ser consultado.",
     }
+
+
+# ─── Fatia 8b: Vieses comportamentais ────────────────────────────────────────
+
+def fn_vieses_comportamentais(periodo_meses: int = 12) -> dict:
+    """
+    Detecta 5 vieses comportamentais a partir do event log.
+    Apresenta fato mensurável + nome do padrão. Não prescreve ação.
+
+    Vieses: disposition_effect, overtrading, subdiversificacao,
+            clustering_temporal, trend_chasing.
+    """
+    from datetime import date
+    from carteira_clean_web.backend.db.models import Evento as EventoModel, Ativo as AtivoModel
+    from carteira_clean_web.backend.db.session import get_session
+    from carteira_clean_web.backend.engine.vieses import (
+        calcular_disposition_effect, calcular_overtrading,
+        calcular_subdiversificacao, calcular_clustering_temporal,
+        calcular_trend_chasing,
+    )
+
+    if not engine_cache.esta_calculado():
+        engine_cache.carregar_disco()
+    if not engine_cache.esta_calculado():
+        return {"erro": "Cache vazio. Recalcule a carteira."}
+
+    estado = engine_cache.get_estado()
+    hoje = estado["hoje"]
+    m = hoje.month - periodo_meses
+    y = hoje.year
+    while m <= 0:
+        m += 12
+        y -= 1
+    periodo_ini = date(y, m, 1)
+
+    session = get_session()
+    try:
+        evs = session.query(EventoModel).order_by(EventoModel.data).all()
+        eventos = [e.to_dict() for e in evs]
+    finally:
+        session.close()
+
+    # Cotações históricas {ticker: {date_str: preco}}
+    precos_pub = estado.get("precos_publicos", {})
+    cotacoes_hist: dict[str, dict] = {}
+    for tkr, serie in precos_pub.items():
+        cotacoes_hist[tkr] = {str(k): v for k, v in serie.items()}
+
+    # Dados já calculados da Fatia 8 (reutilizar sem recalcular)
+    perfil = fn_perfil_comportamental("todos", periodo_meses)
+    turnover = perfil.get("turnover", {})
+    concentracao = perfil.get("concentracao", {})
+    frequencia = perfil.get("frequencia", {})
+
+    vieses = [
+        calcular_disposition_effect(eventos, cotacoes_hist),
+        calcular_overtrading(turnover),
+        calcular_subdiversificacao(concentracao),
+        calcular_clustering_temporal(frequencia),
+        calcular_trend_chasing(eventos, cotacoes_hist, periodo_ini, hoje),
+    ]
+
+    detectados = [v for v in vieses if v["detectado"]]
+    return {
+        "vieses": vieses,
+        "total_detectados": len(detectados),
+        "detectados": [v["nome_vies"] for v in detectados],
+        "periodo": f"{periodo_ini} a {hoje}",
+        "nota": (
+            "Padrões factuais — não são diagnósticos. O investidor avalia "
+            "conscientemente se quer manter ou corrigir cada padrão. "
+            "Consulte o glossário para explicações detalhadas."
+        ),
+    }
+
+
+# ─── Fatia 10: Fundamentalista ────────────────────────────────────────────────
+
+def _carregar_fundamentos_db() -> dict[str, list[dict]]:
+    """Carrega todos os fundamentos mais recentes do DB, agrupados por ticker."""
+    from carteira_clean_web.backend.db.models import Fundamento
+    from carteira_clean_web.backend.db.session import get_session
+    session = get_session()
+    try:
+        rows = session.query(Fundamento).order_by(Fundamento.fetched_at.desc()).all()
+        result: dict[str, list[dict]] = {}
+        for r in rows:
+            result.setdefault(r.ticker, []).append({
+                "indicador":      r.indicador,
+                "valor":          r.valor,
+                "data_referencia": str(r.data_referencia) if r.data_referencia else None,
+                "fetched_at":     str(r.fetched_at) if r.fetched_at else "",
+            })
+        return result
+    finally:
+        session.close()
+
+
+def fn_analise_fundamentalista(ticker: str) -> dict:
+    """
+    Análise fundamentalista em 4 dimensões para um ativo.
+    Compara com peers do mesmo setor e com histórico próprio.
+    Fonte: tabela fundamentos (yfinance).
+    """
+    from carteira_clean_web.backend.db.models import Ativo as AtivoModel
+    from carteira_clean_web.backend.db.session import get_session
+    from carteira_clean_web.backend.engine.fundamentalista import analise_fundamentalista
+
+    ticker = ticker.upper()
+    fundamentos = _carregar_fundamentos_db()
+
+    if ticker not in fundamentos:
+        return {"erro": f"Sem fundamentos para {ticker}. Execute a coleta: POST /api/v1/macro/coletar"}
+
+    session = get_session()
+    try:
+        ativo = session.query(AtivoModel).filter(AtivoModel.ticker == ticker).first()
+        setor = ativo.setor if ativo else None
+        peers = []
+        if setor:
+            peers = [a.ticker for a in session.query(AtivoModel).filter(
+                AtivoModel.setor == setor,
+                AtivoModel.ticker != ticker,
+            ).all()]
+    finally:
+        session.close()
+
+    fundamentos_setor = {p: fundamentos[p] for p in peers if p in fundamentos}
+    return analise_fundamentalista(ticker, fundamentos[ticker], fundamentos_setor)
+
+
+def fn_screening_fundamentalista(
+    roe_min: float | None = None,
+    dy_min: float | None = None,
+    pl_max: float | None = None,
+    div_liq_ebitda_max: float | None = None,
+    margem_ebitda_min: float | None = None,
+) -> dict:
+    """
+    Filtra ativos da carteira + watchlist por critérios fundamentalistas.
+    Todos os parâmetros são opcionais — use os que quiser.
+
+    Args:
+        roe_min: ROE mínimo (%)
+        dy_min:  DY mínimo (%)
+        pl_max:  P/L máximo
+        div_liq_ebitda_max: Dív.Líq/EBITDA máximo
+        margem_ebitda_min: Margem EBITDA mínima (%)
+    """
+    from carteira_clean_web.backend.engine.fundamentalista import screening_fundamentalista
+
+    criterios: dict[str, dict] = {}
+    if roe_min is not None:            criterios["ROE"] = {"min": roe_min}
+    if dy_min is not None:             criterios["DY"]  = {"min": dy_min}
+    if pl_max is not None:             criterios["PL"]  = {"max": pl_max}
+    if div_liq_ebitda_max is not None: criterios["DIV_LIQ_EBITDA"] = {"max": div_liq_ebitda_max}
+    if margem_ebitda_min is not None:  criterios["MARGEM_EBITDA"] = {"min": margem_ebitda_min}
+
+    if not criterios:
+        return {"erro": "Informe pelo menos um critério (roe_min, dy_min, pl_max, div_liq_ebitda_max, margem_ebitda_min)."}
+
+    fundamentos = _carregar_fundamentos_db()
+    resultado = screening_fundamentalista(criterios, fundamentos)
+    return {
+        "criterios_aplicados": criterios,
+        "ativos_encontrados": len(resultado),
+        "lista": resultado,
+        "nota": "Fonte: tabela fundamentos (yfinance). Apenas ativos com dados disponíveis.",
+    }
+
+
+def fn_comparar_multiplos(tickers: list[str]) -> dict:
+    """
+    Tabela side-by-side de múltiplos fundamentalistas para 2-5 tickers.
+    Exemplo: ["PETR4", "PRIO3", "WEGE3"]
+    """
+    from carteira_clean_web.backend.engine.fundamentalista import comparar_multiplos
+    if not tickers or len(tickers) < 2:
+        return {"erro": "Informe pelo menos 2 tickers."}
+    tickers = [t.upper() for t in tickers[:5]]
+    fundamentos = _carregar_fundamentos_db()
+    return comparar_multiplos(tickers, fundamentos)
+
+
+# ─── Fatia 11: Setorial / Regime de mercado ───────────────────────────────────
+
+_MACRO_POR_SETOR: dict[str, list[str]] = {
+    "Construção Civil":    ["SELIC_META", "IPCA"],
+    "Bancos Tradicionais": ["SELIC_META"],
+    "Serviços Financeiros":["SELIC_META"],
+    "Petróleo & Gás":      ["USD_BRL"],
+    "Agronegócio":         ["USD_BRL", "IPCA"],
+    "Energia Elétrica":    ["SELIC_META", "IPCA"],
+    "Saneamento":          ["SELIC_META", "IPCA"],
+    "Varejo":              ["IPCA", "SELIC_META"],
+}
+
+
+def fn_contexto_setorial(setor: str = "todos") -> dict:
+    """
+    Contexto setorial: performance recente do índice + macro relevante + ativos da carteira.
+
+    Args:
+        setor: nome do setor (ex: "Construção Civil") ou "todos"
+    """
+    from carteira_clean_web.backend.engine.macro_client import ler_macro
+    from carteira_clean_web.backend.db.models import Ativo as AtivoModel
+    from carteira_clean_web.backend.db.session import get_session
+
+    if not engine_cache.esta_calculado():
+        engine_cache.carregar_disco()
+    if not engine_cache.esta_calculado():
+        return {"erro": "Cache vazio."}
+
+    estado = engine_cache.get_estado()
+    posicoes_dict = estado["posicoes"]
+    ativos = estado["ativos"]
+
+    # Ativos em carteira por setor
+    carteira_por_setor: dict[str, list[str]] = {}
+    for tkr, pos in posicoes_dict.items():
+        if pos.qtd < 1e-9:
+            continue
+        s = ativos.get(tkr, {}).get("setor") or "—"
+        carteira_por_setor.setdefault(s, []).append(tkr)
+
+    setores_alvo = list(carteira_por_setor.keys()) if setor == "todos" else [setor]
+
+    # Macro recente
+    todos_inds = list({ind for s in setores_alvo for ind in _MACRO_POR_SETOR.get(s, [])})
+    macro = ler_macro(indicadores=todos_inds or None, ultimos_n=3) if todos_inds else {}
+
+    resultado_setores = []
+    for s in setores_alvo:
+        inds_rel = _MACRO_POR_SETOR.get(s, [])
+        macro_s = {ind: macro.get(ind, []) for ind in inds_rel}
+        ativos_s = carteira_por_setor.get(s, [])
+        resultado_setores.append({
+            "setor":   s,
+            "ativos_carteira": ativos_s,
+            "macro_relevante": {
+                ind: pts[0] if pts else None
+                for ind, pts in macro_s.items()
+            },
+        })
+
+    return {
+        "setores": resultado_setores,
+        "nota": "Correlações históricas como contexto — não previsão.",
+    }
+
+
+def fn_regime_mercado() -> dict:
+    """
+    Classifica o regime macroeconômico atual em 4 eixos:
+    juros (subindo/estável/caindo), inflação, câmbio, bolsa.
+    Cruza com exposição da carteira por bloco IPS.
+    """
+    from carteira_clean_web.backend.engine.macro_client import ler_macro
+
+    macro = ler_macro(indicadores=["SELIC_META", "IPCA_FOCUS", "IPCA", "USD_BRL"], ultimos_n=6)
+
+    def tendencia(pts: list[dict], n: int = 3) -> str:
+        vals = [p["valor"] for p in pts[:n] if p.get("valor") is not None]
+        if len(vals) < 2:
+            return "sem dados"
+        if vals[0] > vals[-1] * 1.02:
+            return "subindo"
+        if vals[0] < vals[-1] * 0.98:
+            return "caindo"
+        return "estavel"
+
+    selic_pts   = macro.get("SELIC_META", [])
+    ipca_pts    = macro.get("IPCA", [])
+    focus_pts   = macro.get("IPCA_FOCUS", [])
+    usd_pts     = macro.get("USD_BRL", [])
+
+    selic_atual = selic_pts[0]["valor"] if selic_pts else None
+    focus_atual = focus_pts[0]["valor"] if focus_pts else None
+
+    # Juros: comparar Selic atual vs Focus 12m
+    if selic_atual and focus_atual:
+        if focus_atual > selic_atual * 1.01:
+            juros_regime = "subindo"
+        elif focus_atual < selic_atual * 0.99:
+            juros_regime = "caindo"
+        else:
+            juros_regime = "estavel"
+    else:
+        juros_regime = tendencia(selic_pts)
+
+    ipca_regime = tendencia(ipca_pts)
+    cambio_regime = tendencia(usd_pts, 2)
+
+    regime = {
+        "juros": {
+            "classificacao": juros_regime,
+            "selic_atual": selic_atual,
+            "focus_12m": focus_atual,
+        },
+        "inflacao": {
+            "classificacao": "acelerando" if ipca_regime == "subindo" else
+                             "desacelerando" if ipca_regime == "caindo" else "controlada",
+            "ultimo_ipca": ipca_pts[0]["valor"] if ipca_pts else None,
+        },
+        "cambio": {
+            "classificacao": "depreciacao" if cambio_regime == "subindo" else
+                             "apreciacao" if cambio_regime == "caindo" else "estavel",
+            "usd_brl_atual": usd_pts[0]["valor"] if usd_pts else None,
+        },
+        "nota": "Classificação factual com dados BCB. Não é previsão.",
+    }
+    return regime
+
+
+# ─── Fatia 12: Análise técnica ───────────────────────────────────────────────
+
+def _buscar_ohlcv(ticker: str, periodo: str = "6mo") -> dict:
+    """Busca OHLCV do yfinance. Formata B3 tickers com .SA"""
+    import re
+    import yfinance as yf
+    yf_ticker = ticker + ".SA" if re.match(r"^[A-Z]{3,5}\d{1,2}$", ticker.upper()) else ticker
+    t = yf.Ticker(yf_ticker)
+    hist = t.history(period=periodo, auto_adjust=True)
+    if hist.empty:
+        return {}
+    return {
+        "dates":  [str(d.date()) for d in hist.index],
+        "open":   hist["Open"].tolist(),
+        "high":   hist["High"].tolist(),
+        "low":    hist["Low"].tolist(),
+        "close":  hist["Close"].tolist(),
+        "volume": hist["Volume"].tolist(),
+    }
+
+
+def fn_analise_tecnica(ticker: str, periodo: str = "6mo") -> dict:
+    """
+    Análise técnica com sistema de votação (estilo TradingView).
+
+    Indicadores: MM20/50/200, RSI 14, MACD (12,26,9), Bollinger (20,2).
+    Sistema de votação: cada indicador vota -1/0/+1.
+    Rating geral oscila entre -1 (venda forte) e +1 (compra forte).
+
+    Args:
+        ticker: código do ativo (ex: "PETR4", "WEGE3")
+        periodo: "1mo" | "3mo" | "6mo" | "1y" | "2y" (default "6mo")
+    """
+    from carteira_clean_web.backend.engine.tecnico import calcular_indicadores
+    ticker = ticker.upper()
+    ohlcv = _buscar_ohlcv(ticker, periodo)
+    if not ohlcv:
+        return {"erro": f"Sem dados OHLCV para {ticker}. Verifique o ticker."}
+    return calcular_indicadores(ticker, ohlcv)
+
+
+def fn_grafico_tecnico(ticker: str, periodo: str = "6mo") -> dict:
+    """
+    Gera gráfico candlestick interativo (Plotly HTML) com:
+    MMs 20/50/200, Bandas de Bollinger, suportes/resistências,
+    linhas de entrada/alvo/stop, volume e RSI em subplots.
+
+    Args:
+        ticker: código do ativo
+        periodo: "1mo" | "3mo" | "6mo" | "1y" | "2y"
+
+    Retorna o caminho do arquivo HTML gerado em /data/charts/.
+    """
+    from carteira_clean_web.backend.engine.tecnico import calcular_indicadores, gerar_grafico_html
+    ticker = ticker.upper()
+    ohlcv = _buscar_ohlcv(ticker, periodo)
+    if not ohlcv:
+        return {"erro": f"Sem dados OHLCV para {ticker}."}
+    indicadores = calcular_indicadores(ticker, ohlcv)
+    if "erro" in indicadores:
+        return indicadores
+    path = gerar_grafico_html(ticker, ohlcv, indicadores)
+    return {
+        "ticker": ticker,
+        "arquivo": path,
+        "rating_geral": indicadores.get("rating_geral"),
+        "tendencia": indicadores.get("tendencia"),
+        "nota": f"Gráfico salvo em {path}. Abra no browser para interagir.",
+    }
+
+
+# ─── Fatia 13: Notícias e impacto macro ──────────────────────────────────────
+
+def fn_noticias_ativos(
+    ticker: str = "carteira",
+    dias: int = 7,
+) -> dict:
+    """
+    Retorna notícias recentes dos ativos via yfinance.
+
+    Args:
+        ticker: código do ativo (ex: "PETR4"), "carteira" (top-10 por patrimônio)
+                ou "watchlist"
+        dias:   janela em dias (default 7)
+    """
+    from carteira_clean_web.backend.engine.noticias import buscar_noticias_ticker
+
+    if not engine_cache.esta_calculado():
+        engine_cache.carregar_disco()
+    if not engine_cache.esta_calculado():
+        return {"erro": "Cache vazio."}
+
+    estado = engine_cache.get_estado()
+    posicoes_dict = estado["posicoes"]
+    ativos = estado["ativos"]
+    precos_pub = estado.get("precos_publicos", {})
+    hoje = estado["hoje"]
+
+    if ticker.lower() == "carteira":
+        # Top-10 por valor atual
+        vals = []
+        for tkr, pos in posicoes_dict.items():
+            if pos.qtd < 1e-9:
+                continue
+            preco = preco_em(precos_pub.get(tkr, {}), hoje)
+            val = pos.qtd * preco if preco else pos.custo_total
+            vals.append((tkr, val))
+        tickers = [t for t, _ in sorted(vals, key=lambda x: -x[1])[:10]]
+    elif ticker.lower() == "watchlist":
+        from carteira_clean_web.backend.db.models import WatchlistItem
+        from carteira_clean_web.backend.db.session import get_session
+        session = get_session()
+        try:
+            tickers = [w.ticker for w in session.query(WatchlistItem).filter(WatchlistItem.ativo == 1).all()][:10]
+        finally:
+            session.close()
+    else:
+        tickers = [ticker.upper()]
+
+    todas_noticias = []
+    for t in tickers:
+        todas_noticias.extend(buscar_noticias_ticker(t, dias))
+
+    por_ticker: dict[str, list] = {}
+    for n in todas_noticias:
+        por_ticker.setdefault(n["ticker"], []).append(n)
+
+    return {
+        "noticias": todas_noticias,
+        "por_ticker": por_ticker,
+        "total": len(todas_noticias),
+        "tickers_consultados": tickers,
+        "janela_dias": dias,
+        "nota": "Fonte: yfinance .news. O maestro contextualiza o impacto potencial.",
+    }
+
+
+def fn_impacto_macro(
+    evento: str = "",
+    indicador: str = "",
+    variacao: str = "QUEDA",
+) -> dict:
+    """
+    Avalia o impacto de um evento macro nos ativos da carteira.
+
+    Consulta a matriz de sensibilidade macro→setor e cruza com a carteira.
+
+    Args:
+        evento:    texto livre (ex: "queda de 0.5pp na Selic") — interpretado
+                   para identificar indicador e variação automaticamente
+        indicador: enum macro: SELIC_META | USD_BRL | IPCA | IPCA_FOCUS
+        variacao:  "ALTA" ou "QUEDA"
+    """
+    from carteira_clean_web.backend.db.models import MatrizSensibilidade
+    from carteira_clean_web.backend.db.session import get_session
+
+    if not engine_cache.esta_calculado():
+        engine_cache.carregar_disco()
+    if not engine_cache.esta_calculado():
+        return {"erro": "Cache vazio."}
+
+    estado = engine_cache.get_estado()
+    posicoes_dict = estado["posicoes"]
+    ativos = estado["ativos"]
+
+    # Inferir indicador e variação do texto livre se não fornecidos
+    if evento and not indicador:
+        ev_lower = evento.lower()
+        if "selic" in ev_lower or "juros" in ev_lower:
+            indicador = "SELIC_META"
+        elif "dólar" in ev_lower or "usd" in ev_lower or "câmbio" in ev_lower:
+            indicador = "USD_BRL"
+        elif "ipca" in ev_lower or "inflação" in ev_lower:
+            indicador = "IPCA"
+        if "queda" in ev_lower or "redução" in ev_lower or "corte" in ev_lower or "cai" in ev_lower:
+            variacao = "QUEDA"
+        elif "alta" in ev_lower or "aumento" in ev_lower or "sobe" in ev_lower:
+            variacao = "ALTA"
+
+    if not indicador:
+        return {"erro": "Informe 'indicador' (SELIC_META|USD_BRL|IPCA) ou 'evento' em texto livre."}
+
+    session = get_session()
+    try:
+        linhas = session.query(MatrizSensibilidade).filter(
+            MatrizSensibilidade.indicador == indicador.upper(),
+            MatrizSensibilidade.variacao  == variacao.upper(),
+        ).order_by(MatrizSensibilidade.peso.desc()).all()
+    finally:
+        session.close()
+
+    if not linhas:
+        return {
+            "indicador": indicador,
+            "variacao": variacao,
+            "impactos": [],
+            "nota": "Nenhuma regra encontrada na matriz de sensibilidade para este indicador/variação.",
+        }
+
+    # Mapear setores afetados → ativos em carteira
+    setores_afetados = {l.setor: {"direcao": l.direcao, "logica": l.logica, "peso": l.peso}
+                        for l in linhas}
+    ativos_afetados = []
+    for tkr, pos in posicoes_dict.items():
+        if pos.qtd < 1e-9:
+            continue
+        setor = ativos.get(tkr, {}).get("setor") or "—"
+        if setor in setores_afetados:
+            info = setores_afetados[setor]
+            ativos_afetados.append({
+                "ticker":   tkr,
+                "setor":    setor,
+                "direcao":  info["direcao"],
+                "logica":   info["logica"],
+                "peso":     info["peso"],
+            })
+
+    ativos_afetados.sort(key=lambda x: (-x["peso"], x["direcao"]))
+
+    return {
+        "evento":    evento or f"{indicador} {variacao}",
+        "indicador": indicador,
+        "variacao":  variacao,
+        "setores_afetados": [
+            {"setor": s, **info} for s, info in setores_afetados.items()
+        ],
+        "ativos_carteira_afetados": ativos_afetados,
+        "total_ativos": len(ativos_afetados),
+        "nota": "Correlações estruturais conhecidas — não previsão. A matriz é referência; o maestro pode nuançar.",
+    }
+
+
+# ─── Glossário ────────────────────────────────────────────────────────────────
+
+def fn_consultar_glossario(termo: str = "", categoria: str = "") -> dict:
+    """
+    Retorna definição de indicadores e vieses comportamentais.
+
+    Args:
+        termo:     nome ou código do indicador (ex: "P/L", "ROE", "disposition effect",
+                   "RSI", "overtrading") — busca parcial.
+        categoria: "fundamentalista" | "tecnico" | "comportamental" — lista todos da categoria.
+    """
+    from carteira_clean_web.backend.engine.glossario import consultar, listar_por_categoria, GLOSSARIO
+
+    if termo:
+        entrada = consultar(termo)
+        if entrada:
+            return {"encontrado": True, "resultado": entrada}
+        return {
+            "encontrado": False,
+            "sugestoes": [e["nome"] for e in GLOSSARIO.values()],
+            "nota": f"'{termo}' não encontrado. Tente uma das sugestões.",
+        }
+    if categoria:
+        lista = listar_por_categoria(categoria)
+        return {"categoria": categoria, "total": len(lista), "indicadores": lista}
+
+    return {
+        "total": len(GLOSSARIO),
+        "categorias": {
+            "fundamentalista": [e["nome"] for e in GLOSSARIO.values() if e["categoria"] == "fundamentalista"],
+            "tecnico":         [e["nome"] for e in GLOSSARIO.values() if e["categoria"] == "tecnico"],
+            "comportamental":  [e["nome"] for e in GLOSSARIO.values() if e["categoria"] == "comportamental"],
+        },
+        "uso": "fn_consultar_glossario(termo='P/L') ou fn_consultar_glossario(categoria='tecnico')",
+    }

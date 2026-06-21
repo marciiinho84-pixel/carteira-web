@@ -558,6 +558,24 @@ class Cotacao(Base):
     )
 
 
+class MatrizSensibilidade(Base):
+    """Sensibilidade macro→setor para a tool impacto_macro (Fatia 13)."""
+    __tablename__ = "matriz_sensibilidade"
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    indicador  = Column(Text, nullable=False)
+    variacao   = Column(Text, nullable=False)
+    setor      = Column(Text, nullable=False)
+    direcao    = Column(Text, nullable=False)
+    peso       = Column(Integer, nullable=False, default=2)
+    logica     = Column(Text, nullable=True)
+    criado_em  = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_matriz_ind_setor", "indicador", "setor"),
+    )
+
+
 class MemoriaAssistente(Base):
     """Memória de longo prazo extraída ou criada manualmente."""
     __tablename__ = "memorias_assistente"
