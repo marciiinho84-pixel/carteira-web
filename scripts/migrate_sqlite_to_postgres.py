@@ -34,7 +34,7 @@ import logging
 import sys
 from datetime import date, datetime
 
-from sqlalchemy import create_engine, inspect, text, MetaData, Table
+from sqlalchemy import create_engine, inspect, text, MetaData, Table, Boolean
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 log = logging.getLogger("migrate")
@@ -70,10 +70,10 @@ TABLE_ORDER = [
 ]
 
 
-def _coerce(val):
-    """Converte tipos SQLite→Python que PostgreSQL aceita."""
-    if isinstance(val, (date, datetime)):
-        return val
+def _coerce(val, col_type=None):
+    """Converte tipos SQLite→Python compatíveis com PostgreSQL."""
+    if col_type is not None and isinstance(col_type, Boolean) and isinstance(val, int):
+        return bool(val)
     return val
 
 
@@ -96,6 +96,8 @@ def migrate(sqlite_url: str, pg_url: str, dry_run: bool = False):
 
     src_meta = MetaData()
     src_meta.reflect(bind=src)
+    dst_meta = MetaData()
+    dst_meta.reflect(bind=dst)
 
     with dst.begin() as dst_conn:
         # Desabilitar FKs temporariamente no PostgreSQL
@@ -116,7 +118,16 @@ def migrate(sqlite_url: str, pg_url: str, dry_run: bool = False):
                 log.info("  %s — 0 linhas, pulando", tname)
                 continue
 
-            dicts = [{col: _coerce(val) for col, val in zip(columns, row)} for row in rows]
+            # Mapa de tipo de destino por coluna para coerção correta (ex: bool)
+            dst_tbl = dst_meta.tables.get(tname)
+            dst_col_types = {}
+            if dst_tbl is not None:
+                dst_col_types = {c.key: c.type for c in dst_tbl.columns}
+
+            dicts = [
+                {col: _coerce(val, dst_col_types.get(col)) for col, val in zip(columns, row)}
+                for row in rows
+            ]
 
             if dry_run:
                 log.info("  [DRY] %s — %d linhas seriam inseridas", tname, len(dicts))
