@@ -63,7 +63,10 @@ def upgrade():
         except Exception:
             pass
 
-        # Seed data — alembic faz commit ao sair do context.begin_transaction()
+    # Seed data — fora do `if` para cobrir o caso em que create_all() criou a
+    # tabela antes da migration rodar (startup do backend em prod).
+    count = conn.execute(sa.text("SELECT COUNT(*) FROM matriz_sensibilidade")).scalar()
+    if count == 0:
         now = datetime.utcnow()
         conn.execute(
             sa.text(
