@@ -216,16 +216,18 @@ def coletar_macro(janela_dias: int = 90) -> dict:
     rows.extend(focus_rows)
     log.info(f"  Focus: {len(focus_rows)} pontos")
 
+    # Calcular sumário ANTES de adicionar à session (objetos ficam expirados após close)
+    by_ind: dict[str, int] = {}
+    for r in rows:
+        by_ind[r.indicador] = by_ind.get(r.indicador, 0) + 1
+    n_rows = len(rows)
+
     with get_session() as db:
         for r in rows:
             db.add(r)
         db.commit()
 
-    by_ind: dict[str, int] = {}
-    for r in rows:
-        by_ind[r.indicador] = by_ind.get(r.indicador, 0) + 1
-
-    return {"linhas_inseridas": len(rows), "por_indicador": by_ind, "erros": []}
+    return {"linhas_inseridas": n_rows, "por_indicador": by_ind, "erros": []}
 
 
 def coletar_eventos_corporativos(tickers: list[str] | None = None) -> dict:
