@@ -19,7 +19,7 @@ log "=== Início backup ${TIMESTAMP} ==="
 
 # pg_dump dentro do container postgres (já tem pg_dump nativo).
 # $POSTGRES_PASSWORD está no ambiente do container.
-sudo docker exec -T carteira-web-postgres-1 \
+sudo docker exec carteira-web-postgres-1 \
     sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -U carteira -d carteira --format=custom --compress=9' \
     > "$BACKUP_FILE"
 
