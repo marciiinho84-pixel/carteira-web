@@ -6,10 +6,10 @@
 set -euo pipefail
 
 TIMESTAMP=$(date +%Y%m%d_%H%M)
-PROJECT_DIR="/home/marciiinho84/carteira-web"
+PROJECT_DIR="$(dirname "$(dirname "$(readlink -f "$0")")")"
 BUCKET="gs://carteira-backup-474073"
 BACKUP_FILE="/tmp/carteira_${TIMESTAMP}.dump"
-LOG_DIR="/home/marciiinho84/logs"
+LOG_DIR="${HOME}/logs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="${LOG_DIR}/backup.log"
 
