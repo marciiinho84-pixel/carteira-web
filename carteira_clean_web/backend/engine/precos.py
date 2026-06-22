@@ -125,7 +125,7 @@ def baixar_precos_publicos(
 
 
 def _gravar_cotacoes(precos_dict: dict) -> None:
-    """Persiste cotações no PostgreSQL (append-only).
+    """Persiste cotações no banco (append-only).
 
     Insere nova linha apenas se (ticker, date) é inédito ou o preço mudou
     em >= 0.01 (1 centavo). Nunca UPDATE/DELETE. Falhas são silenciadas.
@@ -134,21 +134,27 @@ def _gravar_cotacoes(precos_dict: dict) -> None:
         return
     session = None
     try:
-        from sqlalchemy import text as _text
+        from sqlalchemy import text as _text, bindparam as _bp
         from carteira_clean_web.backend.db.session import get_session
+        from datetime import date as _date
 
         session = get_session()
         tickers = list(precos_dict.keys())
-        rows = session.execute(_text(
-            "SELECT DISTINCT ON (ticker, date) ticker, date, preco "
-            "FROM cotacoes WHERE ticker = ANY(:tickers) "
-            "ORDER BY ticker, date, fetched_at DESC"
-        ), {"tickers": tickers}).fetchall()
+        stmt = _text(
+            "SELECT ticker, date, preco FROM cotacoes c "
+            "WHERE ticker IN :tickers "
+            "AND fetched_at = (SELECT MAX(fetched_at) FROM cotacoes "
+            "  WHERE ticker = c.ticker AND date = c.date)"
+        ).bindparams(_bp("tickers", expanding=True))
+        rows = session.execute(stmt, {"tickers": tickers}).fetchall()
 
-        ultimos: dict = {(r[0], r[1]): float(r[2]) for r in rows}
+        ultimos: dict = {}
+        for r in rows:
+            dt = r[1] if isinstance(r[1], _date) else _date.fromisoformat(str(r[1]))
+            ultimos[(r[0], dt)] = float(r[2])
+
         agora = datetime.now()
         inserir: list = []
-
         for ticker, serie in precos_dict.items():
             for dt, preco in serie.items():
                 ultimo = ultimos.get((ticker, dt))
@@ -175,7 +181,7 @@ def _gravar_cotacoes(precos_dict: dict) -> None:
 
 
 def carregar_precos_da_tabela(db_path: str = None) -> dict:
-    """Carrega cotações do PostgreSQL como {ticker: {date: preco}}.
+    """Carrega cotações do banco como {ticker: {date: preco}}.
 
     Para cada (ticker, date) usa a linha com fetched_at mais recente.
     Retorna {} em caso de falha (não lança exceção).
@@ -190,8 +196,9 @@ def carregar_precos_da_tabela(db_path: str = None) -> dict:
 
         session = get_session()
         rows = session.execute(_text(
-            "SELECT DISTINCT ON (ticker, date) ticker, date, preco "
-            "FROM cotacoes ORDER BY ticker, date, fetched_at DESC"
+            "SELECT ticker, date, preco FROM cotacoes c "
+            "WHERE fetched_at = (SELECT MAX(fetched_at) FROM cotacoes "
+            "  WHERE ticker = c.ticker AND date = c.date)"
         )).fetchall()
     except Exception as e:
         log.warning(f"carregar_precos_da_tabela: falha — {e}")
@@ -210,7 +217,7 @@ def carregar_precos_da_tabela(db_path: str = None) -> dict:
 
 
 def carregar_benchmarks_da_tabela(db_path: str = None) -> dict:
-    """Carrega benchmarks do PostgreSQL como {nome: {date: valor}}.
+    """Carrega benchmarks do banco como {nome: {date: valor}}.
 
     Para cada (nome, date) usa a linha com fetched_at mais recente.
     Retorna {} em caso de falha (não lança exceção).
@@ -225,8 +232,9 @@ def carregar_benchmarks_da_tabela(db_path: str = None) -> dict:
 
         session = get_session()
         rows = session.execute(_text(
-            "SELECT DISTINCT ON (nome, date) nome, date, valor "
-            "FROM benchmarks ORDER BY nome, date, fetched_at DESC"
+            "SELECT nome, date, valor FROM benchmarks b "
+            "WHERE fetched_at = (SELECT MAX(fetched_at) FROM benchmarks "
+            "  WHERE nome = b.nome AND date = b.date)"
         )).fetchall()
     except Exception as e:
         log.warning(f"carregar_benchmarks_da_tabela: falha — {e}")
@@ -245,7 +253,7 @@ def carregar_benchmarks_da_tabela(db_path: str = None) -> dict:
 
 
 def _gravar_benchmarks(nome: str, serie: dict, source: str) -> None:
-    """Persiste série de benchmark no PostgreSQL (append-only).
+    """Persiste série de benchmark no banco (append-only).
 
     Tolerância RELATIVA: insere somente se (nome, date) é inédito ou
     abs(novo - último) / abs(último) > 1e-5. Nunca UPDATE/DELETE.
@@ -256,18 +264,23 @@ def _gravar_benchmarks(nome: str, serie: dict, source: str) -> None:
     try:
         from sqlalchemy import text as _text
         from carteira_clean_web.backend.db.session import get_session
+        from datetime import date as _date
 
         session = get_session()
         rows = session.execute(_text(
-            "SELECT DISTINCT ON (date) date, valor "
-            "FROM benchmarks WHERE nome = :nome "
-            "ORDER BY date, fetched_at DESC"
+            "SELECT date, valor FROM benchmarks b "
+            "WHERE nome = :nome "
+            "AND fetched_at = (SELECT MAX(fetched_at) FROM benchmarks "
+            "  WHERE nome = b.nome AND date = b.date)"
         ), {"nome": nome}).fetchall()
 
-        ultimos: dict = {r[0]: float(r[1]) for r in rows}
+        ultimos: dict = {}
+        for r in rows:
+            dt = r[0] if isinstance(r[0], _date) else _date.fromisoformat(str(r[0]))
+            ultimos[dt] = float(r[1])
+
         agora = datetime.now()
         inserir: list = []
-
         for dt, valor in serie.items():
             ultimo = ultimos.get(dt)
             novo = float(valor)

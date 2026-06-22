@@ -1,40 +1,66 @@
 """
-Backup automático do banco SQLite da Carteira Clean.
+Backup do banco PostgreSQL da Carteira Clean.
 
 Funções públicas:
-  fazer_backup()          → cria backup em ~/Carteira/backups/ e loga
+  fazer_backup()          → pg_dump em /data/backups/ e loga
   listar_backups(n)       → últimos N backups com tamanho e data
   backup_se_necessario()  → faz backup apenas se não houver um hoje
 """
 
 import logging
-import shutil
+import os
+import subprocess
 from datetime import date, datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
-# Caminhos
-_HERE = Path(__file__).resolve().parent          # .../backend/scripts/
-_DB_PATH = _HERE.parent.parent / "carteira.db"  # .../carteira_clean_web/carteira.db
-_LOG_DIR = _HERE.parent / "logs"                # .../backend/logs/
+_HERE = Path(__file__).resolve().parent
+_LOG_DIR = _HERE.parent / "logs"
 
-BACKUP_DIR = Path.home() / "Carteira" / "backups"
+BACKUP_DIR = Path(os.environ.get("BACKUP_DIR", "/data/backups"))
 MAX_BACKUPS = 30
 
 
-def fazer_backup(db_path: Path | None = None) -> dict:
-    """Copia o banco para ~/Carteira/backups/carteira-YYYYMMDD-HHMMSS.db.
+def _pg_params() -> dict:
+    raw = os.environ.get("DATABASE_URL", "")
+    u = urlparse(raw.replace("postgresql+psycopg2", "postgresql"))
+    return {
+        "host": u.hostname or "postgres",
+        "port": str(u.port or 5432),
+        "user": u.username or "carteira",
+        "password": u.password or "",
+        "db": (u.path or "/carteira").lstrip("/"),
+    }
+
+
+def fazer_backup() -> dict:
+    """pg_dump do PostgreSQL para BACKUP_DIR/carteira-YYYYMMDD-HHMMSS.dump.
     Mantém os últimos MAX_BACKUPS, apaga os mais antigos.
     Retorna dict com arquivo, tamanho e timestamp."""
-    src = Path(db_path) if db_path else _DB_PATH
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     _LOG_DIR.mkdir(parents=True, exist_ok=True)
 
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
-    dest = BACKUP_DIR / f"carteira-{ts}.db"
-    shutil.copy2(src, dest)
+    dest = BACKUP_DIR / f"carteira-{ts}.dump"
+
+    p = _pg_params()
+    env = {**os.environ, "PGPASSWORD": p["password"]}
+    cmd = [
+        "pg_dump",
+        f"--host={p['host']}",
+        f"--port={p['port']}",
+        f"--username={p['user']}",
+        f"--dbname={p['db']}",
+        "--format=custom",
+        "--compress=9",
+        f"--file={dest}",
+    ]
+    result = subprocess.run(cmd, env=env, capture_output=True, timeout=300)
+    if result.returncode != 0:
+        raise RuntimeError(f"pg_dump falhou (código {result.returncode}): {result.stderr.decode()}")
 
     # Purge antigos
-    todos = sorted(BACKUP_DIR.glob("carteira-*.db"), reverse=True)
+    todos = sorted(BACKUP_DIR.glob("carteira-*.dump"), reverse=True)
     for antigo in todos[MAX_BACKUPS:]:
         antigo.unlink(missing_ok=True)
 
@@ -52,7 +78,7 @@ def listar_backups(limit: int = 5) -> list[dict]:
     """Retorna os últimos `limit` backups com nome, tamanho e data."""
     if not BACKUP_DIR.exists():
         return []
-    backups = sorted(BACKUP_DIR.glob("carteira-*.db"), reverse=True)
+    backups = sorted(BACKUP_DIR.glob("carteira-*.dump"), reverse=True)
     result = []
     for b in backups[:limit]:
         stat = b.stat()
@@ -64,14 +90,14 @@ def listar_backups(limit: int = 5) -> list[dict]:
     return result
 
 
-def backup_se_necessario(db_path: Path | None = None) -> bool:
+def backup_se_necessario() -> bool:
     """Faz backup apenas se ainda não houver um com data de hoje.
     Retorna True se um novo backup foi criado, False se já existia."""
     hoje = date.today().strftime("%Y%m%d")
-    if BACKUP_DIR.exists() and list(BACKUP_DIR.glob(f"carteira-{hoje}*.db")):
+    if BACKUP_DIR.exists() and list(BACKUP_DIR.glob(f"carteira-{hoje}*.dump")):
         return False
     try:
-        fazer_backup(db_path)
+        fazer_backup()
         return True
     except Exception as exc:
         _logar(f"ERRO ao fazer backup automático: {exc}", level=logging.ERROR)

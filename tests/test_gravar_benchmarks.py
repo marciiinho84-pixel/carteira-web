@@ -14,9 +14,7 @@ Rodar:
     pytest tests/test_gravar_benchmarks.py -v -s
 """
 
-import sqlite3
 import sys
-import tempfile
 from datetime import date, datetime
 from pathlib import Path
 from unittest.mock import patch
@@ -26,6 +24,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from sqlalchemy import text
 from carteira_clean_web.backend.engine.precos import _gravar_benchmarks
 
 NOW = datetime.now().isoformat(timespec="seconds")
@@ -35,137 +34,119 @@ D2  = date(2026, 6, 11)
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-def _criar_db(rows: list = None) -> str:
-    """Cria DB temporário com tabela benchmarks; rows = [(nome, date_str, valor, fetched_at, source)]."""
-    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-    tmp.close()
-    con = sqlite3.connect(tmp.name)
-    con.execute("""
-        CREATE TABLE benchmarks (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome       TEXT NOT NULL,
-            date       TEXT NOT NULL,
-            valor      REAL NOT NULL,
-            fetched_at TEXT NOT NULL,
-            source     TEXT NOT NULL DEFAULT 'yfinance'
-        )
-    """)
-    if rows:
-        con.executemany(
-            "INSERT INTO benchmarks (nome, date, valor, fetched_at, source) "
-            "VALUES (?, ?, ?, ?, ?)",
-            rows,
-        )
-    con.commit()
-    con.close()
-    return tmp.name
+def _seed(engine, rows: list) -> None:
+    """Insere linhas [(nome, date_str, valor, fetched_at, source)] na tabela benchmarks."""
+    with engine.connect() as conn:
+        for row in rows:
+            conn.execute(
+                text("INSERT INTO benchmarks (nome, date, valor, fetched_at, source) "
+                     "VALUES (:nome, :date, :valor, :fetched_at, :source)"),
+                {"nome": row[0], "date": row[1], "valor": row[2],
+                 "fetched_at": row[3], "source": row[4]},
+            )
+        conn.commit()
 
 
-def _contar(db: str, nome: str) -> int:
-    con = sqlite3.connect(db)
-    n = con.execute("SELECT COUNT(*) FROM benchmarks WHERE nome=?", (nome,)).fetchone()[0]
-    con.close()
-    return n
-
-
-def _chamar(serie: dict, nome: str, db: str, source: str = "yfinance") -> None:
-    with patch.dict("os.environ", {"DB_PATH": db}):
-        _gravar_benchmarks(nome, serie, source)
+def _contar(engine, nome: str) -> int:
+    with engine.connect() as conn:
+        return conn.execute(
+            text("SELECT COUNT(*) FROM benchmarks WHERE nome=:nome"),
+            {"nome": nome},
+        ).scalar()
 
 
 # ── Teste A: inédito → insere ─────────────────────────────────────────────
 
-def test_A_inedito_insere():
-    """(NASDAQ, D1) ainda não existe na tabela → deve inserir."""
-    db = _criar_db()
-    assert _contar(db, "NASDAQ") == 0
+def test_A_inedito_insere(patch_session):
+    engine = patch_session
+    assert _contar(engine, "NASDAQ") == 0
 
-    _chamar({D1: 29446.18}, "NASDAQ", db)
+    _gravar_benchmarks("NASDAQ", {D1: 29446.18}, "yfinance")
 
-    n = _contar(db, "NASDAQ")
+    n = _contar(engine, "NASDAQ")
     print(f"\n[A] antes=0  depois={n}")
     assert n == 1
 
 
 # ── Teste B: mesmo valor exato → NÃO insere ──────────────────────────────
 
-def test_B_mesmo_valor_nao_insere():
-    """CDI mesmo valor repetido → NÃO insere (delta=0)."""
+def test_B_mesmo_valor_nao_insere(patch_session):
+    engine = patch_session
     valor = 0.000527
-    db = _criar_db([("CDI", str(D1), valor, NOW, "bcb")])
-    assert _contar(db, "CDI") == 1
+    _seed(engine, [("CDI", str(D1), valor, NOW, "bcb")])
+    assert _contar(engine, "CDI") == 1
 
-    _chamar({D1: valor}, "CDI", db, source="bcb")
+    _gravar_benchmarks("CDI", {D1: valor}, "bcb")
 
-    n = _contar(db, "CDI")
+    n = _contar(engine, "CDI")
     print(f"\n[B] antes=1  depois={n}  (delta=0)")
     assert n == 1
 
 
 # ── Teste B2: ruído float < 1e-5 relativo → NÃO insere ───────────────────
 
-def test_B2a_ruido_escala_ibov_nao_insere():
-    """IBOV ~130 000: delta=0.001 → relativo=7.7e-9 << 1e-5 → NÃO insere."""
+def test_B2a_ruido_escala_ibov_nao_insere(patch_session):
+    engine = patch_session
     valor_base = 130_000.0
-    ruido      = 0.001                    # 7.7e-9 relativo
-    db = _criar_db([("IBOV", str(D1), valor_base, NOW, "yfinance")])
+    ruido      = 0.001
+    _seed(engine, [("IBOV", str(D1), valor_base, NOW, "yfinance")])
 
-    _chamar({D1: valor_base + ruido}, "IBOV", db)
+    _gravar_benchmarks("IBOV", {D1: valor_base + ruido}, "yfinance")
 
-    n = _contar(db, "IBOV")
+    n = _contar(engine, "IBOV")
     rel = abs(ruido) / abs(valor_base)
     print(f"\n[B2a] IBOV  delta={ruido}  relativo={rel:.2e}  antes=1  depois={n}")
-    assert rel < 1e-5, "pré-condição: ruído deve ser < 1e-5 relativo"
+    assert rel < 1e-5
     assert n == 1
 
 
-def test_B2b_ruido_escala_cdi_nao_insere():
-    """CDI ~5e-5: delta=1e-10 → relativo=2e-6 << 1e-5 → NÃO insere."""
+def test_B2b_ruido_escala_cdi_nao_insere(patch_session):
+    engine = patch_session
     valor_base = 5.27e-5
-    ruido      = 1e-10                    # 2e-6 relativo
-    db = _criar_db([("CDI", str(D1), valor_base, NOW, "bcb")])
+    ruido      = 1e-10
+    _seed(engine, [("CDI", str(D1), valor_base, NOW, "bcb")])
 
-    _chamar({D1: valor_base + ruido}, "CDI", db, source="bcb")
+    _gravar_benchmarks("CDI", {D1: valor_base + ruido}, "bcb")
 
-    n = _contar(db, "CDI")
+    n = _contar(engine, "CDI")
     rel = abs(ruido) / abs(valor_base)
     print(f"\n[B2b] CDI   delta={ruido:.2e}  relativo={rel:.2e}  antes=1  depois={n}")
-    assert rel < 1e-5, "pré-condição: ruído deve ser < 1e-5 relativo"
+    assert rel < 1e-5
     assert n == 1
 
 
 # ── Teste C: diferença real > 1e-5 relativo → insere ─────────────────────
 
-def test_C_diferenca_real_insere():
-    """IBOV com mudança real de 0.5% (>> 1e-5) → insere nova linha."""
+def test_C_diferenca_real_insere(patch_session):
+    engine = patch_session
     valor_base = 130_000.0
-    delta      = 650.0                    # 0.5% → relativo=5e-3 >> 1e-5
-    db = _criar_db([("IBOV", str(D1), valor_base, NOW, "yfinance")])
+    delta      = 650.0
+    _seed(engine, [("IBOV", str(D1), valor_base, NOW, "yfinance")])
 
-    _chamar({D1: valor_base + delta}, "IBOV", db)
+    _gravar_benchmarks("IBOV", {D1: valor_base + delta}, "yfinance")
 
-    n = _contar(db, "IBOV")
+    n = _contar(engine, "IBOV")
     rel = abs(delta) / abs(valor_base)
     print(f"\n[C] IBOV   delta={delta}  relativo={rel:.2e}  antes=1  depois={n}")
-    assert rel > 1e-5, "pré-condição: delta deve ser > 1e-5 relativo"
+    assert rel > 1e-5
     assert n == 2
 
 
 # ── Teste D: falha na gravação → não quebra coleta ────────────────────────
 
 def test_D_falha_gravacao_nao_quebra():
-    """DB inexistente → _gravar_benchmarks loga e retorna silenciosamente."""
+    """get_session lança exceção → _gravar_benchmarks silencia e retorna."""
     serie = {D1: 29000.0, D2: 29100.0}
 
-    # Aponta para caminho inválido — deve falhar na conexão
-    with patch.dict("os.environ", {"DB_PATH": "/tmp/nao_existe_jamais_xyz.db"}):
+    with patch(
+        "carteira_clean_web.backend.db.session.get_session",
+        side_effect=RuntimeError("conexão recusada"),
+    ):
         try:
             _gravar_benchmarks("NASDAQ", serie, "yfinance")
             resultado = "sem_excecao"
         except Exception as e:
             resultado = f"excecao: {e}"
 
-    print(f"\n[D] resultado={resultado}  (esperado: sem_excecao ou tabela não existe)")
-    # A função trata a ausência de tabela com OperationalError silenciado
-    # Se o DB foi criado vazio (sqlite cria arquivo), OperationalError é silenciado
+    print(f"\n[D] resultado={resultado}  (esperado: sem_excecao)")
     assert resultado == "sem_excecao"

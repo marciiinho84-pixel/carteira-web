@@ -1,8 +1,7 @@
 """
 engine/run.py — Ponto de entrada do engine refatorado.
 
-Equivalente ao main() de atualizar_carteira.py, mas lê do SQLite
-em vez do Excel. Retorna um dict com todos os resultados calculados.
+Lê dados do PostgreSQL via DATABASE_URL. Retorna um dict com todos os resultados.
 
 Uso:
     python -m backend.engine.run
@@ -47,7 +46,6 @@ log = logging.getLogger("engine")
 
 
 def run(
-    db_path: Path = None,
     no_api: bool = False,
     verbose: bool = False,
 ) -> dict:
@@ -59,11 +57,11 @@ def run(
     """
     setup_logging(verbose)
     log.info("=" * 65)
-    log.info("Carteira Clean — engine refatorado (SQLite)")
+    log.info("Carteira Clean — engine PostgreSQL")
     log.info("=" * 65)
 
-    log.info("\n[1/6] Lendo banco SQLite...")
-    ativos, eventos, precos_manuais = carregar_dados(db_path)
+    log.info("\n[1/6] Lendo banco PostgreSQL...")
+    ativos, eventos, precos_manuais = carregar_dados()
     log.info(f"  • {len(ativos)} ativos")
     log.info(f"  • {len(eventos)} eventos")
     log.info(f"  • {sum(len(v) for v in precos_manuais.values())} pontos de preço manual")
@@ -79,8 +77,7 @@ def run(
     baixar_indices_setoriais(DATA_INICIO, hoje, no_api) # índices setoriais B3; mesmo padrão
 
     # Fase B: precos_publicos vem da tabela cotacoes (fonte única de verdade)
-    db_str = str(db_path) if db_path else None
-    precos_publicos = carregar_precos_da_tabela(db_path=db_str)
+    precos_publicos = carregar_precos_da_tabela()
     n_pts = sum(len(v) for v in precos_publicos.values())
     log.info(f"  • {n_pts} pontos de preço público (tabela cotacoes)")
 
@@ -179,14 +176,12 @@ def run(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Engine Carteira Clean — SQLite")
+    parser = argparse.ArgumentParser(description="Engine Carteira Clean — PostgreSQL")
     parser.add_argument("--no-api", action="store_true")
     parser.add_argument("--verbose", action="store_true")
-    parser.add_argument("--db", default=None)
     args = parser.parse_args()
 
-    db_path = Path(args.db) if args.db else None
-    resultado = run(db_path=db_path, no_api=args.no_api, verbose=args.verbose)
+    resultado = run(no_api=args.no_api, verbose=args.verbose)
 
     if not resultado["df_evo"].empty:
         ult = resultado["df_evo"].iloc[-1]

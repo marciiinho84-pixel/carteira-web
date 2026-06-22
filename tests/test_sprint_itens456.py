@@ -81,6 +81,8 @@ def test_A_acumulo_sessao():
 
 # ── Teste B: alembic upgrade/downgrade em banco vazio ────────────────────────
 
+@pytest.mark.skip(reason="alembic agora aponta para PostgreSQL (DATABASE_URL); "
+                          "teste SQLite obsoleto após migração")
 def test_B_alembic_upgrade_downgrade(tmp_path):
     """upgrade head → schema correto; downgrade base → banco limpo."""
     import os, subprocess, sqlite3

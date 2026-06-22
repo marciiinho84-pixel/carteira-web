@@ -1,42 +1,33 @@
 #!/bin/bash
-# backup_db.sh — Backup consistente do carteira.db para Cloud Storage.
-# Usa sqlite3.Connection.backup() via docker exec (backup online, sem travar escritas).
-# Roda como cron 1x/dia; requer SA com storage.objectCreator no bucket.
+# backup_db.sh — Backup do PostgreSQL para Cloud Storage.
+# Usa pg_dump via postgres container; upload direto para GCS.
+# Cron: 0 22 * * * /home/marciiinho84/carteira-web/scripts/backup_db.sh >> /home/marciiinho84/logs/backup.log 2>&1
 
 set -euo pipefail
 
 TIMESTAMP=$(date +%Y%m%d_%H%M)
 PROJECT_DIR="/home/marciiinho84/carteira-web"
 BUCKET="gs://carteira-backup-474073"
-CONTAINER="carteira-web-backend-1"
-TMP_IN_VOLUME="${PROJECT_DIR}/data/carteira_backup_tmp.db"
-BACKUP_FILE="/tmp/carteira_${TIMESTAMP}.db"
+BACKUP_FILE="/tmp/carteira_${TIMESTAMP}.dump"
 LOG_FILE="${PROJECT_DIR}/data/backup.log"
 
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" | tee -a "$LOG_FILE"; }
 
 log "=== Início backup ${TIMESTAMP} ==="
 
-# 1. Backup consistente dentro do container (acessa /data montado)
-log "Criando snapshot consistente do SQLite..."
-sudo docker exec "$CONTAINER" python3 -c "
-import sqlite3
-src, dst = '/data/carteira.db', '/data/carteira_backup_tmp.db'
-with sqlite3.connect(src) as con:
-    bk = sqlite3.connect(dst)
-    con.backup(bk)
-    bk.close()
-"
-log "Snapshot criado em ${TMP_IN_VOLUME}"
+# pg_dump dentro do container postgres (já tem pg_dump nativo).
+# $POSTGRES_PASSWORD está no ambiente do container.
+sudo docker exec -T carteira-web-postgres-1 \
+    sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -U carteira -d carteira --format=custom --compress=9' \
+    > "$BACKUP_FILE"
 
-# 2. Move para /tmp com nome datado (fora do bind mount)
-mv "$TMP_IN_VOLUME" "$BACKUP_FILE"
+SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
+log "Dump criado: ${BACKUP_FILE} (${SIZE})"
 
-# 3. Upload para GCS
-log "Enviando para ${BUCKET}..."
-/usr/bin/gcloud storage cp "$BACKUP_FILE" "${BUCKET}/"
-log "Upload OK: ${BUCKET}/carteira_${TIMESTAMP}.db"
+# Upload para GCS
+/usr/bin/gcloud storage cp "$BACKUP_FILE" "${BUCKET}/carteira_${TIMESTAMP}.dump"
+log "Upload OK: ${BUCKET}/carteira_${TIMESTAMP}.dump"
 
-# 4. Limpa temporário
+# Limpa temporário local
 rm -f "$BACKUP_FILE"
 log "=== Backup concluído ==="

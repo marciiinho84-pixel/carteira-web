@@ -78,12 +78,12 @@ def carregar_disco() -> bool:
         return False
 
 
-def recalcular(db_path: Path = None, no_api: bool = False) -> dict:
+def recalcular(no_api: bool = False) -> dict:
     """Executa o engine completo, atualiza RAM e persiste em disco."""
     global _estado, _calculado_em, _erro
     try:
         from carteira_clean_web.backend.engine.run import run
-        resultado = run(db_path=db_path, no_api=no_api)
+        resultado = run(no_api=no_api)
         _estado = resultado
         _calculado_em = datetime.now()
         _erro = None
