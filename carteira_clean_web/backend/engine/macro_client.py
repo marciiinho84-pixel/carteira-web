@@ -34,7 +34,7 @@ _SGS = {
 _SGS_BASE = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.{}/dados"
 _OLINDA_FOCUS = (
     "https://olinda.bcb.gov.br/olinda/servico/Expectativas/versao/v1/odata"
-    "/ExpectativaMercadoAnuais"
+    "/ExpectativasMercadoAnuais"
     "?$filter=Indicador eq 'IPCA' and baseCalculo eq 0"
     "&$orderby=Data desc&$top=20&$format=json&$select=Data,Mediana,DataReferencia"
 )
