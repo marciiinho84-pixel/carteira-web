@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { signOut } from "next-auth/react";
 import {
   salaDeComando,
   clearToken,
@@ -213,7 +214,10 @@ export default function SalaDeComando() {
     load();
   }, [router, load]);
 
-  function logout() { clearToken(); router.replace("/login"); }
+  function logout() {
+    clearToken();
+    signOut({ callbackUrl: "/login" });
+  }
 
   // ── Skeleton ────────────────────────────────────────────────────────────────
   if (loading) {

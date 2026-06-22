@@ -34,17 +34,6 @@ export async function apiFetch<T>(
 }
 
 export const auth = {
-  requestLink: (email: string) =>
-    apiFetch<{ message: string }>("/auth/request-link", {
-      method: "POST",
-      body: JSON.stringify({ email }),
-    }),
-
-  verify: (token: string) =>
-    apiFetch<{ access_token: string; token_type: string }>(
-      `/auth/verify?token=${encodeURIComponent(token)}`
-    ),
-
   me: () => apiFetch<{ email: string }>("/auth/me"),
 };
 

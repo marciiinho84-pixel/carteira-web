@@ -1,18 +1,13 @@
 """
-auth.py — Magic link authentication.
+auth.py — Google OAuth authentication.
 
 Fluxo:
-  1. POST /auth/request-link  {"email": "..."}
-     → gera token, loga no console, retorna {"message": "Link logged"}
-  2. GET  /auth/verify?token=...
-     → valida token, retorna {"access_token": JWT, "token_type": "bearer"}
-  3. GET  /auth/me  (Bearer JWT)
-     → retorna {"email": "..."}
+  1. Frontend (NextAuth.js) obtém id_token do Google via OAuth.
+  2. NextAuth chama POST /auth/google com {"id_token": "..."}.
+  3. Backend valida o token com a API do Google e verifica ALLOWED_EMAIL.
+  4. Retorna JWT 30 dias (mesmo formato de antes).
 
 Token de sessão: JWT HS256, 30 dias.
-Magic token: uuid4 armazenado em memória, TTL 1h.
-
-Para app pessoal: apenas e-mails na ALLOWED_EMAILS list podem solicitar link.
 """
 from __future__ import annotations
 
@@ -22,9 +17,10 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
+import requests as _requests
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from jose import jwt, JWTError
 
 log = logging.getLogger("auth")
@@ -32,23 +28,15 @@ log = logging.getLogger("auth")
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 # ── Config ────────────────────────────────────────────────────────────────────
-_SECRET_KEY = os.environ.get("JWT_SECRET", secrets.token_hex(32))
-_ALGORITHM   = "HS256"
-_SESSION_TTL = timedelta(days=30)
-_MAGIC_TTL   = timedelta(hours=1)
+_SECRET_KEY    = os.environ.get("JWT_SECRET", secrets.token_hex(32))
+_ALGORITHM     = "HS256"
+_SESSION_TTL   = timedelta(days=30)
 
-ALLOWED_EMAILS: set[str] = {
-    e.strip().lower()
-    for e in os.environ.get("ALLOWED_EMAILS", "marciiinho84@gmail.com").split(",")
-    if e.strip()
-}
-
-# ── In-memory magic token store ───────────────────────────────────────────────
-# {token: {"email": str, "expires": datetime}}
-_magic_tokens: dict[str, dict] = {}
+_ALLOWED_EMAIL = os.environ.get("ALLOWED_EMAIL", "marciiinho84@gmail.com").strip().lower()
+_GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── JWT helpers ───────────────────────────────────────────────────────────────
 
 def _create_session_jwt(email: str) -> str:
     expire = datetime.now(timezone.utc) + _SESSION_TTL
@@ -82,8 +70,8 @@ def require_auth(
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
-class MagicLinkRequest(BaseModel):
-    email: str
+class GoogleLoginRequest(BaseModel):
+    id_token: str
 
 
 class TokenResponse(BaseModel):
@@ -93,44 +81,38 @@ class TokenResponse(BaseModel):
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-@router.post("/request-link", status_code=200)
-def request_magic_link(body: MagicLinkRequest):
-    email = body.email.strip().lower()
-    if email not in ALLOWED_EMAILS:
-        # Não vaza se o e-mail está na lista (segurança básica)
-        return {"message": "Se o e-mail estiver autorizado, o link foi registrado."}
+@router.post("/google")
+def google_login(body: GoogleLoginRequest) -> TokenResponse:
+    """
+    Valida um id_token do Google e retorna JWT de sessão.
+    Chamado pelo NextAuth.js após o fluxo OAuth.
+    """
+    try:
+        resp = _requests.get(
+            "https://oauth2.googleapis.com/tokeninfo",
+            params={"id_token": body.id_token},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        info = resp.json()
+    except Exception as exc:
+        log.warning("Google tokeninfo falhou: %s", exc)
+        raise HTTPException(status_code=401, detail="Token Google inválido.")
 
-    token = secrets.token_urlsafe(32)
-    _magic_tokens[token] = {
-        "email": email,
-        "expires": datetime.now(timezone.utc) + _MAGIC_TTL,
-    }
+    # Verificar audience quando CLIENT_ID está configurado
+    if _GOOGLE_CLIENT_ID and info.get("aud") != _GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=401, detail="Token audience incorreto.")
 
-    # Base URL: env var ou fallback para o domínio público
-    base_url = os.environ.get("FRONTEND_URL", "https://minhacarteira.duckdns.org")
-    link = f"{base_url}/auth/verify?token={token}"
+    email: str = info.get("email", "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=401, detail="Email ausente no token.")
+    if not info.get("email_verified"):
+        raise HTTPException(status_code=401, detail="Email não verificado pelo Google.")
+    if email != _ALLOWED_EMAIL:
+        raise HTTPException(status_code=403, detail="Email não autorizado.")
 
-    # Loga no stdout do container (usuário copia do `docker logs`)
-    log.warning("=" * 60)
-    log.warning("🔗  MAGIC LINK (válido por 1h):")
-    log.warning("    %s", link)
-    log.warning("=" * 60)
-
-    return {"message": "Link de acesso registrado nos logs do servidor."}
-
-
-@router.get("/verify")
-def verify_magic_token(token: str):
-    entry = _magic_tokens.get(token)
-    if not entry:
-        raise HTTPException(status_code=400, detail="Token inválido.")
-    if datetime.now(timezone.utc) > entry["expires"]:
-        _magic_tokens.pop(token, None)
-        raise HTTPException(status_code=400, detail="Token expirado.")
-
-    _magic_tokens.pop(token)  # one-time use
-    access_token = _create_session_jwt(entry["email"])
-    return TokenResponse(access_token=access_token)
+    log.info("Login Google: %s", email)
+    return TokenResponse(access_token=_create_session_jwt(email))
 
 
 @router.get("/me")

@@ -10,7 +10,12 @@ minhacarteira.duckdns.org {
         reverse_proxy mcp:8001
     }
 
-    # API REST — autenticada por JWT
+    # NextAuth — OAuth callbacks e session API (Next.js)
+    handle /api/auth* {
+        reverse_proxy nextjs:3000
+    }
+
+    # API REST FastAPI — autenticada por JWT
     handle /api* {
         reverse_proxy backend:8000
     }

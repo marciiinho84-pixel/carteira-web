@@ -81,6 +81,10 @@ services:
       args:
         NEXT_PUBLIC_API_URL: https://minhacarteira.duckdns.org/api/v1
     restart: unless-stopped
+    env_file: .env
+    environment:
+      NEXTAUTH_URL: https://minhacarteira.duckdns.org
+      API_BASE_URL: http://backend:8000/api/v1
     expose:
       - "3000"
     depends_on:
