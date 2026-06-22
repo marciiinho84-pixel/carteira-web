@@ -9,7 +9,9 @@ TIMESTAMP=$(date +%Y%m%d_%H%M)
 PROJECT_DIR="/home/marciiinho84/carteira-web"
 BUCKET="gs://carteira-backup-474073"
 BACKUP_FILE="/tmp/carteira_${TIMESTAMP}.dump"
-LOG_FILE="${PROJECT_DIR}/data/backup.log"
+LOG_DIR="/home/marciiinho84/logs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="${LOG_DIR}/backup.log"
 
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" | tee -a "$LOG_FILE"; }
 
