@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   salaDeComando,
   clearToken,
@@ -10,6 +11,7 @@ import {
   type BlocoIPS,
   type Vies,
 } from "@/lib/api";
+import { useAutomacao } from "@/lib/automacao";
 
 // ─── Paleta TradingView ───────────────────────────────────────────────────────
 // bg: #0F1117   card: #1A1D27   border: #2A2D3A
@@ -180,6 +182,7 @@ export default function SalaDeComando() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedObs, setExpandedObs] = useState<number | null>(null);
+  const { nivelMaximo } = useAutomacao();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -249,6 +252,18 @@ export default function SalaDeComando() {
                   <span className="rounded-md bg-[#6366F1]/20 px-2 py-0.5 text-[10px] font-bold text-[#6366F1] border border-[#6366F1]/30">
                     {kpis?.nivel_automacao ?? "L2"}
                   </span>
+                  <Link
+                    href="/maestro"
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold border transition-colors hover:opacity-80"
+                    style={{
+                      backgroundColor: "#6366F1" + "20",
+                      borderColor: "#6366F1" + "50",
+                      color: "#6366F1",
+                    }}
+                    title="Abrir Maestro"
+                  >
+                    Maestro {nivelMaximo !== "L1" ? nivelMaximo : ""}
+                  </Link>
                 </div>
                 {email && (
                   <p className="text-xs text-[#6b7280] mt-0.5">

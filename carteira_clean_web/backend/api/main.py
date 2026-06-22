@@ -25,6 +25,7 @@ from carteira_clean_web.backend.api.routers import (
     sala_de_comando,
 )
 from carteira_clean_web.backend.api.routers import auth
+from carteira_clean_web.backend.api.routers import maestro_chat
 
 log = logging.getLogger("api.main")
 
@@ -114,6 +115,7 @@ app.include_router(macro.router, prefix=PREFIX)
 app.include_router(comportamento.router, prefix=PREFIX)
 app.include_router(auth.router, prefix=PREFIX)
 app.include_router(sala_de_comando.router, prefix=PREFIX)
+app.include_router(maestro_chat.router, prefix=PREFIX)
 
 
 @app.get("/api/v1/health", include_in_schema=False)
