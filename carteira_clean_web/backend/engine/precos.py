@@ -125,205 +125,171 @@ def baixar_precos_publicos(
 
 
 def _gravar_cotacoes(precos_dict: dict) -> None:
-    """Persiste cotações na tabela append-only cotacoes (variante A).
+    """Persiste cotações no PostgreSQL (append-only).
 
     Insere nova linha apenas se (ticker, date) é inédito ou o preço mudou
-    em >= 0.01 (1 centavo). Tolerância elimina ruído de arredondamento
-    float32/64 do yfinance (max observado 1.22e-4 << 0.01).
-    Nunca UPDATE/DELETE. Falhas são logadas e silenciadas.
+    em >= 0.01 (1 centavo). Nunca UPDATE/DELETE. Falhas são silenciadas.
     """
     if not precos_dict:
         return
+    session = None
     try:
-        import sqlite3 as _sqlite3
+        from sqlalchemy import text as _text
+        from carteira_clean_web.backend.db.session import get_session
 
-        _db_env = os.environ.get("DB_PATH")
-        db_path = _db_env if _db_env else str(
-            Path(__file__).resolve().parents[2] / "carteira.db"
-        )
+        session = get_session()
+        tickers = list(precos_dict.keys())
+        rows = session.execute(_text(
+            "SELECT DISTINCT ON (ticker, date) ticker, date, preco "
+            "FROM cotacoes WHERE ticker = ANY(:tickers) "
+            "ORDER BY ticker, date, fetched_at DESC"
+        ), {"tickers": tickers}).fetchall()
 
-        con = _sqlite3.connect(db_path)
-        try:
-            # Carrega o último preço registrado por (ticker, date) em uma query
-            rows = con.execute(
-                "SELECT ticker, date, preco FROM cotacoes c "
-                "WHERE fetched_at = ("
-                "  SELECT MAX(fetched_at) FROM cotacoes "
-                "  WHERE ticker = c.ticker AND date = c.date"
-                ")"
-            ).fetchall()
-        except _sqlite3.OperationalError:
-            log.debug("cotacoes: tabela não existe ainda — gravação pulada")
-            con.close()
-            return
-
-        ultimos: dict = {(r[0], r[1]): r[2] for r in rows}
-        agora = datetime.now().isoformat(timespec="seconds")
+        ultimos: dict = {(r[0], r[1]): float(r[2]) for r in rows}
+        agora = datetime.now()
         inserir: list = []
 
         for ticker, serie in precos_dict.items():
             for dt, preco in serie.items():
-                dt_str = dt.isoformat() if hasattr(dt, "isoformat") else str(dt)
-                ultimo = ultimos.get((ticker, dt_str))
-                if ultimo is None or abs(float(preco) - float(ultimo)) > 0.01:
-                    inserir.append((ticker, dt_str, float(preco), agora, "yfinance"))
+                ultimo = ultimos.get((ticker, dt))
+                if ultimo is None or abs(float(preco) - ultimo) > 0.01:
+                    inserir.append({
+                        "ticker": ticker, "date": dt,
+                        "preco": float(preco), "fetched_at": agora, "source": "yfinance",
+                    })
 
         if inserir:
-            con.executemany(
+            session.execute(_text(
                 "INSERT INTO cotacoes (ticker, date, preco, fetched_at, source) "
-                "VALUES (?, ?, ?, ?, ?)",
-                inserir,
-            )
-            con.commit()
+                "VALUES (:ticker, :date, :preco, :fetched_at, :source)"
+            ), inserir)
+            session.commit()
             log.info(f"cotacoes: {len(inserir)} linhas gravadas (yfinance)")
         else:
             log.debug("cotacoes: nenhuma cotação nova ou alterada — skip")
-
-        con.close()
     except Exception as e:
         log.warning(f"cotacoes: gravação falhou (não crítico) — {e}")
+    finally:
+        if session is not None:
+            session.close()
 
 
 def carregar_precos_da_tabela(db_path: str = None) -> dict:
-    """Carrega cotações da tabela como {ticker: {date: preco}}.
+    """Carrega cotações do PostgreSQL como {ticker: {date: preco}}.
 
     Para cada (ticker, date) usa a linha com fetched_at mais recente.
-    Formato idêntico ao precos_publicos — substituto drop-in pronto para Fase B.
-    Retorna {} se a tabela não existir ou houver erro (não lança exceção).
+    Retorna {} em caso de falha (não lança exceção).
     """
-    import sqlite3 as _sqlite3
     from datetime import date as _date
 
-    path = db_path or os.environ.get("DB_PATH") or str(
-        Path(__file__).resolve().parents[2] / "carteira.db"
-    )
-
+    session = None
+    rows = []
     try:
-        con = _sqlite3.connect(path)
-        rows = con.execute(
-            "SELECT ticker, date, preco FROM cotacoes c "
-            "WHERE fetched_at = ("
-            "  SELECT MAX(fetched_at) FROM cotacoes "
-            "  WHERE ticker = c.ticker AND date = c.date"
-            ")"
-        ).fetchall()
-        con.close()
+        from sqlalchemy import text as _text
+        from carteira_clean_web.backend.db.session import get_session
+
+        session = get_session()
+        rows = session.execute(_text(
+            "SELECT DISTINCT ON (ticker, date) ticker, date, preco "
+            "FROM cotacoes ORDER BY ticker, date, fetched_at DESC"
+        )).fetchall()
     except Exception as e:
         log.warning(f"carregar_precos_da_tabela: falha — {e}")
-        return {}
+    finally:
+        if session is not None:
+            session.close()
 
     out: dict = {}
-    for ticker, dt_str, preco in rows:
+    for ticker, dt, preco in rows:
         if ticker not in out:
             out[ticker] = {}
-        try:
-            dt = _date.fromisoformat(dt_str)
-        except Exception:
-            continue
+        if isinstance(dt, str):
+            dt = _date.fromisoformat(dt)
         out[ticker][dt] = float(preco)
-
     return out
 
 
 def carregar_benchmarks_da_tabela(db_path: str = None) -> dict:
-    """Carrega benchmarks da tabela como {nome: {date: valor}}.
+    """Carrega benchmarks do PostgreSQL como {nome: {date: valor}}.
 
     Para cada (nome, date) usa a linha com fetched_at mais recente.
-    Formato idêntico ao estado["benchmarks"] — substituto drop-in.
-    Retorna {} se a tabela não existir ou houver erro (não lança exceção).
+    Retorna {} em caso de falha (não lança exceção).
     """
-    import sqlite3 as _sqlite3
     from datetime import date as _date
 
-    path = db_path or os.environ.get("DB_PATH") or str(
-        Path(__file__).resolve().parents[2] / "carteira.db"
-    )
+    session = None
+    rows = []
     try:
-        con = _sqlite3.connect(path)
-        rows = con.execute(
-            "SELECT nome, date, valor FROM benchmarks b "
-            "WHERE fetched_at = ("
-            "  SELECT MAX(fetched_at) FROM benchmarks "
-            "  WHERE nome = b.nome AND date = b.date"
-            ")"
-        ).fetchall()
-        con.close()
+        from sqlalchemy import text as _text
+        from carteira_clean_web.backend.db.session import get_session
+
+        session = get_session()
+        rows = session.execute(_text(
+            "SELECT DISTINCT ON (nome, date) nome, date, valor "
+            "FROM benchmarks ORDER BY nome, date, fetched_at DESC"
+        )).fetchall()
     except Exception as e:
         log.warning(f"carregar_benchmarks_da_tabela: falha — {e}")
-        return {}
+    finally:
+        if session is not None:
+            session.close()
 
     out: dict = {}
-    for nome, dt_str, valor in rows:
+    for nome, dt, valor in rows:
         if nome not in out:
             out[nome] = {}
-        try:
-            dt = _date.fromisoformat(dt_str)
-        except Exception:
-            continue
+        if isinstance(dt, str):
+            dt = _date.fromisoformat(dt)
         out[nome][dt] = float(valor)
     return out
 
 
 def _gravar_benchmarks(nome: str, serie: dict, source: str) -> None:
-    """Persiste série de benchmark na tabela append-only benchmarks (variante A).
+    """Persiste série de benchmark no PostgreSQL (append-only).
 
-    Tolerância RELATIVA: insere nova linha somente se (nome, date) é inédito
-    ou abs(novo - último) / abs(último) > 1e-5. Funciona em qualquer escala:
-    IBOV ~130 000, CDI diário ~5e-5. último=0 → trata como inédito (sem divisão).
-    Nunca UPDATE/DELETE. Falhas são logadas e silenciadas.
+    Tolerância RELATIVA: insere somente se (nome, date) é inédito ou
+    abs(novo - último) / abs(último) > 1e-5. Nunca UPDATE/DELETE.
     """
     if not serie:
         return
+    session = None
     try:
-        import sqlite3 as _sqlite3
+        from sqlalchemy import text as _text
+        from carteira_clean_web.backend.db.session import get_session
 
-        _db_env = os.environ.get("DB_PATH")
-        db_path = _db_env if _db_env else str(
-            Path(__file__).resolve().parents[2] / "carteira.db"
-        )
+        session = get_session()
+        rows = session.execute(_text(
+            "SELECT DISTINCT ON (date) date, valor "
+            "FROM benchmarks WHERE nome = :nome "
+            "ORDER BY date, fetched_at DESC"
+        ), {"nome": nome}).fetchall()
 
-        con = _sqlite3.connect(db_path)
-        try:
-            rows = con.execute(
-                "SELECT date, valor FROM benchmarks b "
-                "WHERE nome = ? AND fetched_at = ("
-                "  SELECT MAX(fetched_at) FROM benchmarks "
-                "  WHERE nome = b.nome AND date = b.date"
-                ")",
-                (nome,),
-            ).fetchall()
-        except _sqlite3.OperationalError:
-            log.debug("benchmarks: tabela não existe ainda — gravação pulada")
-            con.close()
-            return
-
-        ultimos: dict = {r[0]: r[1] for r in rows}  # {date_str: valor}
-        agora = datetime.now().isoformat(timespec="seconds")
+        ultimos: dict = {r[0]: float(r[1]) for r in rows}
+        agora = datetime.now()
         inserir: list = []
 
         for dt, valor in serie.items():
-            dt_str = dt.isoformat() if hasattr(dt, "isoformat") else str(dt)
-            ultimo = ultimos.get(dt_str)
+            ultimo = ultimos.get(dt)
             novo = float(valor)
-            if ultimo is None or abs(float(ultimo)) < 1e-12:
-                inserir.append((nome, dt_str, novo, agora, source))
-            elif abs(novo - float(ultimo)) / abs(float(ultimo)) > 1e-5:
-                inserir.append((nome, dt_str, novo, agora, source))
+            if ultimo is None or abs(ultimo) < 1e-12:
+                inserir.append({"nome": nome, "date": dt, "valor": novo, "fetched_at": agora, "source": source})
+            elif abs(novo - ultimo) / abs(ultimo) > 1e-5:
+                inserir.append({"nome": nome, "date": dt, "valor": novo, "fetched_at": agora, "source": source})
 
         if inserir:
-            con.executemany(
+            session.execute(_text(
                 "INSERT INTO benchmarks (nome, date, valor, fetched_at, source) "
-                "VALUES (?, ?, ?, ?, ?)",
-                inserir,
-            )
-            con.commit()
+                "VALUES (:nome, :date, :valor, :fetched_at, :source)"
+            ), inserir)
+            session.commit()
             log.info(f"benchmarks: {len(inserir)} linhas gravadas ({nome}/{source})")
         else:
             log.debug(f"benchmarks: nenhum valor novo ou alterado para {nome} — skip")
-
-        con.close()
     except Exception as e:
         log.warning(f"benchmarks: gravação falhou para {nome} (não crítico) — {e}")
+    finally:
+        if session is not None:
+            session.close()
 
 
 _BENCH_YF_MAP = {
