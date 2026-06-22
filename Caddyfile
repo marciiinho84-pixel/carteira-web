@@ -10,16 +10,22 @@ minhacarteira.duckdns.org {
         reverse_proxy mcp:8001
     }
 
-    # API REST — autenticada por JWT (magic link), acessível pelo Next.js/Vercel
+    # API REST — autenticada por JWT
     handle /api* {
         reverse_proxy backend:8000
     }
 
-    # Streamlit (frontend legado) — basic_auth durante coexistência
-    handle {
+    # Streamlit (legado) — acessível em /streamlit/*
+    handle /streamlit* {
         basic_auth {
             marcio $2a$14$Ju7nt6OFddcyMf9JxcGm3eOQD/avQ61dKGWVdF4g2Qs/Y5dUXyAH6
         }
+        uri strip_prefix /streamlit
         reverse_proxy frontend:8501
+    }
+
+    # Next.js — app principal
+    handle {
+        reverse_proxy nextjs:3000
     }
 }

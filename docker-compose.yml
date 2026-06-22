@@ -74,6 +74,19 @@ services:
       backend:
         condition: service_healthy
 
+  nextjs:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://minhacarteira.duckdns.org/api/v1
+    restart: unless-stopped
+    expose:
+      - "3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
   caddy:
     image: caddy:latest
     restart: unless-stopped
@@ -88,6 +101,7 @@ services:
     depends_on:
       - frontend
       - mcp
+      - nextjs
 
 volumes:
   caddy_data:
