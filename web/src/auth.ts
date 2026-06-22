@@ -7,6 +7,7 @@ const API_INTERNAL =
   "https://minhacarteira.duckdns.org/api/v1";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  trustHost: true,
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID ?? "",
