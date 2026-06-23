@@ -13,6 +13,7 @@ import {
   type Vies,
 } from "@/lib/api";
 import { useAutomacao } from "@/lib/automacao";
+import Nav from "@/components/Nav";
 
 // ─── Paleta TradingView ───────────────────────────────────────────────────────
 // bg: #0F1117   card: #1A1D27   border: #2A2D3A
@@ -242,7 +243,9 @@ export default function SalaDeComando() {
   const engineOk = kpis?.engine_ok === true;
 
   return (
-    <main className="min-h-screen bg-[#0F1117] text-[#D1D4DC]">
+    <div className="flex min-h-screen bg-[#0F1117] text-[#D1D4DC]">
+      <Nav />
+      <main className="flex-1 overflow-auto">
       <div className="mx-auto max-w-7xl px-4 py-4 md:px-8 md:py-6 space-y-4">
 
         {/* ── 1. HEADER ─────────────────────────────────────────────────────── */}
@@ -542,7 +545,8 @@ export default function SalaDeComando() {
           )}
         </footer>
       </div>
-    </main>
+      </main>
+    </div>
   );
 }
 

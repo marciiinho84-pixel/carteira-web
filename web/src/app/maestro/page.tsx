@@ -455,6 +455,13 @@ export default function MaestroPage() {
           className="flex items-center gap-3 px-4 py-3 border-b shrink-0"
           style={{ borderColor: "#2A2D3A", backgroundColor: "#0F1117" }}
         >
+          <Link
+            href="/sala-de-comando"
+            className="text-[#6b7280] hover:text-[#D1D4DC] transition-colors text-xs px-2 py-1 rounded border border-[#2A2D3A] hover:border-[#4A4D5A]"
+            title="Voltar ao início"
+          >
+            ← Home
+          </Link>
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="text-[#6b7280] hover:text-[#D1D4DC] transition-colors"
