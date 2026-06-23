@@ -102,9 +102,9 @@ function BarraIPS({ b }: { b: BlocoIPS }) {
   };
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-1 cursor-pointer" onClick={() => { if (typeof window !== "undefined") window.location.href = `/blocos/${b.bloco}`; }}>
       <div className="flex justify-between items-center text-xs">
-        <span className="text-[#D1D4DC] font-medium">{blocoLabel[b.bloco] ?? b.bloco}</span>
+        <span className="text-[#D1D4DC] font-medium hover:text-[#26A69A] transition">{blocoLabel[b.bloco] ?? b.bloco}</span>
         <span className="font-mono" style={{ color }}>
           {real}% <span className="text-[#6b7280]">/ alvo {alvo}%</span>
         </span>
