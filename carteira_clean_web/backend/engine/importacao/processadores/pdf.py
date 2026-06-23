@@ -26,6 +26,8 @@ def extrair_texto_pdf(pdf_bytes: bytes) -> str:
             except Exception:
                 paginas.append("")
         return "\n".join(paginas)
+    except ImportError:
+        raise
     except Exception as e:
         log.warning(f"Falha ao extrair texto do PDF: {e}")
         return ""
@@ -63,5 +65,7 @@ def validar_pdf(pdf_bytes: bytes) -> tuple[bool, str]:
         if n_pages > 100:
             log.warning(f"PDF com {n_pages} páginas — processando apenas as primeiras 100")
         return True, ""
+    except ImportError:
+        raise
     except Exception as e:
         return False, f"PDF corrompido ou inválido: {e}"

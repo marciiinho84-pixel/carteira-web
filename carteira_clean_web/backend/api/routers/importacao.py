@@ -330,6 +330,12 @@ async def upload_extrato(
     log.info(f"{'[DRY_RUN] ' if dry_run else ''}Chamando Claude para {nome_arquivo}...")
     try:
         eventos, custo, meta = extrair_eventos(conteudo, nome_arquivo, tipo_documento)
+    except ImportError as e:
+        log.error(f"Dependência ausente no servidor: {e}", exc_info=True)
+        raise HTTPException(500, "Dependência ausente no servidor — contate o administrador")
+    except ValueError as e:
+        log.warning(f"Arquivo inválido: {e}")
+        raise HTTPException(400, str(e))
     except Exception as e:
         log.error(f"Erro ao chamar Claude: {e}", exc_info=True)
         if dry_run:
@@ -623,6 +629,16 @@ def reprocessar_importacao(
             "custo_api_usd": round(custo, 6),
             "eventos": eventos,
         }
+    except ImportError as e:
+        imp.status = "ERROR"
+        imp.erro_mensagem = str(e)[:1000]
+        db.commit()
+        raise HTTPException(500, "Dependência ausente no servidor — contate o administrador")
+    except ValueError as e:
+        imp.status = "ERROR"
+        imp.erro_mensagem = str(e)[:1000]
+        db.commit()
+        raise HTTPException(400, str(e))
     except Exception as e:
         imp.status = "ERROR"
         imp.erro_mensagem = str(e)[:1000]
