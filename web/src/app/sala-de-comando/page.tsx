@@ -14,6 +14,7 @@ import {
 } from "@/lib/api";
 import { useAutomacao } from "@/lib/automacao";
 import Nav from "@/components/Nav";
+import ActionBar from "@/components/ActionBar";
 
 // ─── Paleta TradingView ───────────────────────────────────────────────────────
 // bg: #0F1117   card: #1A1D27   border: #2A2D3A
@@ -245,8 +246,9 @@ export default function SalaDeComando() {
   return (
     <div className="flex min-h-screen bg-[#0F1117] text-[#D1D4DC]">
       <Nav />
-      <main className="flex-1 overflow-auto">
-      <div className="mx-auto max-w-7xl px-4 py-4 md:px-8 md:py-6 space-y-4">
+      <main className="flex-1 overflow-auto flex flex-col">
+      <ActionBar />
+      <div className="mx-auto max-w-7xl px-4 py-4 md:px-8 md:py-6 space-y-4 flex-1">
 
         {/* ── 1. HEADER ─────────────────────────────────────────────────────── */}
         <header className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-4">

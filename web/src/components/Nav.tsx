@@ -8,7 +8,9 @@ import { clearToken } from "@/lib/api";
 
 const LINKS = [
   { href: "/sala-de-comando", label: "Sala de Comando", icon: "🎼" },
+  { href: "/dashboard", label: "Dashboard", icon: "📊" },
   { href: "/posicoes", label: "Posições", icon: "📋" },
+  { href: "/renda-variavel", label: "Renda Variável", icon: "📉" },
   { href: "/evolucao", label: "Evolução", icon: "📈" },
   { href: "/meta", label: "Meta R$3M", icon: "🎯" },
   { href: "/teses", label: "Teses", icon: "🔬" },

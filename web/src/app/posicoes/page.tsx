@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Nav from "@/components/Nav";
+import ActionBar from "@/components/ActionBar";
 import { apiFetch, clearToken } from "@/lib/api";
 
 interface Posicao {
@@ -94,7 +95,9 @@ export default function Posicoes() {
   return (
     <div className="flex min-h-screen bg-[#0F1117] text-[#D1D4DC]">
       <Nav />
-      <main className="flex-1 px-4 py-6 md:px-8 space-y-4 overflow-auto">
+      <main className="flex-1 overflow-auto flex flex-col">
+        <ActionBar />
+        <div className="flex-1 px-4 py-4 md:px-8 space-y-4">
 
         <div className="flex items-center justify-between flex-wrap gap-2">
           <h1 className="text-lg font-bold text-white">Posições</h1>
@@ -209,6 +212,7 @@ export default function Posicoes() {
             </div>
           </div>
         )}
+        </div>
       </main>
     </div>
   );
