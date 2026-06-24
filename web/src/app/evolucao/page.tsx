@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Nav from "@/components/Nav";
 import ActionBar from "@/components/ActionBar";
@@ -175,8 +175,16 @@ export default function Evolucao() {
     load();
   }, [router]);
 
+  const [expandedMes, setExpandedMes] = useState<string | null>(null);
+  const toggleMes = useCallback((mes: string) => setExpandedMes((prev) => prev === mes ? null : mes), []);
+
   const serieFiltrada = useMemo(() => filtrarSerie(serie, filtro), [serie, filtro]);
   const mensal = useMemo(() => agruparMensal(serieFiltrada), [serieFiltrada]);
+
+  // Dias de um mês específico (da série completa para ter todos os dias)
+  const diasDoMes = useCallback((mes: string) =>
+    serie.filter((d) => d.data.startsWith(mes)).sort((a, b) => a.data.localeCompare(b.data)),
+  [serie]);
   const ultimo = serie.length > 0 ? serie[serie.length - 1] : null;
 
   const pnlColor = (v: number) => v >= 0 ? "#26A69A" : "#EF5350";
@@ -251,10 +259,10 @@ export default function Evolucao() {
               </section>
             )}
 
-            {/* Tabela mensal */}
+            {/* Tabela mensal com accordion diário */}
             <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] overflow-hidden">
               <div className="px-5 py-3 border-b border-[#2A2D3A]">
-                <h2 className="text-sm font-semibold text-white">Evolução Mensal</h2>
+                <h2 className="text-sm font-semibold text-white">Evolução Mensal <span className="text-[10px] text-[#6b7280] font-normal ml-2">clique no mês para ver dias</span></h2>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -267,18 +275,48 @@ export default function Evolucao() {
                     </tr>
                   </thead>
                   <tbody>
-                    {[...mensal].reverse().map((m) => (
-                      <tr key={m.mes} className="border-b border-[#2A2D3A] hover:bg-[#2A2D3A]/20 transition">
-                        <td className="px-4 py-2 text-xs font-mono">{m.mes}</td>
-                        <td className="px-4 py-2 text-right text-xs font-mono">{brl(m.patrimonio)}</td>
-                        <td className="px-4 py-2 text-right text-xs font-mono" style={{ color: pnlColor(m.variacao) }}>
-                          {m.variacao >= 0 ? "+" : ""}{brl(m.variacao).replace("R$ ", "R$ ")}
-                        </td>
-                        <td className="px-4 py-2 text-right text-xs font-mono" style={{ color: pnlColor(m.twr_mes) }}>
-                          {pct(m.twr_mes)}
-                        </td>
-                      </tr>
-                    ))}
+                    {[...mensal].reverse().map((m) => {
+                      const expanded = expandedMes === m.mes;
+                      const dias = expanded ? diasDoMes(m.mes) : [];
+                      return (
+                        <>
+                          <tr
+                            key={m.mes}
+                            onClick={() => toggleMes(m.mes)}
+                            className={`border-b border-[#2A2D3A] cursor-pointer transition ${expanded ? "bg-[#26A69A]/5" : "hover:bg-[#2A2D3A]/20"}`}
+                          >
+                            <td className="px-4 py-2 text-xs font-mono">
+                              <span className="mr-1 text-[#6b7280]">{expanded ? "▼" : "▶"}</span>
+                              {m.mes}
+                            </td>
+                            <td className="px-4 py-2 text-right text-xs font-mono">{brl(m.patrimonio)}</td>
+                            <td className="px-4 py-2 text-right text-xs font-mono" style={{ color: pnlColor(m.variacao) }}>
+                              {m.variacao >= 0 ? "+" : ""}{brl(m.variacao)}
+                            </td>
+                            <td className="px-4 py-2 text-right text-xs font-mono" style={{ color: pnlColor(m.twr_mes) }}>
+                              {pct(m.twr_mes)}
+                            </td>
+                          </tr>
+                          {expanded && dias.map((d, i) => {
+                            const prev = i > 0 ? dias[i - 1] : null;
+                            const varDia = prev ? d.patrimonio_total - prev.patrimonio_total : 0;
+                            const twrDia = prev ? d.twr_total - prev.twr_total : 0;
+                            return (
+                              <tr key={d.data} className="border-b border-[#2A2D3A]/40 bg-[#0F1117]/60">
+                                <td className="pl-10 pr-4 py-1.5 text-[10px] font-mono text-[#6b7280]">{d.data}</td>
+                                <td className="px-4 py-1.5 text-right text-[10px] font-mono text-[#D1D4DC]">{brl(d.patrimonio_total)}</td>
+                                <td className="px-4 py-1.5 text-right text-[10px] font-mono" style={{ color: pnlColor(varDia) }}>
+                                  {i > 0 ? (varDia >= 0 ? "+" : "") + brl(varDia) : "—"}
+                                </td>
+                                <td className="px-4 py-1.5 text-right text-[10px] font-mono" style={{ color: pnlColor(twrDia) }}>
+                                  {i > 0 ? pct(twrDia, 3) : "—"}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
