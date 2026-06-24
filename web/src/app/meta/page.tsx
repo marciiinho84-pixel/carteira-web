@@ -120,6 +120,7 @@ export default function MetaPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [aporteExtra, setAporteExtra] = useState(0);
+  const [twrSlider, setTwrSlider] = useState<number | null>(null); // null = usar TWR real
 
   useEffect(() => {
     const token = localStorage.getItem("carteira_token");
@@ -150,7 +151,8 @@ export default function MetaPage() {
 
   const META = metaData?.meta ?? 3_000_000;
   const patAtual = metaData?.patrimonio_atual ?? sdMeta?.patrimonio_atual ?? 0;
-  const twr = metaData?.twr_anualizado ?? sdMeta?.twr_anualizado ?? 0;
+  const twrReal = metaData?.twr_anualizado ?? sdMeta?.twr_anualizado ?? 0;
+  const twr = twrSlider !== null ? twrSlider / 100 : twrReal;
   const aporteAnual = metaData?.aporte_anual ?? 0;
   const pctAtingido = META > 0 ? patAtual / META : 0;
 
@@ -213,9 +215,43 @@ export default function MetaPage() {
               ))}
             </div>
 
-            {/* Slider e projeção */}
+            {/* Simulador de Projeção */}
             <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-5 space-y-4">
-              <h2 className="text-sm font-semibold text-white">Simulador de Projeção</h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-white">Simulador de Projeção</h2>
+                <button onClick={() => { setTwrSlider(null); setAporteExtra(0); }}
+                  className="text-[10px] text-[#6b7280] hover:text-[#D1D4DC] border border-[#2A2D3A] rounded px-2 py-0.5 transition">
+                  Resetar
+                </button>
+              </div>
+
+              {/* Slider TWR */}
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs">
+                  <span className="text-[#D1D4DC]">TWR anualizado:</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[#26A69A]">{(twr * 100).toFixed(1)}% a.a.</span>
+                    {twrSlider !== null && (
+                      <span className="text-[10px] text-[#F59E0B]">real: {(twrReal * 100).toFixed(1)}%</span>
+                    )}
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="30"
+                  step="0.5"
+                  value={twrSlider !== null ? twrSlider : twrReal * 100}
+                  onChange={(e) => setTwrSlider(Number(e.target.value))}
+                  className="w-full accent-[#26A69A]"
+                />
+                <div className="flex justify-between text-[10px] text-[#6b7280]">
+                  <span>0% a.a.</span>
+                  <span>30% a.a.</span>
+                </div>
+              </div>
+
+              {/* Slider Aporte Extra */}
               <div className="space-y-2">
                 <div className="flex justify-between text-xs">
                   <span className="text-[#D1D4DC]">Aporte extra mensal:</span>
@@ -235,15 +271,25 @@ export default function MetaPage() {
                   <span>R$ 20.000</span>
                 </div>
               </div>
-              {aporteExtra > 0 && (
-                <p className="text-xs text-[#26A69A]">
-                  Com aporte extra de {brl(aporteExtra)}/mês → meta em:{" "}
-                  <span className="font-bold">{anoMetaExtra ? `${anoMetaExtra}` : "30+ anos"}</span>
-                  {anoMetaBase && anoMetaExtra && anoMetaExtra < anoMetaBase && (
-                    <span className="text-[#F59E0B] ml-1">({anoMetaBase - anoMetaExtra} anos antes!)</span>
-                  )}
-                </p>
-              )}
+
+              {/* Resumo */}
+              <div className="rounded-lg border border-[#2A2D3A] bg-[#0F1117] px-4 py-3 text-xs space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-[#6b7280]">Cenário atual</span>
+                  <span className="font-mono text-white">meta em <span className="text-[#26A69A] font-bold">{anoMetaBase ? `${anoMetaBase}` : "30+ anos"}</span></span>
+                </div>
+                {aporteExtra > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-[#6b7280]">+ Aporte extra</span>
+                    <span className="font-mono text-white">meta em <span className="text-[#F59E0B] font-bold">{anoMetaExtra ? `${anoMetaExtra}` : "30+ anos"}</span>
+                      {anoMetaBase && anoMetaExtra && anoMetaExtra < anoMetaBase && (
+                        <span className="text-[#F59E0B] ml-1">(-{anoMetaBase - anoMetaExtra} anos)</span>
+                      )}
+                    </span>
+                  </div>
+                )}
+              </div>
+
               <GraficoProjecao
                 proj={aporteExtra > 0 ? projecaoExtra : projecaoBase}
                 meta={META}
