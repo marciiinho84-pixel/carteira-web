@@ -35,14 +35,8 @@ jobs:
             --zone=us-central1-a \
             --tunnel-through-iap \
             --quiet \
-            --command="
-              set -e
-              REPO=/home/marciiinho84/carteira-web
-              sudo git -C \$REPO pull origin master
-              sudo bash -c '
-                cd \$REPO
-                docker compose build nextjs
-                docker compose up -d nextjs
-              '
-              echo '✅ Deploy concluído em '$(date)
-            "
+            --command="set -e && \
+              sudo git -C /home/marciiinho84/carteira-web pull origin master && \
+              sudo docker compose -f /home/marciiinho84/carteira-web/docker-compose.yml build nextjs && \
+              sudo docker compose -f /home/marciiinho84/carteira-web/docker-compose.yml up -d nextjs && \
+              echo DEPLOY_OK"
