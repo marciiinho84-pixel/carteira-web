@@ -1,5 +1,11 @@
 .env
 
+# Chaves de service account — NUNCA commitar
+key.json
+*-key.json
+service-account*.json
+credentials.json
+
 # Volume de dados (banco SQLite + cache pkl) — nunca commitar
 data/
 

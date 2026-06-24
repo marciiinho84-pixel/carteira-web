@@ -1,0 +1,48 @@
+name: Deploy to GCP VM
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+      id-token: write   # obrigatório para Workload Identity Federation
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Autenticar no GCP (Workload Identity — sem chave JSON)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/47407395873/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider
+          service_account: github-deploy@project-e64490eb-e084-4e83-ac5.iam.gserviceaccount.com
+
+      - name: Instalar gcloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: project-e64490eb-e084-4e83-ac5
+
+      - name: Deploy na VM via IAP tunnel
+        run: |
+          gcloud compute ssh carteira-clean \
+            --zone=us-central1-a \
+            --tunnel-through-iap \
+            --quiet \
+            --command="
+              set -e
+              REPO=/home/marciiinho84/carteira-web
+              sudo git -C \$REPO pull origin master
+              sudo bash -c '
+                cd \$REPO
+                docker compose build nextjs
+                docker compose up -d nextjs
+              '
+              echo '✅ Deploy concluído em '$(date)
+            "
