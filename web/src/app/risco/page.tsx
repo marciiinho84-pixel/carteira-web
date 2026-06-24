@@ -41,6 +41,7 @@ const BLOCO_LABEL: Record<string, string> = {
 export default function Risco() {
   const router = useRouter();
   const [posicoes, setPosicoes] = useState<Posicao[]>([]);
+  const [totalFuncef, setTotalFuncef] = useState<number>(0);
   const [blocos, setBlocos] = useState<BlocoIPS[]>([]);
   const [hhi, setHhi] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -56,17 +57,21 @@ export default function Risco() {
           apiFetch<Posicao[]>("/posicoes"),
           salaDeComando().catch(() => null),
         ]);
-        const ativas = pos.filter((p) => p.qtd > 0);
-        setPosicoes(ativas);
+        const ativas = pos.filter((p) => (p.valor_atual ?? 0) > 0);
+        // Separar Carteira Gerida da FUNCEF — mesma lógica do Streamlit IPS §1
+        const gerida = ativas.filter((p) => p.composite !== "FUNCEF");
+        const funcef = ativas.filter((p) => p.composite === "FUNCEF");
+        setPosicoes(gerida);
+        setTotalFuncef(funcef.reduce((s, p) => s + p.valor_atual, 0));
         if (sd?.comportamental?.blocos) {
           setBlocos(sd.comportamental.blocos);
         }
-        // Calcular HHI
-        const total = ativas.reduce((s, p) => s + p.valor_atual, 0);
+        // HHI sobre Carteira Gerida (exclui FUNCEF)
+        const total = gerida.reduce((s, p) => s + p.valor_atual, 0);
         if (total > 0) {
-          const hhiVal = ativas.reduce((s, p) => {
+          const hhiVal = gerida.reduce((s, p) => {
             const w = p.valor_atual / total;
-            return s + w * w * 10000; // em pontos (0–10000)
+            return s + w * w * 10000;
           }, 0);
           setHhi(Math.round(hhiVal));
         }
@@ -113,13 +118,34 @@ export default function Risco() {
 
         {!loading && !error && (
           <>
+            {/* KPI bar: Gerida vs FUNCEF */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-4 py-3">
+                <p className="text-[10px] text-[#6b7280] uppercase tracking-wider">Carteira Gerida</p>
+                <p className="text-base font-bold text-white mt-0.5">{brl(posicoes.reduce((s,p)=>s+p.valor_atual,0))}</p>
+              </div>
+              <div className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-4 py-3">
+                <p className="text-[10px] text-[#6b7280] uppercase tracking-wider">FUNCEF (excluída)</p>
+                <p className="text-base font-bold text-[#F59E0B] mt-0.5">{brl(totalFuncef)}</p>
+                <p className="text-[9px] text-[#6b7280]">fora do escopo IPS</p>
+              </div>
+              <div className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-4 py-3">
+                <p className="text-[10px] text-[#6b7280] uppercase tracking-wider">Patrimônio Total</p>
+                <p className="text-base font-bold text-white mt-0.5">{brl(posicoes.reduce((s,p)=>s+p.valor_atual,0) + totalFuncef)}</p>
+              </div>
+              <div className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-4 py-3">
+                <p className="text-[10px] text-[#6b7280] uppercase tracking-wider">Ativos (Gerida)</p>
+                <p className="text-base font-bold text-white mt-0.5">{posicoes.length}</p>
+              </div>
+            </div>
+
             {/* HHI */}
             <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-4">
               <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
                   <h2 className="text-sm font-semibold text-white">Concentração (HHI)</h2>
                   <p className="text-[10px] text-[#6b7280] mt-0.5">
-                    Herfindahl-Hirschman — soma dos quadrados dos pesos. &lt;1500: diversificado | &gt;2500: concentrado.
+                    Base: Carteira Gerida · exclui FUNCEF. &lt;1500: diversificado | &gt;2500: concentrado.
                   </p>
                 </div>
                 <div className="text-right">

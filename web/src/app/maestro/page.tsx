@@ -51,6 +51,7 @@ interface Conversa {
   id: number;
   titulo: string;
   criado_em?: string;
+  total_msgs?: number;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -366,6 +367,40 @@ export default function MaestroPage() {
     setMessages([]);
   };
 
+  // 9a: carregar mensagens de uma conversa existente do DB
+  const openConversation = useCallback(async (convId: number) => {
+    setActiveThreadId(String(convId));
+    setMessages([]);
+    try {
+      const token = getToken();
+      const res = await fetch(`${API_BASE}/conversas/${convId}/mensagens`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        const data: { role: string; content: string }[] = await res.json();
+        setMessages(data.map((m) => ({
+          id: crypto.randomUUID(),
+          role: m.role as "user" | "assistant",
+          content: m.content,
+        })));
+      }
+    } catch {
+      // silently fail — conversa abre vazia
+    }
+  }, []);
+
+  // 9c: apagar conversa
+  const deleteConversation = useCallback(async (convId: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const token = getToken();
+    await fetch(`${API_BASE}/conversas/${convId}`, {
+      method: "DELETE",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (activeThreadId === String(convId)) newConversation();
+    loadConversas();
+  }, [activeThreadId, loadConversas]);  // eslint-disable-line react-hooks/exhaustive-deps
+
   const stopStreaming = () => {
     abortRef.current?.abort();
     setStreaming(false);
@@ -402,30 +437,44 @@ export default function MaestroPage() {
             </button>
           </div>
 
-          {/* Conversations list */}
+          {/* Conversations list — 9b: ocultar conversas sem mensagens */}
           <div className="flex-1 overflow-y-auto py-2">
-            {conversas.length === 0 ? (
+            {conversas.filter((c) => (c.total_msgs ?? 0) > 0).length === 0 ? (
               <p className="text-xs text-[#6b7280] px-4 py-2">Sem conversas ainda</p>
             ) : (
-              conversas.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => {
-                    setActiveThreadId(String(c.id));
-                    setMessages([]);
-                  }}
-                  className={`w-full text-left px-4 py-2.5 text-xs transition-colors hover:bg-[#1A1D27] ${
-                    activeThreadId === String(c.id) ? "bg-[#1A1D27] text-[#D1D4DC]" : "text-[#6b7280]"
-                  }`}
-                >
-                  <div className="truncate">{c.titulo || "Conversa"}</div>
-                  {c.criado_em && (
-                    <div className="text-[10px] text-[#6b7280] mt-0.5">
-                      {formatTime(c.criado_em)}
-                    </div>
-                  )}
-                </button>
-              ))
+              conversas
+                .filter((c) => (c.total_msgs ?? 0) > 0)
+                .map((c) => (
+                  <div
+                    key={c.id}
+                    className={`group flex items-center gap-1 pr-2 transition-colors hover:bg-[#1A1D27] ${
+                      activeThreadId === String(c.id) ? "bg-[#1A1D27]" : ""
+                    }`}
+                  >
+                    {/* 9a: clicar abre conversa carregando mensagens do backend */}
+                    <button
+                      onClick={() => openConversation(c.id)}
+                      className="flex-1 text-left px-4 py-2.5 text-xs"
+                    >
+                      <div className={`truncate ${activeThreadId === String(c.id) ? "text-[#D1D4DC]" : "text-[#6b7280]"}`}>
+                        {c.titulo || "Conversa"}
+                      </div>
+                      {c.criado_em && (
+                        <div className="text-[10px] text-[#6b7280] mt-0.5">
+                          {formatTime(c.criado_em)}
+                        </div>
+                      )}
+                    </button>
+                    {/* 9c: botão apagar */}
+                    <button
+                      onClick={(e) => deleteConversation(c.id, e)}
+                      className="opacity-0 group-hover:opacity-100 text-[#6b7280] hover:text-[#EF5350] transition-all p-1 rounded shrink-0"
+                      title="Apagar conversa"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))
             )}
           </div>
 

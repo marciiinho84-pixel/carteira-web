@@ -66,7 +66,7 @@ export default function Posicoes() {
       try {
         const data = await apiFetch<Posicao[]>("/posicoes");
         // Enrich bloco_ips from ativos endpoint if missing
-        setPosicoes(data.filter((p) => p.qtd > 0));
+        setPosicoes(data.filter((p) => (p.valor_atual ?? 0) > 0));
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Erro ao carregar posições";
         if (msg.includes("401") || msg.includes("Unauthorized")) {
