@@ -634,10 +634,32 @@ def meta():
         raise HTTPException(503, "Sem dados de evolução")
 
     META = 3_000_000.0
-    APORTE_FUNCEF_MES = 6_392.0
-    APORTE_GERIDA_MARCO = 10_000.0
-    APORTE_GERIDA_OUTUBRO = 10_000.0
-    aporte_anual = 12 * APORTE_FUNCEF_MES + APORTE_GERIDA_MARCO + APORTE_GERIDA_OUTUBRO
+
+    # Aporte anual calculado dinamicamente dos últimos 12 meses de eventos reais.
+    # Tipos elegíveis: CONTRIBUICAO (FUNCEF) + APORTE_EXTERNO (carteira gerida).
+    # Se histórico < 6 meses, extrapola proporcionalmente.
+    TIPOS_APORTE = {"CONTRIBUICAO", "APORTE_EXTERNO"}
+    from datetime import timedelta as _td
+    eventos_cache = estado.get("eventos", [])
+    hoje_date = estado["hoje"]
+    janela_inicio = hoje_date - _td(days=366)
+    eventos_aporte = [
+        ev for ev in eventos_cache
+        if ev.get("tipo") in TIPOS_APORTE and ev.get("data") >= janela_inicio
+    ]
+    if eventos_aporte:
+        total_12m = sum(abs(ev["valor"] or 0) for ev in eventos_aporte)
+        meses_unicos = len({
+            f"{ev['data'].year}-{ev['data'].month:02d}" for ev in eventos_aporte
+        })
+        if meses_unicos >= 6:
+            aporte_anual = total_12m * (12 / meses_unicos)
+        else:
+            # poucos meses — usa média × 12
+            aporte_anual = (total_12m / meses_unicos) * 12
+    else:
+        # fallback: constante histórica
+        aporte_anual = 12 * 6_392.0 + 10_000.0 + 10_000.0
 
     ult = df.iloc[-1]
     n = len(df)

@@ -45,7 +45,7 @@ async def lifespan(app: FastAPI):
     engine = get_engine()
     Base.metadata.create_all(engine)
 
-    # Migração inline — adiciona colunas novas sem Alembic
+    # Migração inline — adiciona colunas/constraints sem Alembic
     _ddls = [
         "ALTER TABLE conversas ADD COLUMN resumo_historico TEXT",
         "ALTER TABLE mensagens ADD COLUMN incluida_no_resumo INTEGER NOT NULL DEFAULT 0",
@@ -57,6 +57,30 @@ async def lifespan(app: FastAPI):
                 conn.commit()
             except Exception:
                 pass  # coluna já existe
+
+        # Deduplicar precos_manuais: manter o id maior por (ticker, data)
+        try:
+            conn.execute(text("""
+                DELETE FROM precos_manuais
+                WHERE id NOT IN (
+                    SELECT MAX(id)
+                    FROM precos_manuais
+                    GROUP BY ticker, data
+                )
+            """))
+            conn.commit()
+        except Exception:
+            pass
+
+        # Adicionar unique constraint (ticker, data) se ainda não existir
+        try:
+            conn.execute(text(
+                "ALTER TABLE precos_manuais "
+                "ADD CONSTRAINT uq_preco_data_ticker UNIQUE (data, ticker)"
+            ))
+            conn.commit()
+        except Exception:
+            pass  # constraint já existe
 
     from carteira_clean_web.backend.api import cache as engine_cache
     if engine_cache.carregar_disco():

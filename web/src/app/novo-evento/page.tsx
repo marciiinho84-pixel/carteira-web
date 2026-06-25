@@ -67,9 +67,31 @@ export default function NovoEvento() {
   const [editObs, setEditObs] = useState("");
 
   // ── Importação ───────────────────────────────────────────────────
-  const [file, setFile] = useState<File | null>(null);
+  interface ImportEvento {
+    data: string; ativo: string; tipo: string;
+    qtd?: number | null; preco?: number | null; valor: number; obs?: string;
+    duplicata?: boolean; ignorar?: boolean;
+  }
+  interface ImportPreview {
+    status: string;
+    importacao_id?: number;
+    eventos: ImportEvento[];
+    duplicatas: number;
+    custo_api_usd: number;
+    tipo_identificado?: string;
+    confianca?: string;
+  }
+  interface ConflitoCota { data: string; valor_existente: number; valor_novo: number; diferenca_pct: number }
+
+  const [impFile, setImpFile] = useState<File | null>(null);
+  const [impTipo, setImpTipo] = useState("auto");
   const [uploading, setUploading] = useState(false);
-  const [importResult, setImportResult] = useState<string | null>(null);
+  const [preview, setPreview] = useState<ImportPreview | null>(null);
+  const [selecionados, setSelecionados] = useState<boolean[]>([]);
+  const [confirming, setConfirming] = useState(false);
+  const [conflitos, setConflitos] = useState<ConflitoCota[]>([]);
+  const [impOk, setImpOk] = useState<string | null>(null);
+  const [impErr, setImpErr] = useState<string | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("carteira_token");
@@ -173,26 +195,89 @@ export default function NovoEvento() {
   }
 
   async function uploadExtrato() {
-    if (!file) return;
+    if (!impFile) return;
     setUploading(true);
-    setImportResult(null);
+    setImpErr(null); setImpOk(null); setPreview(null); setConflitos([]);
     try {
       const fd = new FormData();
-      fd.append("file", file);
+      fd.append("arquivo", impFile);           // campo correto: "arquivo"
+      fd.append("tipo_documento", impTipo);
+      fd.append("dry_run", "false");
       const token = localStorage.getItem("carteira_token");
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "https://minhacarteira.duckdns.org/api/v1"}/importacao/upload`, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: fd,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail ?? "Erro no upload");
-      setImportResult(JSON.stringify(data, null, 2));
+      const data: ImportPreview = await res.json();
+      if (!res.ok) throw new Error((data as unknown as {detail?: string}).detail ?? "Erro no upload");
+      const ev = data.eventos ?? [];
+      setSelecionados(ev.map((e) => !e.duplicata && !e.ignorar));
+      setPreview(data);
     } catch (e: unknown) {
-      setImportResult(`Erro: ${e instanceof Error ? e.message : "Desconhecido"}`);
+      setImpErr(e instanceof Error ? e.message : "Erro desconhecido");
     } finally {
       setUploading(false);
     }
+  }
+
+  async function confirmarImport() {
+    if (!preview?.importacao_id) return;
+    setConfirming(true); setImpErr(null);
+    try {
+      const indices = selecionados.map((s, i) => s ? i : -1).filter((i) => i >= 0);
+      const token = localStorage.getItem("carteira_token");
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL ?? "https://minhacarteira.duckdns.org/api/v1"}/importacao/${preview.importacao_id}/confirmar`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify({ indices_aprovados: indices }),
+        }
+      );
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.detail ?? "Erro ao confirmar");
+      if (result.cotas_conflito?.length) {
+        setConflitos(result.cotas_conflito);
+        setImpOk(`${result.eventos_gravados} evento(s) gravado(s). Há ${result.cotas_conflito.length} conflito(s) de cota FUNCEF — veja abaixo.`);
+      } else {
+        setImpOk(`✅ ${result.eventos_gravados} evento(s) gravado(s) com sucesso!${result.cotas_inseridas ? ` | ${result.cotas_inseridas} cota(s) FUNCEF salva(s).` : ""}`);
+        setPreview(null); setSelecionados([]); setImpFile(null);
+      }
+    } catch (e: unknown) {
+      setImpErr(e instanceof Error ? e.message : "Erro ao confirmar");
+    } finally {
+      setConfirming(false);
+    }
+  }
+
+  async function forcarCotas() {
+    if (!preview?.importacao_id) return;
+    setConfirming(true); setImpErr(null);
+    try {
+      const token = localStorage.getItem("carteira_token");
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL ?? "https://minhacarteira.duckdns.org/api/v1"}/importacao/${preview.importacao_id}/confirmar`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify({ indices_aprovados: [], force_update_cotas: true }),
+        }
+      );
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.detail ?? "Erro ao forçar");
+      setImpOk(`✅ ${result.cotas_inseridas ?? 0} cota(s) atualizada(s) com sucesso!`);
+      setPreview(null); setSelecionados([]); setImpFile(null); setConflitos([]);
+    } catch (e: unknown) {
+      setImpErr(e instanceof Error ? e.message : "Erro ao forçar atualização");
+    } finally {
+      setConfirming(false);
+    }
+  }
+
+  function resetImport() {
+    setPreview(null); setSelecionados([]); setImpFile(null);
+    setImpErr(null); setImpOk(null); setConflitos([]);
   }
 
   const sugestTickers = ativo.length >= 1
@@ -383,26 +468,170 @@ export default function NovoEvento() {
             </section>
           )}
 
-          {/* ── Tab Importar (8d) ───────────────────────────────────── */}
+          {/* ── Tab Importar ────────────────────────────────────────── */}
           {tab === "importar" && (
-            <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-5 space-y-4">
-              <h2 className="text-sm font-semibold text-white">Importar Extrato (PDF / Excel)</h2>
-              <p className="text-xs text-[#6b7280]">Selecione o extrato do broker. O sistema irá interpretar e criar os eventos automaticamente.</p>
-              <div className="space-y-3">
-                <input type="file" accept=".pdf,.xlsx,.xls,.csv"
-                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                  className="block text-sm text-[#D1D4DC] file:mr-3 file:py-1.5 file:px-3 file:rounded file:border file:border-[#2A2D3A] file:text-xs file:bg-[#1A1D27] file:text-[#D1D4DC] hover:file:bg-[#2A2D3A] file:cursor-pointer" />
-                <button onClick={uploadExtrato} disabled={uploading || !file}
-                  className="rounded-lg px-5 py-2 text-sm font-medium bg-[#6366F1]/20 text-[#6366F1] border border-[#6366F1]/40 hover:bg-[#6366F1]/30 disabled:opacity-40 transition">
-                  {uploading ? "Enviando…" : "Enviar e Processar"}
-                </button>
-              </div>
-              {importResult && (
-                <pre className="mt-3 p-3 rounded bg-[#0F1117] border border-[#2A2D3A] text-[10px] text-[#D1D4DC] overflow-x-auto whitespace-pre-wrap">
-                  {importResult}
-                </pre>
+            <div className="space-y-4">
+              {/* Mensagens */}
+              {impOk && (
+                <div className="rounded-xl border border-[#26A69A]/50 bg-[#26A69A]/10 px-4 py-2.5 text-sm text-[#26A69A] flex items-center justify-between">
+                  {impOk}
+                  <button onClick={() => setImpOk(null)} className="ml-4 text-xs">✕</button>
+                </div>
               )}
-            </section>
+              {impErr && (
+                <div className="rounded-xl border border-red-800/50 bg-red-900/20 px-4 py-2.5 text-sm text-red-400 flex items-center justify-between">
+                  {impErr}
+                  <button onClick={() => setImpErr(null)} className="ml-4 text-xs">✕</button>
+                </div>
+              )}
+
+              {/* Passo 1: Upload */}
+              {!preview && (
+                <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-5 space-y-4">
+                  <h2 className="text-sm font-semibold text-white">Importar Extrato</h2>
+                  <p className="text-xs text-[#6b7280]">PDF, JPEG, PNG, XLSX ou CSV. O Claude identifica o tipo e extrai os eventos automaticamente (~15-60s).</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] text-[#6b7280] uppercase">Arquivo</label>
+                      <input type="file" accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls,.csv"
+                        onChange={(e) => setImpFile(e.target.files?.[0] ?? null)}
+                        className="mt-1 block w-full text-sm text-[#D1D4DC] file:mr-3 file:py-1.5 file:px-3 file:rounded file:border file:border-[#2A2D3A] file:text-xs file:bg-[#0F1117] file:text-[#D1D4DC] hover:file:bg-[#2A2D3A] file:cursor-pointer" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-[#6b7280] uppercase">Tipo do documento</label>
+                      <select value={impTipo} onChange={(e) => setImpTipo(e.target.value)} className={`mt-1 ${cls}`}>
+                        <option value="auto">Detectar automaticamente</option>
+                        <option value="funcef_extrato">FUNCEF — Extrato</option>
+                        <option value="nota_corretagem">Nota de Corretagem</option>
+                        <option value="cei_movimentacoes">CEI / Movimentações</option>
+                        <option value="extrato_fundo">Extrato de Fundo</option>
+                        <option value="informe_rendimentos">Informe de Rendimentos</option>
+                      </select>
+                    </div>
+                  </div>
+                  <button onClick={uploadExtrato} disabled={uploading || !impFile}
+                    className="rounded-lg px-5 py-2 text-sm font-medium bg-[#6366F1]/20 text-[#6366F1] border border-[#6366F1]/40 hover:bg-[#6366F1]/30 disabled:opacity-40 transition">
+                    {uploading ? "Processando com Claude (~30s)…" : "🤖 Processar com Claude"}
+                  </button>
+                </section>
+              )}
+
+              {/* Passo 2: Preview */}
+              {preview && (
+                <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] overflow-hidden">
+                  <div className="px-5 py-3 border-b border-[#2A2D3A] flex items-center justify-between flex-wrap gap-2">
+                    <div>
+                      <h2 className="text-sm font-semibold text-white">
+                        Preview — {preview.eventos.length} eventos extraídos
+                      </h2>
+                      <p className="text-[10px] text-[#6b7280] mt-0.5">
+                        {preview.tipo_identificado && <span className="text-[#F59E0B] mr-2">{preview.tipo_identificado} ({preview.confianca})</span>}
+                        {preview.duplicatas > 0 && <span className="text-[#EF5350] mr-2">{preview.duplicatas} duplicata(s)</span>}
+                        Custo API: ${preview.custo_api_usd.toFixed(4)}
+                      </p>
+                    </div>
+                    <button onClick={resetImport} className="text-xs text-[#6b7280] hover:text-[#D1D4DC] border border-[#2A2D3A] rounded px-2 py-1 transition">
+                      ✕ Cancelar
+                    </button>
+                  </div>
+
+                  <div className="px-5 py-3 text-xs text-[#6b7280]">
+                    Marque os eventos que devem ser gravados. Duplicatas já estão desmarcadas.
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-[#2A2D3A] text-[10px] text-[#6b7280] uppercase bg-[#0F1117]/40">
+                          <th className="px-3 py-2 text-center w-8">
+                            <input type="checkbox"
+                              checked={selecionados.every(Boolean)}
+                              onChange={(e) => setSelecionados(selecionados.map(() => e.target.checked))}
+                              className="accent-[#26A69A]" />
+                          </th>
+                          <th className="px-3 py-2 text-left">Data</th>
+                          <th className="px-3 py-2 text-left">Ativo</th>
+                          <th className="px-3 py-2 text-left">Tipo</th>
+                          <th className="px-3 py-2 text-right">Qtd</th>
+                          <th className="px-3 py-2 text-right">Valor</th>
+                          <th className="px-3 py-2 text-left">Obs</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {preview.eventos.map((ev, i) => (
+                          <tr key={i} className={`border-b border-[#2A2D3A] ${ev.duplicata ? "opacity-40" : "hover:bg-[#2A2D3A]/20"}`}>
+                            <td className="px-3 py-2 text-center">
+                              <input type="checkbox"
+                                checked={selecionados[i] ?? false}
+                                onChange={(e) => setSelecionados(selecionados.map((s, j) => j === i ? e.target.checked : s))}
+                                className="accent-[#26A69A]" />
+                            </td>
+                            <td className="px-3 py-2 font-mono">{ev.data}</td>
+                            <td className="px-3 py-2 font-bold text-white">{ev.ativo}</td>
+                            <td className="px-3 py-2 text-[#6b7280]">
+                              {ev.duplicata && <span className="text-[#EF5350] mr-1 text-[9px]">DUP</span>}
+                              {ev.tipo}
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono">{ev.qtd != null ? ev.qtd.toFixed(4) : "—"}</td>
+                            <td className="px-3 py-2 text-right font-mono">{brl(ev.valor)}</td>
+                            <td className="px-3 py-2 text-[#6b7280] max-w-[160px] truncate">{ev.obs ?? ""}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="px-5 py-4 flex items-center gap-3 border-t border-[#2A2D3A]">
+                    <button onClick={confirmarImport}
+                      disabled={confirming || !selecionados.some(Boolean)}
+                      className="rounded-lg px-5 py-2 text-sm font-medium bg-[#26A69A]/20 text-[#26A69A] border border-[#26A69A]/40 hover:bg-[#26A69A]/30 disabled:opacity-40 transition">
+                      {confirming ? "Gravando…" : `✅ Confirmar ${selecionados.filter(Boolean).length} evento(s)`}
+                    </button>
+                    <span className="text-xs text-[#6b7280]">{selecionados.filter(Boolean).length} de {preview.eventos.length} selecionado(s)</span>
+                  </div>
+                </section>
+              )}
+
+              {/* Conflitos de cotas FUNCEF */}
+              {conflitos.length > 0 && (
+                <section className="rounded-xl border border-[#F59E0B]/40 bg-[#F59E0B]/5 px-5 py-4 space-y-3">
+                  <h3 className="text-sm font-semibold text-[#F59E0B]">⚠️ {conflitos.length} cota(s) FUNCEF com valor divergente</h3>
+                  <p className="text-xs text-[#6b7280]">Estas cotas já existem no banco com valor diferente. Clique em Forçar para sobrescrever.</p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-[10px] text-[#6b7280] uppercase border-b border-[#2A2D3A]">
+                          <th className="py-1 text-left">Data</th>
+                          <th className="py-1 text-right">Valor atual</th>
+                          <th className="py-1 text-right">Valor novo</th>
+                          <th className="py-1 text-right">Diferença</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {conflitos.map((c, i) => (
+                          <tr key={i} className="border-b border-[#2A2D3A]/40">
+                            <td className="py-1.5 font-mono">{c.data}</td>
+                            <td className="py-1.5 text-right font-mono">{c.valor_existente.toFixed(8)}</td>
+                            <td className="py-1.5 text-right font-mono text-[#26A69A]">{c.valor_novo.toFixed(8)}</td>
+                            <td className="py-1.5 text-right text-[#F59E0B]">{c.diferenca_pct.toFixed(2)}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex gap-3">
+                    <button onClick={forcarCotas} disabled={confirming}
+                      className="rounded px-4 py-1.5 text-sm bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40 hover:bg-[#F59E0B]/30 disabled:opacity-40 transition">
+                      {confirming ? "Atualizando…" : "🔄 Forçar atualização de cotas"}
+                    </button>
+                    <button onClick={() => setConflitos([])}
+                      className="rounded px-3 py-1.5 text-sm border border-[#2A2D3A] text-[#6b7280] hover:bg-[#2A2D3A] transition">
+                      Ignorar conflitos
+                    </button>
+                  </div>
+                </section>
+              )}
+            </div>
           )}
         </div>
       </main>
