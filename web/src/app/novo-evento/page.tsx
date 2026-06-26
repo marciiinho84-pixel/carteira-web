@@ -79,19 +79,47 @@ export default function NovoEvento() {
     duplicatas: number;
     custo_api_usd: number;
     tipo_identificado?: string;
+    tipo_documento?: string;
     confianca?: string;
+    justificativa?: string;
+    raw_claude_response?: string;
+    arquivo_path?: string;
+    arquivo_hash?: string;
+    nome_arquivo?: string;
+    reconciliacao?: { alerta_criado?: boolean; alerta_mensagem?: string; patrimonio_calculado?: number };
   }
   interface ConflitoCota { data: string; valor_existente: number; valor_novo: number; diferenca_pct: number }
+  interface ImpHistorico {
+    id: number; data_upload: string; arquivo_nome: string;
+    tipo_identificado_ia?: string; confianca_ia?: string; status: string;
+    total_eventos_extraidos?: number; total_eventos_gravados?: number; custo_api_usd?: number;
+  }
+
+  const TIPO_LABELS: Record<string, string> = {
+    auto: "Detectar automaticamente", funcef: "FUNCEF — Extrato",
+    b3_custodia: "B3 — Custódia", b3_movimentacoes: "B3 — Movimentações",
+    caixa_rv: "Caixa RV", caixa_lci: "Caixa LCI", caixa_ouro: "Caixa Ouro",
+    caixa_fic_func: "Caixa FIC Funcionários", tesouro_direto: "Tesouro Direto",
+  };
+  const CONFIANCA_ICON: Record<string, string> = { alta: "🟢", media: "🟡", baixa: "🔴" };
 
   const [impFile, setImpFile] = useState<File | null>(null);
   const [impTipo, setImpTipo] = useState("auto");
+  const [impDryRun, setImpDryRun] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [selecionados, setSelecionados] = useState<boolean[]>([]);
   const [confirming, setConfirming] = useState(false);
   const [conflitos, setConflitos] = useState<ConflitoCota[]>([]);
+  const [conflitosBodyRef, setConflitosBodyRef] = useState<Record<string, unknown> | null>(null);
   const [impOk, setImpOk] = useState<string | null>(null);
   const [impErr, setImpErr] = useState<string | null>(null);
+  const [impReconAlerta, setImpReconAlerta] = useState<string | null>(null);
+  const [showRawJson, setShowRawJson] = useState(false);
+  const [reprocessTipo, setReprocessTipo] = useState("");
+  const [reprocessing, setReprocessing] = useState(false);
+  const [historico, setHistorico] = useState<ImpHistorico[]>([]);
+  const [loadingHist, setLoadingHist] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("carteira_token");
@@ -194,26 +222,52 @@ export default function NovoEvento() {
     setEditId(null);
   }
 
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://minhacarteira.duckdns.org/api/v1";
+
+  function authHeaders(): Record<string, string> {
+    const token = localStorage.getItem("carteira_token");
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
+  async function loadHistorico() {
+    setLoadingHist(true);
+    try {
+      const data = await apiFetch<ImpHistorico[]>("/importacoes");
+      setHistorico(data ?? []);
+    } catch { setHistorico([]); }
+    finally { setLoadingHist(false); }
+  }
+
+  useEffect(() => {
+    if (tab === "importar") { loadHistorico(); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
+  function handlePreviewOk(data: ImportPreview) {
+    const ev = data.eventos ?? [];
+    setSelecionados(ev.map((e) => !e.duplicata && !e.ignorar));
+    setPreview(data);
+    setReprocessTipo(data.tipo_identificado ?? "");
+    setShowRawJson(false);
+    setConflitos([]); setConflitosBodyRef(null); setImpReconAlerta(null);
+  }
+
   async function uploadExtrato() {
     if (!impFile) return;
     setUploading(true);
     setImpErr(null); setImpOk(null); setPreview(null); setConflitos([]);
     try {
       const fd = new FormData();
-      fd.append("arquivo", impFile);           // campo correto: "arquivo"
+      fd.append("arquivo", impFile);
       fd.append("tipo_documento", impTipo);
-      fd.append("dry_run", "false");
-      const token = localStorage.getItem("carteira_token");
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "https://minhacarteira.duckdns.org/api/v1"}/importacao/upload`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: fd,
+      fd.append("dry_run", impDryRun ? "true" : "false");
+      const res = await fetch(`${API_BASE}/importacao/upload`, {
+        method: "POST", headers: authHeaders(), body: fd,
       });
-      const data: ImportPreview = await res.json();
-      if (!res.ok) throw new Error((data as unknown as {detail?: string}).detail ?? "Erro no upload");
-      const ev = data.eventos ?? [];
-      setSelecionados(ev.map((e) => !e.duplicata && !e.ignorar));
-      setPreview(data);
+      const data = await res.json();
+      if (res.status === 409) throw new Error(data.detail ?? "Arquivo já importado anteriormente.");
+      if (!res.ok) throw new Error(data.detail ?? `HTTP ${res.status}`);
+      handlePreviewOk(data as ImportPreview);
     } catch (e: unknown) {
       setImpErr(e instanceof Error ? e.message : "Erro desconhecido");
     } finally {
@@ -221,29 +275,87 @@ export default function NovoEvento() {
     }
   }
 
+  async function reprocessar() {
+    if (!preview?.importacao_id || !reprocessTipo) return;
+    setReprocessing(true); setImpErr(null);
+    try {
+      const res = await fetch(`${API_BASE}/importacao/${preview.importacao_id}/reprocessar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ tipo_documento: reprocessTipo }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail ?? "Erro ao reprocessar");
+      handlePreviewOk(data as ImportPreview);
+    } catch (e: unknown) {
+      setImpErr(e instanceof Error ? e.message : "Erro ao reprocessar");
+    } finally {
+      setReprocessing(false);
+    }
+  }
+
+  function _processarResultadoConfirmacao(result: Record<string, unknown>, bodyOriginal: Record<string, unknown>, endpoint: string) {
+    const gravados = (result.eventos_gravados as number) ?? 0;
+    const cotas = (result.cotas_inseridas as number) ?? 0;
+    const cotas_conflito = (result.cotas_conflito as ConflitoCota[]) ?? [];
+    const rec = (result.reconciliacao as ImportPreview["reconciliacao"]) ?? {};
+
+    if (rec?.alerta_criado) {
+      setImpReconAlerta(rec.alerta_mensagem ?? "FUNCEF: divergência detectada.");
+    }
+
+    if (cotas_conflito.length) {
+      setConflitos(cotas_conflito);
+      setConflitosBodyRef({ ...bodyOriginal, _endpoint: endpoint });
+      setImpOk(`${gravados} evento(s) gravado(s). ${cotas_conflito.length} conflito(s) de cota FUNCEF — veja abaixo.`);
+    } else {
+      let msg = `✅ ${gravados} evento(s) gravado(s) com sucesso!`;
+      if (cotas) msg += ` | ${cotas} cota(s) FUNCEF salva(s).`;
+      setImpOk(msg);
+      setPreview(null); setSelecionados([]); setImpFile(null);
+      loadHistorico();
+    }
+  }
+
   async function confirmarImport() {
-    if (!preview?.importacao_id) return;
+    if (!preview) return;
     setConfirming(true); setImpErr(null);
     try {
       const indices = selecionados.map((s, i) => s ? i : -1).filter((i) => i >= 0);
-      const token = localStorage.getItem("carteira_token");
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL ?? "https://minhacarteira.duckdns.org/api/v1"}/importacao/${preview.importacao_id}/confirmar`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-          body: JSON.stringify({ indices_aprovados: indices }),
-        }
-      );
+
+      let url: string;
+      let body: Record<string, unknown>;
+
+      if (preview.status === "DRY_RUN") {
+        url = `${API_BASE}/importacao/confirmar-direto`;
+        body = {
+          eventos: preview.eventos,
+          indices_aprovados: indices,
+          arquivo_path: preview.arquivo_path ?? "",
+          arquivo_hash: preview.arquivo_hash ?? "",
+          nome_arquivo: preview.nome_arquivo ?? impFile?.name ?? "",
+          tipo_documento: preview.tipo_documento ?? impTipo,
+          custo_api_usd: preview.custo_api_usd ?? 0,
+          meta: {
+            tipo_identificado: preview.tipo_identificado,
+            confianca: preview.confianca,
+            justificativa: preview.justificativa,
+          },
+        };
+      } else {
+        if (!preview.importacao_id) return;
+        url = `${API_BASE}/importacao/${preview.importacao_id}/confirmar`;
+        body = { indices_aprovados: indices };
+      }
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify(body),
+      });
       const result = await res.json();
       if (!res.ok) throw new Error(result.detail ?? "Erro ao confirmar");
-      if (result.cotas_conflito?.length) {
-        setConflitos(result.cotas_conflito);
-        setImpOk(`${result.eventos_gravados} evento(s) gravado(s). Há ${result.cotas_conflito.length} conflito(s) de cota FUNCEF — veja abaixo.`);
-      } else {
-        setImpOk(`✅ ${result.eventos_gravados} evento(s) gravado(s) com sucesso!${result.cotas_inseridas ? ` | ${result.cotas_inseridas} cota(s) FUNCEF salva(s).` : ""}`);
-        setPreview(null); setSelecionados([]); setImpFile(null);
-      }
+      _processarResultadoConfirmacao(result, body, url.replace(API_BASE + "/", ""));
     } catch (e: unknown) {
       setImpErr(e instanceof Error ? e.message : "Erro ao confirmar");
     } finally {
@@ -252,22 +364,23 @@ export default function NovoEvento() {
   }
 
   async function forcarCotas() {
-    if (!preview?.importacao_id) return;
+    if (!conflitosBodyRef) return;
     setConfirming(true); setImpErr(null);
     try {
-      const token = localStorage.getItem("carteira_token");
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL ?? "https://minhacarteira.duckdns.org/api/v1"}/importacao/${preview.importacao_id}/confirmar`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-          body: JSON.stringify({ indices_aprovados: [], force_update_cotas: true }),
-        }
-      );
+      const { _endpoint, ...bodyRest } = conflitosBodyRef as Record<string, unknown> & { _endpoint: string };
+      const endpoint = _endpoint;
+      const body = { ...bodyRest, force_update_cotas: true };
+      const url = endpoint.startsWith("http") ? endpoint : `${API_BASE}/${endpoint}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify(body),
+      });
       const result = await res.json();
       if (!res.ok) throw new Error(result.detail ?? "Erro ao forçar");
-      setImpOk(`✅ ${result.cotas_inseridas ?? 0} cota(s) atualizada(s) com sucesso!`);
-      setPreview(null); setSelecionados([]); setImpFile(null); setConflitos([]);
+      setImpOk(`✅ ${(result.cotas_inseridas as number) ?? 0} cota(s) atualizada(s) com sucesso!`);
+      setPreview(null); setSelecionados([]); setImpFile(null); setConflitos([]); setConflitosBodyRef(null);
+      loadHistorico();
     } catch (e: unknown) {
       setImpErr(e instanceof Error ? e.message : "Erro ao forçar atualização");
     } finally {
@@ -275,9 +388,19 @@ export default function NovoEvento() {
     }
   }
 
+  async function cancelarImport() {
+    if (preview?.importacao_id) {
+      await fetch(`${API_BASE}/importacao/${preview.importacao_id}`, {
+        method: "DELETE", headers: authHeaders(),
+      }).catch(() => {});
+    }
+    resetImport();
+  }
+
   function resetImport() {
     setPreview(null); setSelecionados([]); setImpFile(null);
-    setImpErr(null); setImpOk(null); setConflitos([]);
+    setImpErr(null); setImpOk(null); setImpReconAlerta(null);
+    setConflitos([]); setConflitosBodyRef(null); setShowRawJson(false);
   }
 
   const sugestTickers = ativo.length >= 1
@@ -471,21 +594,25 @@ export default function NovoEvento() {
           {/* ── Tab Importar ────────────────────────────────────────── */}
           {tab === "importar" && (
             <div className="space-y-4">
-              {/* Mensagens */}
+
+              {/* Mensagens globais */}
               {impOk && (
                 <div className="rounded-xl border border-[#26A69A]/50 bg-[#26A69A]/10 px-4 py-2.5 text-sm text-[#26A69A] flex items-center justify-between">
-                  {impOk}
-                  <button onClick={() => setImpOk(null)} className="ml-4 text-xs">✕</button>
+                  {impOk}<button onClick={() => setImpOk(null)} className="ml-4 text-xs flex-shrink-0">✕</button>
+                </div>
+              )}
+              {impReconAlerta && (
+                <div className="rounded-xl border border-[#F59E0B]/50 bg-[#F59E0B]/10 px-4 py-2.5 text-sm text-[#F59E0B] flex items-center justify-between">
+                  ⚠️ {impReconAlerta}<button onClick={() => setImpReconAlerta(null)} className="ml-4 text-xs flex-shrink-0">✕</button>
                 </div>
               )}
               {impErr && (
                 <div className="rounded-xl border border-red-800/50 bg-red-900/20 px-4 py-2.5 text-sm text-red-400 flex items-center justify-between">
-                  {impErr}
-                  <button onClick={() => setImpErr(null)} className="ml-4 text-xs">✕</button>
+                  {impErr}<button onClick={() => setImpErr(null)} className="ml-4 text-xs flex-shrink-0">✕</button>
                 </div>
               )}
 
-              {/* Passo 1: Upload */}
+              {/* ── Passo 1: Upload ─────────────────────────────────── */}
               {!preview && (
                 <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-5 space-y-4">
                   <h2 className="text-sm font-semibold text-white">Importar Extrato</h2>
@@ -500,58 +627,96 @@ export default function NovoEvento() {
                     <div>
                       <label className="text-[10px] text-[#6b7280] uppercase">Tipo do documento</label>
                       <select value={impTipo} onChange={(e) => setImpTipo(e.target.value)} className={`mt-1 ${cls}`}>
-                        <option value="auto">Detectar automaticamente</option>
-                        <option value="funcef">FUNCEF — Extrato</option>
-                        <option value="b3_custodia">B3 — Custódia</option>
-                        <option value="b3_movimentacoes">B3 — Movimentações</option>
-                        <option value="caixa_rv">Caixa RV</option>
-                        <option value="caixa_lci">Caixa LCI</option>
-                        <option value="caixa_ouro">Caixa Ouro</option>
-                        <option value="caixa_fic_func">Caixa FIC Funcionários</option>
-                        <option value="tesouro_direto">Tesouro Direto</option>
+                        {Object.entries(TIPO_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                       </select>
                     </div>
                   </div>
+                  <label className="flex items-center gap-3 cursor-pointer select-none">
+                    <input type="checkbox" checked={impDryRun} onChange={(e) => setImpDryRun(e.target.checked)}
+                      className="w-4 h-4 accent-[#6366F1]" />
+                    <span className="text-sm text-[#D1D4DC]">Modo de teste — extrair sem gravar no banco</span>
+                  </label>
                   <button onClick={uploadExtrato} disabled={uploading || !impFile}
                     className="rounded-lg px-5 py-2 text-sm font-medium bg-[#6366F1]/20 text-[#6366F1] border border-[#6366F1]/40 hover:bg-[#6366F1]/30 disabled:opacity-40 transition">
-                    {uploading ? "Processando com Claude (~30s)…" : "🤖 Processar com Claude"}
+                    {uploading ? "Processando com Claude (~30s)…" : impDryRun ? "🧪 Testar com Claude (sem gravar)" : "🤖 Processar com Claude"}
                   </button>
                 </section>
               )}
 
-              {/* Passo 2: Preview */}
+              {/* ── Passo 2: Preview ────────────────────────────────── */}
               {preview && (
                 <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] overflow-hidden">
-                  <div className="px-5 py-3 border-b border-[#2A2D3A] flex items-center justify-between flex-wrap gap-2">
-                    <div>
-                      <h2 className="text-sm font-semibold text-white">
-                        Preview — {preview.eventos.length} eventos extraídos
-                      </h2>
-                      <p className="text-[10px] text-[#6b7280] mt-0.5">
-                        {preview.tipo_identificado && <span className="text-[#F59E0B] mr-2">{preview.tipo_identificado} ({preview.confianca})</span>}
-                        {preview.duplicatas > 0 && <span className="text-[#EF5350] mr-2">{preview.duplicatas} duplicata(s)</span>}
-                        Custo API: ${preview.custo_api_usd.toFixed(4)}
-                      </p>
+
+                  {/* Banner modo de teste */}
+                  {preview.status === "DRY_RUN" && (
+                    <div className="px-5 py-2.5 bg-[#6366F1]/10 border-b border-[#6366F1]/30 text-xs text-[#6366F1]">
+                      🧪 Modo de teste — os dados abaixo foram extraídos pelo Claude, mas <strong>nada foi gravado</strong> no banco.
                     </div>
-                    <button onClick={resetImport} className="text-xs text-[#6b7280] hover:text-[#D1D4DC] border border-[#2A2D3A] rounded px-2 py-1 transition">
-                      ✕ Cancelar
+                  )}
+
+                  {/* Banner identificação Claude */}
+                  {preview.tipo_identificado && preview.confianca && (
+                    <div className="px-5 py-3 border-b border-[#2A2D3A] bg-[#0F1117]/30 flex items-start justify-between gap-4 flex-wrap">
+                      <div>
+                        <p className="text-xs font-medium text-white">
+                          🤖 Identificado pelo Claude: {CONFIANCA_ICON[preview.confianca] ?? "⚪"}{" "}
+                          <span className="text-[#F59E0B]">{TIPO_LABELS[preview.tipo_identificado] ?? preview.tipo_identificado}</span>
+                          <span className="text-[#6b7280] ml-2">(confiança {preview.confianca})</span>
+                        </p>
+                        {preview.justificativa && (
+                          <p className="text-[10px] text-[#6b7280] mt-0.5">{preview.justificativa}</p>
+                        )}
+                      </div>
+                      {/* Reprocessar com outro tipo */}
+                      {preview.status === "PREVIEW" && (
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <select value={reprocessTipo} onChange={(e) => setReprocessTipo(e.target.value)}
+                            className="text-xs rounded bg-[#0F1117] border border-[#2A2D3A] px-2 py-1 text-[#D1D4DC] focus:outline-none focus:border-[#6366F1]">
+                            {Object.entries(TIPO_LABELS).filter(([v]) => v !== "auto").map(([v, l]) => (
+                              <option key={v} value={v}>{l}</option>
+                            ))}
+                          </select>
+                          {reprocessTipo !== preview.tipo_identificado && (
+                            <button onClick={reprocessar} disabled={reprocessing}
+                              className="text-xs rounded px-2 py-1 bg-[#6366F1]/20 text-[#6366F1] border border-[#6366F1]/40 hover:bg-[#6366F1]/30 disabled:opacity-50 transition whitespace-nowrap">
+                              {reprocessing ? "…" : "🔄 Reprocessar"}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Header com métricas */}
+                  <div className="px-5 py-3 border-b border-[#2A2D3A] flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-4 text-xs text-[#6b7280]">
+                      <span className="text-white font-medium">{preview.eventos.length} eventos</span>
+                      {preview.duplicatas > 0 && <span className="text-[#EF5350]">{preview.duplicatas} duplicata(s)</span>}
+                      <span>Custo API: ${preview.custo_api_usd.toFixed(4)}</span>
+                    </div>
+                    <button onClick={cancelarImport}
+                      className="text-xs text-[#6b7280] hover:text-[#D1D4DC] border border-[#2A2D3A] rounded px-2 py-1 transition">
+                      {preview.status === "DRY_RUN" ? "🗑️ Descartar" : "❌ Cancelar"}
                     </button>
                   </div>
 
-                  <div className="px-5 py-3 text-xs text-[#6b7280]">
-                    Marque os eventos que devem ser gravados. Duplicatas já estão desmarcadas.
+                  {/* Tabela de eventos */}
+                  <div className="px-5 py-2 text-xs text-[#6b7280]">
+                    {preview.status === "DRY_RUN"
+                      ? "Revise os eventos extraídos. Desmarque os que não devem ser gravados. Quando estiver tudo certo, clique em Confirmar e Gravar."
+                      : "Desmarque eventos que não devem ser importados. Duplicatas já estão desmarcadas."}
                   </div>
-
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b border-[#2A2D3A] text-[10px] text-[#6b7280] uppercase bg-[#0F1117]/40">
                           <th className="px-3 py-2 text-center w-8">
                             <input type="checkbox"
-                              checked={selecionados.every(Boolean)}
+                              checked={selecionados.length > 0 && selecionados.every(Boolean)}
                               onChange={(e) => setSelecionados(selecionados.map(() => e.target.checked))}
                               className="accent-[#26A69A]" />
                           </th>
+                          <th className="px-3 py-2 text-left">Status</th>
                           <th className="px-3 py-2 text-left">Data</th>
                           <th className="px-3 py-2 text-left">Ativo</th>
                           <th className="px-3 py-2 text-left">Tipo</th>
@@ -569,12 +734,12 @@ export default function NovoEvento() {
                                 onChange={(e) => setSelecionados(selecionados.map((s, j) => j === i ? e.target.checked : s))}
                                 className="accent-[#26A69A]" />
                             </td>
+                            <td className="px-3 py-2 text-[10px]">
+                              {ev.duplicata ? <span className="text-[#EF5350]">⚠️ Duplicata</span> : <span className="text-[#26A69A]">✅ Novo</span>}
+                            </td>
                             <td className="px-3 py-2 font-mono">{ev.data}</td>
                             <td className="px-3 py-2 font-bold text-white">{ev.ativo}</td>
-                            <td className="px-3 py-2 text-[#6b7280]">
-                              {ev.duplicata && <span className="text-[#EF5350] mr-1 text-[9px]">DUP</span>}
-                              {ev.tipo}
-                            </td>
+                            <td className="px-3 py-2 text-[#6b7280]">{ev.tipo}</td>
                             <td className="px-3 py-2 text-right font-mono">{ev.qtd != null ? ev.qtd.toFixed(4) : "—"}</td>
                             <td className="px-3 py-2 text-right font-mono">{brl(ev.valor)}</td>
                             <td className="px-3 py-2 text-[#6b7280] max-w-[160px] truncate">{ev.obs ?? ""}</td>
@@ -584,11 +749,29 @@ export default function NovoEvento() {
                     </table>
                   </div>
 
+                  {/* Ver JSON bruto */}
+                  {preview.raw_claude_response && (
+                    <div className="border-t border-[#2A2D3A]">
+                      <button onClick={() => setShowRawJson(!showRawJson)}
+                        className="w-full px-5 py-2 text-left text-xs text-[#6b7280] hover:text-[#D1D4DC] hover:bg-[#2A2D3A]/20 transition flex items-center gap-1">
+                        {showRawJson ? "▼" : "▶"} Ver JSON extraído pela IA
+                      </button>
+                      {showRawJson && (
+                        <pre className="px-5 pb-4 text-[10px] text-[#D1D4DC] bg-[#0F1117] overflow-x-auto whitespace-pre-wrap max-h-64">
+                          {preview.raw_claude_response}
+                        </pre>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Botões de confirmação */}
                   <div className="px-5 py-4 flex items-center gap-3 border-t border-[#2A2D3A]">
                     <button onClick={confirmarImport}
                       disabled={confirming || !selecionados.some(Boolean)}
                       className="rounded-lg px-5 py-2 text-sm font-medium bg-[#26A69A]/20 text-[#26A69A] border border-[#26A69A]/40 hover:bg-[#26A69A]/30 disabled:opacity-40 transition">
-                      {confirming ? "Gravando…" : `✅ Confirmar ${selecionados.filter(Boolean).length} evento(s)`}
+                      {confirming ? "Gravando…" : preview.status === "DRY_RUN"
+                        ? `✅ Confirmar e gravar ${selecionados.filter(Boolean).length} evento(s)`
+                        : `✅ Confirmar ${selecionados.filter(Boolean).length} evento(s)`}
                     </button>
                     <span className="text-xs text-[#6b7280]">{selecionados.filter(Boolean).length} de {preview.eventos.length} selecionado(s)</span>
                   </div>
@@ -599,7 +782,9 @@ export default function NovoEvento() {
               {conflitos.length > 0 && (
                 <section className="rounded-xl border border-[#F59E0B]/40 bg-[#F59E0B]/5 px-5 py-4 space-y-3">
                   <h3 className="text-sm font-semibold text-[#F59E0B]">⚠️ {conflitos.length} cota(s) FUNCEF com valor divergente</h3>
-                  <p className="text-xs text-[#6b7280]">Estas cotas já existem no banco com valor diferente. Clique em Forçar para sobrescrever.</p>
+                  <p className="text-xs text-[#6b7280]">
+                    Os valores abaixo já existem em HISTORICO_PRECOS com valor diferente. Clique em Forçar para sobrescrever com os valores do extrato.
+                  </p>
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
@@ -607,7 +792,7 @@ export default function NovoEvento() {
                           <th className="py-1 text-left">Data</th>
                           <th className="py-1 text-right">Valor atual</th>
                           <th className="py-1 text-right">Valor novo</th>
-                          <th className="py-1 text-right">Diferença</th>
+                          <th className="py-1 text-right">Diferença %</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -627,13 +812,67 @@ export default function NovoEvento() {
                       className="rounded px-4 py-1.5 text-sm bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40 hover:bg-[#F59E0B]/30 disabled:opacity-40 transition">
                       {confirming ? "Atualizando…" : "🔄 Forçar atualização de cotas"}
                     </button>
-                    <button onClick={() => setConflitos([])}
+                    <button onClick={() => { setConflitos([]); setConflitosBodyRef(null); resetImport(); }}
                       className="rounded px-3 py-1.5 text-sm border border-[#2A2D3A] text-[#6b7280] hover:bg-[#2A2D3A] transition">
-                      Ignorar conflitos
+                      ⏭️ Ignorar conflitos (manter valores atuais)
                     </button>
                   </div>
                 </section>
               )}
+
+              {/* ── Histórico de importações ─────────────────────────── */}
+              <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] overflow-hidden">
+                <div className="px-5 py-3 border-b border-[#2A2D3A] flex items-center justify-between">
+                  <h2 className="text-sm font-semibold text-white">Histórico de Importações</h2>
+                  <button onClick={loadHistorico} className="text-xs text-[#6b7280] hover:text-[#D1D4DC] transition">↺ Atualizar</button>
+                </div>
+                {loadingHist ? (
+                  <div className="animate-pulse p-4 space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-7 rounded bg-[#2A2D3A]" />)}</div>
+                ) : historico.length === 0 ? (
+                  <p className="px-5 py-4 text-sm text-[#6b7280]">Nenhuma importação registrada.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-[#2A2D3A] text-[10px] text-[#6b7280] uppercase bg-[#0F1117]/40">
+                          <th className="px-3 py-2 text-left">ID</th>
+                          <th className="px-3 py-2 text-left">Data</th>
+                          <th className="px-3 py-2 text-left">Arquivo</th>
+                          <th className="px-3 py-2 text-left">Tipo (IA)</th>
+                          <th className="px-3 py-2 text-left">Confiança</th>
+                          <th className="px-3 py-2 text-left">Status</th>
+                          <th className="px-3 py-2 text-right">Extraídos</th>
+                          <th className="px-3 py-2 text-right">Gravados</th>
+                          <th className="px-3 py-2 text-right">Custo</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {historico.map((h) => {
+                          const statusIcons: Record<string, string> = {
+                            CONFIRMED: "✅", PREVIEW: "🔍", PROCESSING: "⏳",
+                            CANCELLED: "❌", ERROR: "🚨", UPLOADED: "📤",
+                          };
+                          const confIcons: Record<string, string> = { alta: "🟢", media: "🟡", baixa: "🔴" };
+                          return (
+                            <tr key={h.id} className="border-b border-[#2A2D3A] hover:bg-[#2A2D3A]/20">
+                              <td className="px-3 py-2 text-[#6b7280]">#{h.id}</td>
+                              <td className="px-3 py-2 font-mono text-[10px]">{h.data_upload?.slice(0, 16).replace("T", " ")}</td>
+                              <td className="px-3 py-2 max-w-[140px] truncate text-[#D1D4DC]">{h.arquivo_nome}</td>
+                              <td className="px-3 py-2 text-[#F59E0B]">{TIPO_LABELS[h.tipo_identificado_ia ?? ""] ?? h.tipo_identificado_ia ?? "—"}</td>
+                              <td className="px-3 py-2">{confIcons[h.confianca_ia ?? ""] ?? ""} {h.confianca_ia ?? "—"}</td>
+                              <td className="px-3 py-2">{statusIcons[h.status] ?? ""} {h.status}</td>
+                              <td className="px-3 py-2 text-right">{h.total_eventos_extraidos ?? "—"}</td>
+                              <td className="px-3 py-2 text-right text-[#26A69A]">{h.total_eventos_gravados ?? "—"}</td>
+                              <td className="px-3 py-2 text-right font-mono">${(h.custo_api_usd ?? 0).toFixed(4)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+
             </div>
           )}
         </div>
