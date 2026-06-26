@@ -38,9 +38,20 @@ def calc_evolucao_diaria(
     if not datas:
         return pd.DataFrame()
 
+    datas_set = set(datas)
     eventos_por_data = defaultdict(list)
     for ev in eventos:
-        eventos_por_data[ev["data"]].append(ev)
+        d_ev = ev["data"]
+        if d_ev not in datas_set:
+            # Evento caiu em fim de semana/feriado — avança para o próximo dia útil
+            from datetime import timedelta
+            proximo = d_ev + timedelta(days=1)
+            for _ in range(7):
+                if proximo in datas_set:
+                    d_ev = proximo
+                    break
+                proximo += timedelta(days=1)
+        eventos_por_data[d_ev].append(ev)
 
     posicoes = defaultdict(Posicao)
     linhas = []

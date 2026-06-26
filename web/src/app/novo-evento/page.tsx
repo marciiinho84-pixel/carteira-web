@@ -501,11 +501,14 @@ export default function NovoEvento() {
                       <label className="text-[10px] text-[#6b7280] uppercase">Tipo do documento</label>
                       <select value={impTipo} onChange={(e) => setImpTipo(e.target.value)} className={`mt-1 ${cls}`}>
                         <option value="auto">Detectar automaticamente</option>
-                        <option value="funcef_extrato">FUNCEF — Extrato</option>
-                        <option value="nota_corretagem">Nota de Corretagem</option>
-                        <option value="cei_movimentacoes">CEI / Movimentações</option>
-                        <option value="extrato_fundo">Extrato de Fundo</option>
-                        <option value="informe_rendimentos">Informe de Rendimentos</option>
+                        <option value="funcef">FUNCEF — Extrato</option>
+                        <option value="b3_custodia">B3 — Custódia</option>
+                        <option value="b3_movimentacoes">B3 — Movimentações</option>
+                        <option value="caixa_rv">Caixa RV</option>
+                        <option value="caixa_lci">Caixa LCI</option>
+                        <option value="caixa_ouro">Caixa Ouro</option>
+                        <option value="caixa_fic_func">Caixa FIC Funcionários</option>
+                        <option value="tesouro_direto">Tesouro Direto</option>
                       </select>
                     </div>
                   </div>
