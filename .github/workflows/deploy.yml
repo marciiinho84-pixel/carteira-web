@@ -37,6 +37,6 @@ jobs:
             --quiet \
             --command="set -e && \
               sudo git -C /home/marciiinho84/carteira-web pull origin master && \
-              sudo docker compose -f /home/marciiinho84/carteira-web/docker-compose.yml build nextjs backend && \
-              sudo docker compose -f /home/marciiinho84/carteira-web/docker-compose.yml up -d nextjs backend && \
+              sudo docker compose -f /home/marciiinho84/carteira-web/docker-compose.yml build && \
+              sudo docker compose -f /home/marciiinho84/carteira-web/docker-compose.yml up -d && \
               echo DEPLOY_OK"
