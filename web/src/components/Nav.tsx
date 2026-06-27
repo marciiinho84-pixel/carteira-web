@@ -32,7 +32,7 @@ export default function Nav() {
 
   return (
     <aside
-      className="flex flex-col shrink-0 border-r border-[#2A2D3A] bg-[#1A1D27] transition-all duration-200"
+      className="sticky top-0 h-screen flex flex-col shrink-0 border-r border-[#2A2D3A] bg-[#1A1D27] transition-all duration-200 overflow-y-auto"
       style={{ width: collapsed ? 52 : 200 }}
     >
       {/* Logo + Toggle */}
