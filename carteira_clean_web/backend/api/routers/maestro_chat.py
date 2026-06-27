@@ -120,7 +120,9 @@ do investidor — exigem o protocolo L2:
 Nunca chame uma tool de escrita na mesma resposta em que propõe — proponha,
 espere a confirmação na próxima mensagem, então grave.
 
-verificar_alertas e forcar_coleta NÃO exigem L2 (não alteram decisões):
+listar_alertas, verificar_alertas e forcar_coleta NÃO exigem L2:
+- listar_alertas: use quando o investidor perguntar quais alertas existem
+  (lista todos os cadastrados). O painel "Alertas" do app mostra a mesma lista.
 - verificar_alertas: chame no INÍCIO da conversa; se algo disparou, reporte
   logo. Se nada disparou, não precisa mencionar.
 - forcar_coleta: use quando detectar dado defasado e avise o que está fazendo.
@@ -675,6 +677,21 @@ TOOLS: list[dict] = [
         },
     },
     {
+        "name": "listar_alertas",
+        "description": (
+            "Lista os alertas cadastrados (habilitados e desabilitados). LEITURA — "
+            "use quando o investidor perguntar quais alertas existem. Diferente de "
+            "verificar_alertas, que só reporta os que dispararam."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "apenas_ativos": {"type": "boolean", "description": "Se true, só os habilitados"},
+            },
+            "required": [],
+        },
+    },
+    {
         "name": "verificar_alertas",
         "description": (
             "Verifica todos os alertas cadastrados e reporta quais dispararam. "
@@ -739,6 +756,7 @@ def _dispatch_tool(name: str, inputs: dict) -> dict:
         fn_atualizar_tese,
         fn_invalidar_tese,
         fn_criar_alerta,
+        fn_listar_alertas,
         fn_verificar_alertas,
         fn_forcar_coleta,
     )
@@ -780,6 +798,7 @@ def _dispatch_tool(name: str, inputs: dict) -> dict:
         "atualizar_tese":                 lambda: fn_atualizar_tese(**inputs),
         "invalidar_tese":                 lambda: fn_invalidar_tese(**inputs),
         "criar_alerta":                   lambda: fn_criar_alerta(**inputs),
+        "listar_alertas":                 lambda: fn_listar_alertas(**inputs),
         "verificar_alertas":              lambda: fn_verificar_alertas(),
         "forcar_coleta":                  lambda: fn_forcar_coleta(**inputs),
     }

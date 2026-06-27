@@ -2735,6 +2735,29 @@ def _checar_alerta(a, sinais_cache: dict, aderencia_cache: list, session) -> dic
     return None
 
 
+def fn_listar_alertas(apenas_ativos: bool = False) -> dict:
+    """Lista os alertas cadastrados (habilitados e desabilitados).
+
+    Use quando o investidor perguntar quais alertas existem. Diferente de
+    verificar_alertas, que só reporta os que DISPARARAM.
+
+    Args:
+        apenas_ativos: se True, retorna só os habilitados.
+    """
+    from carteira_clean_web.backend.db.models import Alerta
+    from carteira_clean_web.backend.db.session import get_session
+
+    session = get_session()
+    try:
+        q = session.query(Alerta).order_by(Alerta.criado_em.desc())
+        if apenas_ativos:
+            q = q.filter(Alerta.ativo_bool == 1)
+        itens = [a.to_dict() for a in q.all()]
+        return {"total": len(itens), "alertas": itens}
+    finally:
+        session.close()
+
+
 def fn_verificar_alertas() -> dict:
     """Verifica todos os alertas habilitados e reporta quais dispararam.
 

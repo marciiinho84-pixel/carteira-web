@@ -23,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from carteira_clean_web.backend.api.routers import (
     ativos, eventos, precos_manuais, calcular, resultados, backup, decisoes, importacao, agenda,
     watchlist, sinais, memoria, teses, diario_decisoes, regra_aportes, macro, comportamento,
-    sala_de_comando,
+    sala_de_comando, alertas,
 )
 from carteira_clean_web.backend.api.routers import auth
 from carteira_clean_web.backend.api.routers import maestro_chat
@@ -143,6 +143,7 @@ app.include_router(auth.router, prefix=PREFIX)
 app.include_router(sala_de_comando.router, prefix=PREFIX)
 app.include_router(maestro_chat.router, prefix=PREFIX)
 app.include_router(ativo_detalhe.router, prefix=PREFIX)
+app.include_router(alertas.router, prefix=PREFIX)
 
 # Serve HTML charts gerados por fn_grafico_tecnico
 _charts_dir = "/data/charts"

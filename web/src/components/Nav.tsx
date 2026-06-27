@@ -14,6 +14,7 @@ const LINKS = [
   { href: "/evolucao", label: "Evolução", icon: "📈" },
   { href: "/meta", label: "Meta R$3M", icon: "🎯" },
   { href: "/teses", label: "Teses", icon: "🔬" },
+  { href: "/alertas", label: "Alertas", icon: "🔔" },
   { href: "/risco", label: "Risco", icon: "⚖️" },
   { href: "/novo-evento", label: "Novo Evento", icon: "➕" },
   { href: "/maestro", label: "Maestro", icon: "🤖" },
