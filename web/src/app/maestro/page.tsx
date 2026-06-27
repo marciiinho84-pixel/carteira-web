@@ -113,7 +113,7 @@ function ToolCallIndicator({ tool, done }: { tool: ToolCallState; done: boolean 
           <iframe
             src={`${API_BASE}/charts/${chartArquivo}`}
             className="w-full border-0"
-            style={{ height: "400px" }}
+            style={{ height: "920px" }}
             title="Gráfico técnico"
           />
         </div>

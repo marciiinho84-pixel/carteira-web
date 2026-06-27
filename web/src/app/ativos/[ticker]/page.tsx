@@ -129,7 +129,7 @@ function GraficoTecnico({ ticker }: { ticker: string }) {
       <iframe
         src={`${API_BASE}/charts/${arquivo}`}
         className="w-full border-0 rounded-lg"
-        style={{ height: "440px" }}
+        style={{ height: "920px" }}
         title={`Gráfico técnico ${ticker}`}
       />
     );

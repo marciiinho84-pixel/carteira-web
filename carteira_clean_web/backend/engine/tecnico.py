@@ -306,13 +306,14 @@ def gerar_grafico_html(ticker: str, ohlcv: dict, indicadores: dict) -> str:
     mm200 = _sma(closes, 200)
     rsi_s = _rsi(closes, 14)
     boll_up_s, boll_mid_s, boll_lo_s = _bollinger(closes, 20, 2)
+    macd_s, signal_s, hist_s = _macd(closes)
 
     fig = make_subplots(
-        rows=3, cols=1,
+        rows=4, cols=1,
         shared_xaxes=True,
-        row_heights=[0.6, 0.2, 0.2],
+        row_heights=[0.52, 0.16, 0.16, 0.16],
         vertical_spacing=0.03,
-        subplot_titles=(ticker, "Volume", "RSI 14"),
+        subplot_titles=(ticker, "Volume", "RSI 14", "MACD (12, 26, 9)"),
     )
 
     # ── Candlestick ──────────────────────────────────────────────────────────
@@ -369,6 +370,18 @@ def gerar_grafico_html(ticker: str, ohlcv: dict, indicadores: dict) -> str:
     fig.add_hline(y=70, line_color="red",   line_dash="dot", line_width=1, row=3, col=1)
     fig.add_hline(y=30, line_color="green", line_dash="dot", line_width=1, row=3, col=1)
 
+    # ── MACD ─────────────────────────────────────────────────────────────────
+    hist_colors = [
+        "#26A69A" if (v or 0) >= 0 else "#EF5350" for v in hist_s
+    ]
+    fig.add_trace(go.Bar(x=dates, y=hist_s, name="Histograma",
+                         marker_color=hist_colors, showlegend=False), row=4, col=1)
+    fig.add_trace(go.Scatter(x=dates, y=macd_s, name="MACD",
+                             line=dict(color="#3B82F6", width=1.5)), row=4, col=1)
+    fig.add_trace(go.Scatter(x=dates, y=signal_s, name="Sinal",
+                             line=dict(color="#F97316", width=1.5)), row=4, col=1)
+    fig.add_hline(y=0, line_color="rgba(255,255,255,0.2)", line_width=1, row=4, col=1)
+
     rating = indicadores.get("rating_geral", 0)
     rating_txt = indicadores.get("rating_texto", "neutro")
     fig.update_layout(
@@ -379,7 +392,7 @@ def gerar_grafico_html(ticker: str, ohlcv: dict, indicadores: dict) -> str:
         ),
         template="plotly_dark",
         xaxis_rangeslider_visible=False,
-        height=750,
+        height=900,
         paper_bgcolor="#0F1117",
         plot_bgcolor="#0F1117",
         font=dict(color="#C0C4D0"),
