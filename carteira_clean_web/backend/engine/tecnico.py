@@ -285,28 +285,47 @@ def calcular_indicadores(
     }
 
 
-def gerar_grafico_html(ticker: str, ohlcv: dict, indicadores: dict) -> str:
+def gerar_grafico_html(ticker: str, ohlcv: dict, indicadores: dict, n_exibir: int | None = None) -> str:
     """
     Gera gráfico candlestick interativo com Plotly.
     Retorna o caminho do arquivo HTML gerado.
+
+    n_exibir: se fornecido, calcula indicadores no histórico completo mas
+              exibe apenas os últimos n_exibir candles (garante MM200 visível).
     """
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
 
-    dates  = ohlcv["dates"]
-    opens  = ohlcv["open"]
-    highs  = ohlcv["high"]
-    lows   = ohlcv["low"]
-    closes = ohlcv["close"]
-    vols   = ohlcv.get("volume", [0] * len(closes))
+    closes_full = ohlcv["close"]
+
+    # Calcula séries de indicadores sobre histórico completo
+    mm20_full  = _sma(closes_full, 20)
+    mm50_full  = _sma(closes_full, 50)
+    mm200_full = _sma(closes_full, 200)
+    rsi_full   = _rsi(closes_full, 14)
+    boll_up_full, boll_mid_full, boll_lo_full = _bollinger(closes_full, 20, 2)
+    macd_full, signal_full, hist_full = _macd(closes_full)
+
+    # Trimma para exibição
+    sl = slice(-n_exibir, None) if n_exibir else slice(None)
+    dates  = ohlcv["dates"][sl]
+    opens  = ohlcv["open"][sl]
+    highs  = ohlcv["high"][sl]
+    lows   = ohlcv["low"][sl]
+    closes = closes_full[sl]
+    vols   = ohlcv.get("volume", [0] * len(closes_full))[sl]
+
+    mm20      = mm20_full[sl]
+    mm50      = mm50_full[sl]
+    mm200     = mm200_full[sl]
+    rsi_s     = rsi_full[sl]
+    boll_up_s = boll_up_full[sl]
+    boll_lo_s = boll_lo_full[sl]
+    macd_s    = macd_full[sl]
+    signal_s  = signal_full[sl]
+    hist_s    = hist_full[sl]
 
     ind = indicadores.get("indicadores", {})
-    mm20  = _sma(closes, 20)
-    mm50  = _sma(closes, 50)
-    mm200 = _sma(closes, 200)
-    rsi_s = _rsi(closes, 14)
-    boll_up_s, boll_mid_s, boll_lo_s = _bollinger(closes, 20, 2)
-    macd_s, signal_s, hist_s = _macd(closes)
 
     fig = make_subplots(
         rows=4, cols=1,

@@ -2181,7 +2181,7 @@ def fn_grafico_tecnico(ticker: str, periodo: str = "6mo") -> dict:
     """
     Gera gráfico candlestick interativo (Plotly HTML) com:
     MMs 20/50/200, Bandas de Bollinger, suportes/resistências,
-    linhas de entrada/alvo/stop, volume e RSI em subplots.
+    linhas de entrada/alvo/stop, volume, RSI e MACD em subplots.
 
     Args:
         ticker: código do ativo
@@ -2191,13 +2191,22 @@ def fn_grafico_tecnico(ticker: str, periodo: str = "6mo") -> dict:
     """
     from carteira_clean_web.backend.engine.tecnico import calcular_indicadores, gerar_grafico_html
     ticker = ticker.upper()
-    ohlcv = _buscar_ohlcv(ticker, periodo)
-    if not ohlcv:
+
+    # Busca 2 anos para garantir MM200 calculável; exibe só o período solicitado
+    ohlcv_completo = _buscar_ohlcv(ticker, "2y")
+    if not ohlcv_completo:
         return {"erro": f"Sem dados OHLCV para {ticker}."}
-    indicadores = calcular_indicadores(ticker, ohlcv)
+
+    # Indicadores calculados sobre histórico completo (MM200 precisa de ≥200 candles)
+    indicadores = calcular_indicadores(ticker, ohlcv_completo)
     if "erro" in indicadores:
         return indicadores
-    path = gerar_grafico_html(ticker, ohlcv, indicadores)
+
+    # Passa histórico completo para cálculo das MMs + período de exibição
+    _periodo_candles = {"1mo": 22, "3mo": 66, "6mo": 130, "1y": 252, "2y": 504}
+    n_exibir = _periodo_candles.get(periodo, 130)
+
+    path = gerar_grafico_html(ticker, ohlcv_completo, indicadores, n_exibir=n_exibir)
     return {
         "ticker": ticker,
         "arquivo": path,
