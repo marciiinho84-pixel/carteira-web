@@ -120,12 +120,51 @@ do investidor — exigem o protocolo L2:
 Nunca chame uma tool de escrita na mesma resposta em que propõe — proponha,
 espere a confirmação na próxima mensagem, então grave.
 
-listar_alertas, verificar_alertas e forcar_coleta NÃO exigem L2:
+listar_alertas, verificar_alertas, forcar_coleta e pesquisar_web NÃO exigem L2:
 - listar_alertas: use quando o investidor perguntar quais alertas existem
   (lista todos os cadastrados). O painel "Alertas" do app mostra a mesma lista.
 - verificar_alertas: chame no INÍCIO da conversa; se algo disparou, reporte
   logo. Se nada disparou, não precisa mencionar.
 - forcar_coleta: use quando detectar dado defasado e avise o que está fazendo.
+- pesquisar_web: use quando precisar de dado não disponível no banco interno
+  (consenso de analistas, preço-alvo, notícias recentes, contexto macro do dia).
+
+═══════════════════════════════════════════════════════════
+USO DA WEB — HIERARQUIA DE FONTES E DISCIPLINA
+═══════════════════════════════════════════════════════════
+
+Ao buscar dados na web com pesquisar_web, formule queries direcionadas:
+
+TIER 1 — Dados e múltiplos:
+  tradingview.com → consenso, preço-alvo, técnico
+  investidor10.com.br → fundamentos BR, preço justo
+  statusinvest.com.br → fundamentos BR, comparação
+  fundamentus.com.br → dados brutos, screener
+
+TIER 2 — Research:
+  analisa.genialinvestimentos.com.br → Genial
+  nordinvestimentos.com.br → Nord
+  suno.com.br → Suno
+  kinea.com.br → macro
+
+TIER 3 — Dados oficiais:
+  b3.com.br, cvm.gov.br, bcb.gov.br
+
+TIER 4 — Notícias:
+  infomoney.com.br, valorinveste.globo.com, bloomberglinea.com.br
+
+TIER 5 — Internacional (BDRs):
+  tradingview.com, finance.yahoo.com, seekingalpha.com
+
+DICA DE QUERY: "TICKER informação site:fonte.com.br" para resultados precisos.
+Ex: "ITUB3 preço alvo consenso site:tradingview.com"
+
+DISCIPLINA (anti-alucinação — obrigatória ao usar pesquisar_web):
+- SEMPRE citar fonte (nome do site + URL) ao apresentar resultado.
+- Dado de web = "contexto externo não verificado" — distinto do banco interno.
+- Nunca apresentar dado de blog/fórum como research de casa de análise.
+- Ao citar casa de análise: "segundo a [casa], ..."
+- Se a busca não retornar fonte confiável, diga que não encontrou dado confiável.
 
 ═══════════════════════════════════════════════════════════
 COMO PENSAR (não apenas reportar)
@@ -713,6 +752,24 @@ TOOLS: list[dict] = [
             "required": ["tipo"],
         },
     },
+    {
+        "name": "pesquisar_web",
+        "description": (
+            "Busca na internet via DuckDuckGo. Use para dados NÃO disponíveis no banco interno: "
+            "consenso de analistas, preço-alvo, notícias recentes, contexto macro do dia. "
+            "Formule queries direcionadas com site: para resultados melhores. "
+            "Ex: 'ITUB3 preço alvo consenso site:tradingview.com'. "
+            "SEMPRE cite fonte ao apresentar resultado — dado de web ≠ dado do banco."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Texto da busca. Use 'TICKER info site:fonte.com' para resultados direcionados."},
+                "max_results": {"type": "integer", "description": "Número de resultados (padrão 5, máximo 10)"},
+            },
+            "required": ["query"],
+        },
+    },
 ]
 
 # ── Tool function dispatch ───────────────────────────────────────────────────
@@ -759,6 +816,7 @@ def _dispatch_tool(name: str, inputs: dict) -> dict:
         fn_listar_alertas,
         fn_verificar_alertas,
         fn_forcar_coleta,
+        fn_pesquisar_web,
     )
 
     dispatch: dict[str, Any] = {
@@ -801,6 +859,7 @@ def _dispatch_tool(name: str, inputs: dict) -> dict:
         "listar_alertas":                 lambda: fn_listar_alertas(**inputs),
         "verificar_alertas":              lambda: fn_verificar_alertas(),
         "forcar_coleta":                  lambda: fn_forcar_coleta(**inputs),
+        "pesquisar_web":                  lambda: fn_pesquisar_web(**inputs),
     }
 
     fn = dispatch.get(name)

@@ -2844,3 +2844,56 @@ def fn_forcar_coleta(tipo: str) -> dict:
     except Exception as exc:
         log.exception("Falha em forcar_coleta(%s)", tipo)
         return {"erro": f"Falha na coleta de {tipo}: {exc}"}
+
+
+def fn_pesquisar_web(query: str, max_results: int = 5) -> dict:
+    """Busca na internet via DuckDuckGo. Use para consenso de analistas,
+    preço-alvo, notícias recentes, dados não disponíveis no banco interno.
+
+    DISCIPLINA DE CITAÇÃO (obrigatória):
+    - Sempre cite fonte (nome do site + URL) ao apresentar resultado.
+    - Dado de web = "contexto externo não verificado".
+    - Distinguir dado interno (banco) de externo (web).
+    - Nunca apresentar dado de blog/fórum como research de casa de análise.
+    - Ao citar casa de análise: "segundo a [casa], ..."
+
+    HIERARQUIA DE FONTES — formular queries direcionadas:
+    Tier 1 (dados/múltiplos): tradingview.com, investidor10.com.br,
+      statusinvest.com.br, fundamentus.com.br
+    Tier 2 (research BR): genialinvestimentos.com.br, nordinvestimentos.com.br,
+      suno.com.br, kinea.com.br
+    Tier 3 (oficial): b3.com.br, cvm.gov.br, bcb.gov.br
+    Tier 4 (notícias): infomoney.com.br, valorinveste.globo.com
+    Tier 5 (BDRs/int'l): finance.yahoo.com, seekingalpha.com
+
+    Dica de query: "TICKER informação site:fonte.com" para resultados precisos.
+    Ex: "ITUB3 preço alvo consenso site:tradingview.com"
+
+    Args:
+        query: texto da busca (formule queries específicas, idealmente com site:)
+        max_results: número máximo de resultados (padrão 5, máximo 10)
+    """
+    try:
+        from duckduckgo_search import DDGS
+    except ImportError:
+        return {"erro": "Biblioteca duckduckgo-search não instalada. Execute: pip install duckduckgo-search"}
+
+    max_results = min(int(max_results or 5), 10)
+    try:
+        resultados = []
+        with DDGS() as ddgs:
+            for r in ddgs.text(query, max_results=max_results):
+                resultados.append({
+                    "titulo": r.get("title", ""),
+                    "url": r.get("href", ""),
+                    "snippet": r.get("body", ""),
+                })
+        return {
+            "query": query,
+            "total": len(resultados),
+            "resultados": resultados,
+            "nota": "Dados externos — citar fonte ao apresentar. Verificar credibilidade da fonte antes de usar.",
+        }
+    except Exception as exc:
+        log.exception("Falha em pesquisar_web(%s)", query)
+        return {"erro": f"Falha na busca web: {exc}"}
