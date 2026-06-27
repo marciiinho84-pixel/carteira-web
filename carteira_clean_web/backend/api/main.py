@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT))
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from carteira_clean_web.backend.api.routers import (
     ativos, eventos, precos_manuais, calcular, resultados, backup, decisoes, importacao, agenda,
@@ -142,6 +143,11 @@ app.include_router(auth.router, prefix=PREFIX)
 app.include_router(sala_de_comando.router, prefix=PREFIX)
 app.include_router(maestro_chat.router, prefix=PREFIX)
 app.include_router(ativo_detalhe.router, prefix=PREFIX)
+
+# Serve HTML charts gerados por fn_grafico_tecnico
+_charts_dir = "/data/charts"
+os.makedirs(_charts_dir, exist_ok=True)
+app.mount(f"{PREFIX}/charts", StaticFiles(directory=_charts_dir), name="charts")
 
 
 @app.get("/api/v1/health", include_in_schema=False)

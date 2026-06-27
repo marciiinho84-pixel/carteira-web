@@ -729,6 +729,13 @@ async def _stream_chat(request: ChatRequest) -> AsyncIterator[str]:
                 tool_result = await loop.run_in_executor(
                     None, _dispatch_tool, tool_name, tool_input
                 )
+                # Emite resultado para o frontend poder renderizar charts/dados
+                yield _sse({
+                    "type": "TOOL_CALL_RESULT",
+                    "toolCallId": tool_call_id,
+                    "toolCallName": tool_name,
+                    "result": json.dumps(tool_result, ensure_ascii=False, default=str),
+                })
                 tool_calls_in_turn.append({
                     "tool_use_id": tool_call_id,
                     "result": tool_result,

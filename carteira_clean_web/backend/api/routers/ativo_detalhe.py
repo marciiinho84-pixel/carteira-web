@@ -115,26 +115,18 @@ async def ativo_detalhe(
     # Fundamentos (pode ser lento — 30s)
     fundamentos = await _fundamentos_async(ticker)
 
-    # Extrair métricas básicas de fundamentos
+    # fn_analise_fundamentalista retorna {"todos_indicadores": {"P/L": v, "ROE (%)": v, ...}}
     fund_basicos: dict = {}
     if isinstance(fundamentos, dict) and "erro" not in fundamentos:
-        metricas = fundamentos.get("metricas_atuais", {})
-        if metricas:
+        todos = fundamentos.get("todos_indicadores", {})
+        if todos:
             fund_basicos = {
-                "pl": metricas.get("PL"),
-                "pvp": metricas.get("PVP"),
-                "roe": metricas.get("ROE"),
-                "div_yield": metricas.get("DY"),
-                "margem_ebitda": metricas.get("MARGEM_EBITDA"),
-                "div_liq_ebitda": metricas.get("DIV_LIQ_EBITDA"),
-            }
-        # fallback: tenta ler diretamente
-        if not fund_basicos:
-            fund_basicos = {
-                "pl": fundamentos.get("pl") or fundamentos.get("PL"),
-                "pvp": fundamentos.get("pvp") or fundamentos.get("PVP"),
-                "roe": fundamentos.get("roe") or fundamentos.get("ROE"),
-                "div_yield": fundamentos.get("dy") or fundamentos.get("DY") or fundamentos.get("div_yield"),
+                "pl": todos.get("P/L"),
+                "pvp": todos.get("P/VP"),
+                "roe": todos.get("ROE (%)"),
+                "div_yield": todos.get("DY (%)"),
+                "margem_ebitda": todos.get("Margem EBITDA (%)"),
+                "div_liq_ebitda": todos.get("Dív.Líq/EBITDA"),
             }
 
     return {
@@ -144,3 +136,23 @@ async def ativo_detalhe(
         "fundamentos": fund_basicos,
         "fundamentos_completos": fundamentos if isinstance(fundamentos, dict) and "erro" not in fundamentos else None,
     }
+
+
+@router.get("/ativos/{ticker}/grafico")
+async def ativo_grafico(
+    ticker: str,
+    _email: Annotated[str, Depends(require_auth)],
+):
+    """Gera gráfico técnico HTML via Plotly e retorna o nome do arquivo."""
+    ticker = ticker.upper()
+    loop = asyncio.get_event_loop()
+
+    def _gen():
+        try:
+            from carteira_clean_web.backend.mcp.tools.portfolio import fn_grafico_tecnico
+            return fn_grafico_tecnico(ticker)
+        except Exception as e:
+            log.warning(f"Erro ao gerar gráfico para {ticker}: {e}")
+            return {"erro": str(e)}
+
+    return await loop.run_in_executor(None, _gen)

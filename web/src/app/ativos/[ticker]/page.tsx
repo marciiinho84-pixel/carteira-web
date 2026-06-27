@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Nav from "@/components/Nav";
@@ -79,100 +79,43 @@ function Semaforo({ nivel }: { nivel: string }) {
   return <span title={nivel} style={{ color: s.color }}>{s.emoji}</span>;
 }
 
-function GraficoTecnicoSSE({ ticker }: { ticker: string }) {
-  const [html, setHtml] = useState<string | null>(null);
+function GraficoTecnico({ ticker }: { ticker: string }) {
+  const [arquivo, setArquivo] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    const ctrl = new AbortController();
-    abortRef.current = ctrl;
     setLoading(true);
-    setHtml(null);
+    setArquivo(null);
     setError(null);
 
-    async function fetchChart() {
+    async function load() {
       const token = getToken();
       try {
-        const res = await fetch(`${API_BASE}/maestro/chat`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({
-            messages: [{ role: "user", content: `grafico_tecnico ${ticker}` }],
-            thread_id: `detalhe-${ticker}`,
-          }),
-          signal: ctrl.signal,
+        const res = await fetch(`${API_BASE}/ativos/${ticker}/grafico`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
-
-        if (!res.ok || !res.body) {
-          setError("Não foi possível carregar o gráfico técnico.");
-          setLoading(false);
-          return;
+        const data = await res.json();
+        if (data.arquivo) {
+          const filename = (data.arquivo as string).split("/").pop() ?? "";
+          setArquivo(filename);
+        } else {
+          setError(data.erro ?? "Gráfico indisponível.");
         }
-
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        let found = false;
-
-        while (!found) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            const raw = line.slice(6).trim();
-            if (!raw || raw === "[DONE]") continue;
-            try {
-              const ev = JSON.parse(raw);
-              // Busca resultado de tool grafico_tecnico
-              if (ev.type === "tool_result" || ev.toolCallName === "grafico_tecnico" || ev.toolCallName === "fn_grafico_tecnico") {
-                const content = ev.content ?? ev.delta ?? "";
-                if (typeof content === "string" && content.includes("<")) {
-                  setHtml(content);
-                  found = true;
-                  break;
-                }
-              }
-              // fallback: parse delta que contenha HTML
-              if (ev.type === "text_delta" || ev.type === "content_block_delta") {
-                const delta = ev.delta ?? "";
-                if (typeof delta === "string" && delta.includes("<img") || delta.includes("<svg")) {
-                  setHtml((prev) => (prev ?? "") + delta);
-                  found = true;
-                }
-              }
-            } catch {
-              // ignora JSON inválido
-            }
-          }
-        }
-        reader.cancel();
-        if (!found) {
-          setError("Gráfico técnico não disponível para este ativo.");
-        }
-      } catch (e: unknown) {
-        if ((e as Error).name === "AbortError") return;
+      } catch {
         setError("Erro ao carregar gráfico técnico.");
       } finally {
         setLoading(false);
       }
     }
 
-    fetchChart();
-    return () => ctrl.abort();
+    load();
   }, [ticker]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-48 text-[#6b7280] text-sm">
-        <span className="animate-pulse">Carregando gráfico técnico via Maestro…</span>
+        <span className="animate-pulse">Gerando gráfico técnico…</span>
       </div>
     );
   }
@@ -181,11 +124,13 @@ function GraficoTecnicoSSE({ ticker }: { ticker: string }) {
       <div className="text-xs text-[#6b7280] italic px-4 py-3">{error}</div>
     );
   }
-  if (html) {
+  if (arquivo) {
     return (
-      <div
-        className="overflow-auto"
-        dangerouslySetInnerHTML={{ __html: html }}
+      <iframe
+        src={`${API_BASE}/charts/${arquivo}`}
+        className="w-full border-0 rounded-lg"
+        style={{ height: "440px" }}
+        title={`Gráfico técnico ${ticker}`}
       />
     );
   }
@@ -321,7 +266,7 @@ export default function DetalheAtivo() {
                 </div>
               </div>
               <div className="px-2 py-2">
-                <GraficoTecnicoSSE ticker={ticker} />
+                <GraficoTecnico ticker={ticker} />
               </div>
             </section>
 

@@ -29,6 +29,7 @@ interface AGEvent {
   delta?: string;
   role?: string;
   parentMessageId?: string;
+  result?: string;
 }
 
 interface ChatMessage {
@@ -43,6 +44,7 @@ interface ToolCallState {
   name: string;
   args: string;
   done: boolean;
+  result?: string;
 }
 
 // ── Conversa sidebar ─────────────────────────────────────────────────────────
@@ -66,32 +68,56 @@ function formatTime(iso: string | undefined): string {
 
 function ToolCallIndicator({ tool, done }: { tool: ToolCallState; done: boolean }) {
   const [expanded, setExpanded] = useState(false);
+
+  // Gráfico técnico: renderizar iframe quando resultado disponível
+  let chartArquivo: string | null = null;
+  if (tool.name === "grafico_tecnico" && tool.result) {
+    try {
+      const r = JSON.parse(tool.result);
+      if (r.arquivo) {
+        chartArquivo = (r.arquivo as string).split("/").pop() ?? null;
+      }
+    } catch { /* ignora */ }
+  }
+
   return (
-    <div className="flex items-start gap-2 my-1.5 text-xs">
-      <span className="mt-0.5 text-[#26A69A]">{done ? "✓" : "⟳"}</span>
-      <div className="flex-1">
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="text-[#6b7280] hover:text-[#D1D4DC] transition-colors text-left"
-        >
-          {done ? "chamou" : "chamando"}{" "}
-          <span className="font-mono text-[#26A69A]">{tool.name}</span>
-          {tool.args && tool.args !== "{}" && (
-            <span className="ml-1 text-[#6b7280]">▾</span>
+    <div className="my-1.5 text-xs">
+      <div className="flex items-start gap-2">
+        <span className="mt-0.5 text-[#26A69A]">{done ? "✓" : "⟳"}</span>
+        <div className="flex-1">
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="text-[#6b7280] hover:text-[#D1D4DC] transition-colors text-left"
+          >
+            {done ? "chamou" : "chamando"}{" "}
+            <span className="font-mono text-[#26A69A]">{tool.name}</span>
+            {tool.args && tool.args !== "{}" && (
+              <span className="ml-1 text-[#6b7280]">▾</span>
+            )}
+          </button>
+          {expanded && tool.args && (
+            <pre className="mt-1 text-[10px] text-[#6b7280] bg-[#0F1117] rounded p-2 overflow-x-auto max-h-32">
+              {(() => {
+                try {
+                  return JSON.stringify(JSON.parse(tool.args), null, 2);
+                } catch {
+                  return tool.args;
+                }
+              })()}
+            </pre>
           )}
-        </button>
-        {expanded && tool.args && (
-          <pre className="mt-1 text-[10px] text-[#6b7280] bg-[#0F1117] rounded p-2 overflow-x-auto max-h-32">
-            {(() => {
-              try {
-                return JSON.stringify(JSON.parse(tool.args), null, 2);
-              } catch {
-                return tool.args;
-              }
-            })()}
-          </pre>
-        )}
+        </div>
       </div>
+      {chartArquivo && (
+        <div className="mt-2 rounded-lg overflow-hidden border border-[#2A2D3A]">
+          <iframe
+            src={`${API_BASE}/charts/${chartArquivo}`}
+            className="w-full border-0"
+            style={{ height: "400px" }}
+            title="Gráfico técnico"
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -320,6 +346,16 @@ export default function MaestroPage() {
                 case "TOOL_CALL_END": {
                   const tcs = (msg.toolCalls ?? []).map((tc) =>
                     tc.id === event.toolCallId ? { ...tc, done: true } : tc
+                  );
+                  msg.toolCalls = tcs;
+                  break;
+                }
+
+                case "TOOL_CALL_RESULT": {
+                  const tcs = (msg.toolCalls ?? []).map((tc) =>
+                    tc.id === event.toolCallId
+                      ? { ...tc, result: event.result ?? "" }
+                      : tc
                   );
                   msg.toolCalls = tcs;
                   break;
