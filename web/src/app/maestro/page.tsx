@@ -30,6 +30,7 @@ interface AGEvent {
   role?: string;
   parentMessageId?: string;
   result?: string;
+  conversaId?: number;
 }
 
 interface ChatMessage {
@@ -179,6 +180,8 @@ export default function MaestroPage() {
   const [streaming, setStreaming] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [renamingId, setRenamingId] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -311,6 +314,11 @@ export default function MaestroPage() {
               continue;
             }
 
+            // CONVERSA_ID: backend criou conversa no DB → atualiza thread_id
+            if (event.type === "CONVERSA_ID" && event.conversaId) {
+              setActiveThreadId(String(event.conversaId));
+            }
+
             setMessages((prev) => {
               const idx = prev.findIndex((m) => m.id === assistantMsgId);
               if (idx === -1) return prev;
@@ -437,6 +445,23 @@ export default function MaestroPage() {
     loadConversas();
   }, [activeThreadId, loadConversas]);  // eslint-disable-line react-hooks/exhaustive-deps
 
+  const startRename = useCallback((convId: number, titulo: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRenamingId(convId);
+    setRenameValue(titulo || "");
+  }, []);
+
+  const commitRename = useCallback(async (convId: number) => {
+    const token = getToken();
+    await fetch(`${API_BASE}/conversas/${convId}/titulo`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ titulo: renameValue.trim() || "Nova conversa" }),
+    });
+    setRenamingId(null);
+    loadConversas();
+  }, [renameValue, loadConversas]);
+
   const stopStreaming = () => {
     abortRef.current?.abort();
     setStreaming(false);
@@ -483,32 +508,58 @@ export default function MaestroPage() {
                 .map((c) => (
                   <div
                     key={c.id}
-                    className={`group flex items-center gap-1 pr-2 transition-colors hover:bg-[#1A1D27] ${
+                    className={`group flex items-center gap-1 pr-1 transition-colors hover:bg-[#1A1D27] ${
                       activeThreadId === String(c.id) ? "bg-[#1A1D27]" : ""
                     }`}
                   >
-                    {/* 9a: clicar abre conversa carregando mensagens do backend */}
-                    <button
-                      onClick={() => openConversation(c.id)}
-                      className="flex-1 text-left px-4 py-2.5 text-xs"
-                    >
-                      <div className={`truncate ${activeThreadId === String(c.id) ? "text-[#D1D4DC]" : "text-[#6b7280]"}`}>
-                        {c.titulo || "Conversa"}
-                      </div>
-                      {c.criado_em && (
-                        <div className="text-[10px] text-[#6b7280] mt-0.5">
-                          {formatTime(c.criado_em)}
+                    {renamingId === c.id ? (
+                      /* Inline rename input */
+                      <input
+                        autoFocus
+                        className="flex-1 min-w-0 mx-2 my-1 px-2 py-1 text-xs rounded bg-[#0F1117] border border-[#26A69A] text-[#D1D4DC] outline-none"
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onBlur={() => commitRename(c.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") commitRename(c.id);
+                          if (e.key === "Escape") setRenamingId(null);
+                        }}
+                      />
+                    ) : (
+                      /* Normal row */
+                      <button
+                        onClick={() => openConversation(c.id)}
+                        className="flex-1 min-w-0 text-left px-4 py-2.5 text-xs"
+                      >
+                        <div className={`truncate ${activeThreadId === String(c.id) ? "text-[#D1D4DC]" : "text-[#6b7280]"}`}>
+                          {c.titulo || "Conversa"}
                         </div>
-                      )}
-                    </button>
-                    {/* 9c: botão apagar */}
-                    <button
-                      onClick={(e) => deleteConversation(c.id, e)}
-                      className="opacity-0 group-hover:opacity-100 text-[#6b7280] hover:text-[#EF5350] transition-all p-1 rounded shrink-0"
-                      title="Apagar conversa"
-                    >
-                      ✕
-                    </button>
+                        {c.criado_em && (
+                          <div className="text-[10px] text-[#6b7280] mt-0.5">
+                            {formatTime(c.criado_em)}
+                          </div>
+                        )}
+                      </button>
+                    )}
+                    {/* Botões de ação (visíveis no hover) */}
+                    {renamingId !== c.id && (
+                      <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 shrink-0 transition-all">
+                        <button
+                          onClick={(e) => startRename(c.id, c.titulo || "", e)}
+                          className="text-[#6b7280] hover:text-[#26A69A] p-1 rounded"
+                          title="Renomear"
+                        >
+                          ✎
+                        </button>
+                        <button
+                          onClick={(e) => deleteConversation(c.id, e)}
+                          className="text-[#6b7280] hover:text-[#EF5350] p-1 rounded"
+                          title="Apagar"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))
             )}

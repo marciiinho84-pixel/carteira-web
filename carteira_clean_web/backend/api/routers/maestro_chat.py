@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import uuid
+from datetime import datetime
 from typing import Annotated, Any, AsyncIterator
 
 from fastapi import APIRouter, Depends
@@ -19,6 +20,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from carteira_clean_web.backend.api.routers.auth import require_auth
+from carteira_clean_web.backend.db.models import Conversa, Mensagem
+from carteira_clean_web.backend.db.session import get_session
 
 log = logging.getLogger("maestro_chat")
 
@@ -661,6 +664,45 @@ def _sse(event: dict) -> str:
 
 # ── Streaming generator ──────────────────────────────────────────────────────
 
+def _db_criar_ou_obter_conversa(thread_id: str) -> tuple[int, bool]:
+    """Retorna (conversa_id, is_new). Cria conversa no DB se thread_id não for numérico."""
+    if thread_id.isdigit():
+        return int(thread_id), False
+    now = datetime.utcnow()
+    db = get_session()
+    try:
+        c = Conversa(titulo="Nova conversa", criada_em=now, atualizada_em=now,
+                     ativa=1, total_msgs=0, total_tokens=0, custo_usd=0.0)
+        db.add(c)
+        db.commit()
+        db.refresh(c)
+        return c.id, True
+    finally:
+        db.close()
+
+
+def _db_salvar_mensagens(conversa_id: int, user_text: str, assistant_text: str) -> None:
+    """Salva par user/assistant no DB e atualiza metadados da conversa."""
+    db = get_session()
+    try:
+        now = datetime.utcnow()
+        for role, content in [("user", user_text), ("assistant", assistant_text)]:
+            if content.strip():
+                db.add(Mensagem(
+                    conversa_id=conversa_id, role=role, content=content,
+                    tokens_in=0, tokens_out=0, custo_usd=0.0, criada_em=now,
+                ))
+        c = db.get(Conversa, conversa_id)
+        if c:
+            c.total_msgs = (c.total_msgs or 0) + 2
+            c.atualizada_em = now
+            if c.titulo == "Nova conversa" and user_text.strip():
+                c.titulo = user_text.strip()[:60]
+        db.commit()
+    finally:
+        db.close()
+
+
 async def _stream_chat(request: ChatRequest) -> AsyncIterator[str]:
     if not _HAS_ANTHROPIC:
         yield _sse({"type": "TEXT_MESSAGE_START", "messageId": "err", "role": "assistant"})
@@ -677,10 +719,22 @@ async def _stream_chat(request: ChatRequest) -> AsyncIterator[str]:
         yield _sse({"type": "RUN_FINISHED"})
         return
 
+    # Criar ou recuperar conversa no DB
+    loop = asyncio.get_event_loop()
+    conversa_id, is_new = await loop.run_in_executor(
+        None, _db_criar_ou_obter_conversa, request.thread_id
+    )
+    if is_new:
+        yield _sse({"type": "CONVERSA_ID", "conversaId": conversa_id})
+
     client = _anthropic_lib.Anthropic(api_key=api_key)
 
     # Converter mensagens
     messages: list[dict] = [{"role": m.role, "content": m.content} for m in request.messages]
+
+    # Texto do usuário (última mensagem) e texto acumulado do assistente
+    user_text = next((m.content for m in reversed(request.messages) if m.role == "user"), "")
+    assistant_text_acc: list[str] = []
 
     loop = asyncio.get_event_loop()
 
@@ -718,6 +772,7 @@ async def _stream_chat(request: ChatRequest) -> AsyncIterator[str]:
                     text_started = True
                 # Simular streaming em chunks
                 text = block.text
+                assistant_text_acc.append(text)
                 chunk_size = 20
                 for i in range(0, len(text), chunk_size):
                     chunk = text[i : i + chunk_size]
@@ -763,6 +818,11 @@ async def _stream_chat(request: ChatRequest) -> AsyncIterator[str]:
 
         # Se stop_reason == "end_turn" ou sem tool calls — terminamos
         if response.stop_reason == "end_turn" or not tool_calls_in_turn:
+            # Salvar mensagens no DB
+            assistant_text = " ".join(assistant_text_acc).strip()
+            await loop.run_in_executor(
+                None, _db_salvar_mensagens, conversa_id, user_text, assistant_text
+            )
             yield _sse({"type": "RUN_FINISHED"})
             return
 
