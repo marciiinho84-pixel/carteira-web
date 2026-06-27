@@ -179,7 +179,7 @@ export default function MaestroPage() {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState("");
 
@@ -206,6 +206,11 @@ export default function MaestroPage() {
       router.push("/login");
     }
   }, [router]);
+
+  // Abre sidebar por padrão no desktop
+  useEffect(() => {
+    if (window.innerWidth >= 768) setSidebarOpen(true);
+  }, []);
 
   // Load conversas
   const loadConversas = useCallback(async () => {
@@ -482,10 +487,18 @@ export default function MaestroPage() {
       style={{ backgroundColor: "#0F1117", color: "#D1D4DC" }}
     >
       {/* ── Sidebar ── */}
+      {/* Backdrop mobile */}
       {sidebarOpen && (
-        <aside
-          className="w-64 flex flex-col shrink-0 border-r"
-          style={{ borderColor: "#2A2D3A", backgroundColor: "#0D0F17" }}
+        <div
+          className="fixed inset-0 z-30 bg-black/60 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+      <aside
+        className={`fixed md:relative inset-y-0 left-0 z-40 md:z-auto h-full md:h-auto w-64 flex flex-col shrink-0 border-r transition-transform duration-200 md:transition-none ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full md:hidden"
+        }`}
+        style={{ borderColor: "#2A2D3A", backgroundColor: "#0D0F17" }}
         >
           {/* Sidebar header */}
           <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "#2A2D3A" }}>
@@ -582,7 +595,6 @@ export default function MaestroPage() {
             </Link>
           </div>
         </aside>
-      )}
 
       {/* ── Main area ── */}
       <div className="flex flex-col flex-1 min-w-0">
