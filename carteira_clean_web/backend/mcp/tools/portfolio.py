@@ -2412,3 +2412,412 @@ def fn_consultar_glossario(termo: str = "", categoria: str = "") -> dict:
         },
         "uso": "fn_consultar_glossario(termo='P/L') ou fn_consultar_glossario(categoria='tecnico')",
     }
+
+
+# ════════════════════════════════════════════════════════════════════
+# CAMADA 3 — TOOLS DE ESCRITA (L2: propõe → confirma → grava)
+# A confirmação acontece no diálogo (system prompt). Estas funções
+# executam a gravação apenas quando o Maestro as chama, já confirmadas.
+# ════════════════════════════════════════════════════════════════════
+
+_ACOES_DIARIO = {"COMPRA", "VENDA", "AUMENTO", "REDUCAO", "MANTER", "WATCHLIST"}
+_BLOCOS_IPS = {"SWING_TRADE", "GROWTH", "DEFENSIVOS", "RENDA_FIXA"}
+_TIPOS_ALERTA = {"RSI", "banda_IPS", "preco", "invalidacao"}
+
+
+def fn_registrar_tese(
+    ticker: str,
+    racional: str,
+    bloco_ips: str | None = None,
+    cenario_esperado: str | None = None,
+    criterio_invalidacao: str | None = None,
+    gatilho: str | None = None,
+) -> dict:
+    """Grava uma nova tese de investimento na tabela `teses`.
+
+    L2: só deve ser chamada após o investidor confirmar os detalhes.
+
+    Args:
+        ticker: código do ativo (ex: WEGE3)
+        racional: tese central — por que investir
+        bloco_ips: SWING_TRADE | GROWTH | DEFENSIVOS | RENDA_FIXA (opcional)
+        cenario_esperado: cenário-base esperado (opcional)
+        criterio_invalidacao: o que invalidaria a tese (opcional)
+        gatilho: gatilho de monitoramento — anexado ao critério (opcional)
+    """
+    from datetime import date
+    from carteira_clean_web.backend.db.models import Tese
+    from carteira_clean_web.backend.db.session import get_session
+
+    if not ticker or not racional:
+        return {"erro": "ticker e racional são obrigatórios."}
+
+    crit = (criterio_invalidacao or "").strip()
+    if gatilho and gatilho.strip():
+        crit = (crit + f"\nGatilho: {gatilho.strip()}").strip()
+
+    session = get_session()
+    try:
+        t = Tese(
+            ticker=ticker.upper(),
+            bloco_ips=bloco_ips,
+            racional=racional.strip(),
+            cenario_esperado=(cenario_esperado or "").strip() or None,
+            criterio_invalidacao=crit or None,
+            nivel_invalidacao="VERDE",
+            data_criacao=date.today(),
+            status="ATIVA",
+        )
+        session.add(t)
+        session.commit()
+        session.refresh(t)
+        return {"ok": True, "acao": "tese_registrada", "tese": t.to_dict()}
+    except Exception as exc:
+        session.rollback()
+        return {"erro": f"Falha ao registrar tese: {exc}"}
+    finally:
+        session.close()
+
+
+def fn_registrar_decisao_diario(
+    ticker: str,
+    acao: str,
+    racional: str,
+    conviccao: int = 3,
+    preco: float | None = None,
+    cenario_esperado: str | None = None,
+    tese_id: int | None = None,
+) -> dict:
+    """Grava uma decisão no diário estruturado (tabela `diario_decisoes`).
+
+    L2: só deve ser chamada após o investidor confirmar.
+
+    Args:
+        ticker: código do ativo
+        acao: COMPRA | VENDA | AUMENTO | REDUCAO | MANTER | WATCHLIST
+        racional: por que tomou a decisão
+        conviccao: 1 a 5 (default 3)
+        preco: preço de entrada/referência (opcional)
+        cenario_esperado: cenário esperado (opcional)
+        tese_id: vincular a uma tese existente (opcional)
+    """
+    from datetime import date
+    from carteira_clean_web.backend.db.models import DiarioDecisao
+    from carteira_clean_web.backend.db.session import get_session
+
+    acao_up = (acao or "").upper()
+    if acao_up not in _ACOES_DIARIO:
+        return {"erro": f"acao inválida: {acao}. Use uma de {sorted(_ACOES_DIARIO)}."}
+    try:
+        conv = int(conviccao)
+    except (TypeError, ValueError):
+        conv = 3
+    if not 1 <= conv <= 5:
+        return {"erro": "conviccao deve estar entre 1 e 5."}
+    if not ticker or not racional:
+        return {"erro": "ticker e racional são obrigatórios."}
+
+    session = get_session()
+    try:
+        d = DiarioDecisao(
+            data_decisao=date.today(),
+            ticker=ticker.upper(),
+            acao=acao_up,
+            racional=racional.strip(),
+            cenario_esperado=(cenario_esperado or "").strip() or None,
+            conviccao=conv,
+            preco_entrada=preco,
+            tese_id=tese_id,
+        )
+        session.add(d)
+        session.commit()
+        session.refresh(d)
+        return {"ok": True, "acao": "decisao_registrada", "decisao": d.to_dict()}
+    except Exception as exc:
+        session.rollback()
+        return {"erro": f"Falha ao registrar decisão: {exc}"}
+    finally:
+        session.close()
+
+
+def fn_atualizar_tese(
+    tese_id: int,
+    racional: str | None = None,
+    bloco_ips: str | None = None,
+    cenario_esperado: str | None = None,
+    criterio_invalidacao: str | None = None,
+    nivel_invalidacao: str | None = None,
+) -> dict:
+    """Atualiza campos de uma tese existente. L2: só após confirmação.
+
+    Passe apenas os campos a alterar; os demais ficam intactos.
+    nivel_invalidacao: VERDE | AMARELO | VERMELHO
+    """
+    from datetime import date
+    from carteira_clean_web.backend.db.models import Tese
+    from carteira_clean_web.backend.db.session import get_session
+
+    session = get_session()
+    try:
+        t = session.get(Tese, tese_id)
+        if not t:
+            return {"erro": f"Tese {tese_id} não encontrada."}
+        if racional is not None:
+            t.racional = racional.strip()
+        if bloco_ips is not None:
+            t.bloco_ips = bloco_ips
+        if cenario_esperado is not None:
+            t.cenario_esperado = cenario_esperado.strip() or None
+        if criterio_invalidacao is not None:
+            t.criterio_invalidacao = criterio_invalidacao.strip() or None
+        if nivel_invalidacao is not None:
+            nv = nivel_invalidacao.upper()
+            if nv not in {"VERDE", "AMARELO", "VERMELHO"}:
+                return {"erro": "nivel_invalidacao deve ser VERDE, AMARELO ou VERMELHO."}
+            t.nivel_invalidacao = nv
+        t.data_atualizacao = date.today()
+        session.commit()
+        session.refresh(t)
+        return {"ok": True, "acao": "tese_atualizada", "tese": t.to_dict()}
+    except Exception as exc:
+        session.rollback()
+        return {"erro": f"Falha ao atualizar tese: {exc}"}
+    finally:
+        session.close()
+
+
+def fn_invalidar_tese(tese_id: int, motivo: str) -> dict:
+    """Marca uma tese como INVALIDADA com o motivo. L2: só após confirmação."""
+    from datetime import date
+    from carteira_clean_web.backend.db.models import Tese
+    from carteira_clean_web.backend.db.session import get_session
+
+    if not motivo or not motivo.strip():
+        return {"erro": "motivo da invalidação é obrigatório."}
+
+    session = get_session()
+    try:
+        t = session.get(Tese, tese_id)
+        if not t:
+            return {"erro": f"Tese {tese_id} não encontrada."}
+        t.status = "INVALIDADA"
+        t.nivel_invalidacao = "VERMELHO"
+        t.observacao_encerramento = motivo.strip()
+        t.data_atualizacao = date.today()
+        session.commit()
+        session.refresh(t)
+        return {"ok": True, "acao": "tese_invalidada", "tese": t.to_dict()}
+    except Exception as exc:
+        session.rollback()
+        return {"erro": f"Falha ao invalidar tese: {exc}"}
+    finally:
+        session.close()
+
+
+def fn_criar_alerta(
+    tipo: str,
+    condicao: str,
+    ativo: str | None = None,
+    valor_gatilho: float | None = None,
+) -> dict:
+    """Cadastra um alerta/gatilho monitorável (tabela `alertas`). L2: só após confirmação.
+
+    Args:
+        tipo: RSI | banda_IPS | preco | invalidacao
+        condicao: operador/descrição (ex: ">=", "<=", "fora_banda")
+        ativo: alvo — ticker (RSI/preco), bloco_ips (banda_IPS) ou tese_id (invalidacao)
+        valor_gatilho: limiar numérico (ex: 80 para "RSI >= 80")
+    """
+    from datetime import datetime
+    from carteira_clean_web.backend.db.models import Alerta
+    from carteira_clean_web.backend.db.session import get_session
+
+    if tipo not in _TIPOS_ALERTA:
+        return {"erro": f"tipo inválido: {tipo}. Use {sorted(_TIPOS_ALERTA)}."}
+    if not condicao or not condicao.strip():
+        return {"erro": "condicao é obrigatória."}
+
+    session = get_session()
+    try:
+        a = Alerta(
+            tipo=tipo,
+            ativo=(ativo or "").strip().upper() or None if tipo in {"RSI", "preco", "banda_IPS"} else (ativo or None),
+            condicao=condicao.strip(),
+            valor_gatilho=valor_gatilho,
+            ativo_bool=1,
+            disparado_em=None,
+            criado_em=datetime.utcnow(),
+        )
+        session.add(a)
+        session.commit()
+        session.refresh(a)
+        return {"ok": True, "acao": "alerta_criado", "alerta": a.to_dict()}
+    except Exception as exc:
+        session.rollback()
+        return {"erro": f"Falha ao criar alerta: {exc}"}
+    finally:
+        session.close()
+
+
+def _checar_alerta(a, sinais_cache: dict, aderencia_cache: list, session) -> dict | None:
+    """Avalia um alerta. Retorna dict de disparo se gatilhou, senão None."""
+    tipo = a.tipo
+    alvo = a.ativo or ""
+    valor = a.valor_gatilho
+    cond = (a.condicao or "").strip()
+
+    def _cmp(atual: float, operador: str, limiar: float) -> bool:
+        if limiar is None:
+            return False
+        if operador in (">=", ">", "acima", "maior"):
+            return atual >= limiar
+        if operador in ("<=", "<", "abaixo", "menor"):
+            return atual <= limiar
+        return abs(atual - limiar) < 1e-9
+
+    if tipo == "RSI":
+        sinal = sinais_cache.get(alvo)
+        rsi = sinal.get("rsi") if sinal else None
+        if rsi is None:
+            return None
+        if _cmp(rsi, cond, valor):
+            return {"alerta_id": a.id, "tipo": tipo, "ativo": alvo,
+                    "mensagem": f"{alvo} RSI {rsi:.1f} cruzou {cond} {valor:.0f}",
+                    "valor_atual": rsi}
+        return None
+
+    if tipo == "preco":
+        from carteira_clean_web.backend.api import cache as ec
+        if not ec.esta_calculado():
+            ec.carregar_disco()
+        preco_atual = None
+        if ec.esta_calculado():
+            est = ec.get_estado()
+            precos_pub = est.get("precos_publicos", {})
+            hoje = est.get("hoje")
+            preco_atual = preco_em(precos_pub.get(alvo, {}), hoje) if hoje else None
+        if preco_atual is None:
+            return None
+        if _cmp(preco_atual, cond, valor):
+            return {"alerta_id": a.id, "tipo": tipo, "ativo": alvo,
+                    "mensagem": f"{alvo} preço R${preco_atual:.2f} cruzou {cond} R${valor:.2f}",
+                    "valor_atual": preco_atual}
+        return None
+
+    if tipo == "banda_IPS":
+        bloco = next((b for b in aderencia_cache if b["bloco_ips"] == alvo), None)
+        if not bloco:
+            return None
+        if bloco["status"] != "dentro":
+            return {"alerta_id": a.id, "tipo": tipo, "ativo": alvo,
+                    "mensagem": f"Bloco {alvo} {bloco['status'].replace('_', ' ')} "
+                                f"({bloco['w_real_pct']}% vs banda "
+                                f"{bloco['banda_inf_pct']}–{bloco['banda_sup_pct']}%)",
+                    "valor_atual": bloco["w_real_pct"]}
+        return None
+
+    if tipo == "invalidacao":
+        from carteira_clean_web.backend.db.models import Tese
+        try:
+            tese_id = int(alvo)
+        except (TypeError, ValueError):
+            return None
+        t = session.get(Tese, tese_id)
+        if not t:
+            return None
+        if t.status == "INVALIDADA" or t.nivel_invalidacao == "VERMELHO":
+            return {"alerta_id": a.id, "tipo": tipo, "ativo": alvo,
+                    "mensagem": f"Tese {tese_id} ({t.ticker}) em estado de invalidação "
+                                f"(status={t.status}, nível={t.nivel_invalidacao})",
+                    "valor_atual": None}
+        return None
+
+    return None
+
+
+def fn_verificar_alertas() -> dict:
+    """Verifica todos os alertas habilitados e reporta quais dispararam.
+
+    O Maestro deve chamar no início da conversa. Marca disparado_em nos
+    que gatilharam. Não envia push — o disparo aparece na conversa.
+    """
+    from datetime import datetime
+    from carteira_clean_web.backend.db.models import Alerta
+    from carteira_clean_web.backend.db.session import get_session
+
+    session = get_session()
+    try:
+        alertas = session.query(Alerta).filter(Alerta.ativo_bool == 1).all()
+        if not alertas:
+            return {"total": 0, "disparados": [], "nota": "Nenhum alerta cadastrado."}
+
+        # Pré-carrega sinais (RSI) e aderência IPS uma vez só
+        tickers_rsi = [a.ativo for a in alertas if a.tipo == "RSI" and a.ativo]
+        sinais_cache: dict = {}
+        if tickers_rsi:
+            try:
+                from carteira_clean_web.backend.engine.sinais_tecnicos import calcular_sinais_lote
+                for s in calcular_sinais_lote(tickers_rsi):
+                    sinais_cache[s["ticker"]] = s
+            except Exception as exc:
+                log.warning(f"Falha ao calcular sinais p/ alertas: {exc}")
+
+        aderencia_cache: list = []
+        if any(a.tipo == "banda_IPS" for a in alertas):
+            try:
+                res = fn_analise_aderencia_setorial()
+                aderencia_cache = res.get("blocos", res.get("aderencia", [])) if isinstance(res, dict) else []
+            except Exception as exc:
+                log.warning(f"Falha aderência p/ alertas: {exc}")
+
+        disparados = []
+        agora = datetime.utcnow()
+        for a in alertas:
+            try:
+                hit = _checar_alerta(a, sinais_cache, aderencia_cache, session)
+            except Exception as exc:
+                log.warning(f"Alerta {a.id} falhou: {exc}")
+                hit = None
+            if hit:
+                a.disparado_em = agora
+                disparados.append(hit)
+        session.commit()
+
+        return {
+            "total": len(alertas),
+            "n_disparados": len(disparados),
+            "disparados": disparados,
+            "nota": "Nenhum alerta disparou." if not disparados else None,
+        }
+    finally:
+        session.close()
+
+
+def fn_forcar_coleta(tipo: str) -> dict:
+    """Dispara coleta de dados sob demanda. Use quando detectar dado velho.
+
+    Args:
+        tipo: cotacoes | fundamentos | macro | eventos
+    """
+    tipo = (tipo or "").strip().lower()
+    try:
+        if tipo == "cotacoes":
+            from carteira_clean_web.backend.api import cache as ec
+            ec.recalcular(no_api=False)
+            return {"ok": True, "acao": "coleta_cotacoes", "nota": "Cotações atualizadas e engine recalculado."}
+        if tipo == "fundamentos":
+            from carteira_clean_web.backend.engine.fundamentals_client import salvar_fundamentos_db
+            res = salvar_fundamentos_db()
+            return {"ok": True, "acao": "coleta_fundamentos", "resultado": res}
+        if tipo == "macro":
+            from carteira_clean_web.backend.engine.macro_client import coletar_macro
+            res = coletar_macro()
+            return {"ok": True, "acao": "coleta_macro", "resultado": res}
+        if tipo == "eventos":
+            from carteira_clean_web.backend.engine.macro_client import coletar_eventos_corporativos
+            res = coletar_eventos_corporativos()
+            return {"ok": True, "acao": "coleta_eventos", "resultado": res}
+        return {"erro": f"tipo inválido: {tipo}. Use cotacoes, fundamentos, macro ou eventos."}
+    except Exception as exc:
+        log.exception("Falha em forcar_coleta(%s)", tipo)
+        return {"erro": f"Falha na coleta de {tipo}: {exc}"}

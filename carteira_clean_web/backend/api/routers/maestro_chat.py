@@ -102,6 +102,30 @@ PRINCÍPIOS INEGOCIÁVEIS
    poderia ter.
 
 ═══════════════════════════════════════════════════════════
+AÇÕES DE ESCRITA — NÍVEL L2 (propõe → confirma → grava)
+═══════════════════════════════════════════════════════════
+
+Você tem tools que GRAVAM no banco: registrar_tese, registrar_decisao_diario,
+atualizar_tese, invalidar_tese, criar_alerta. Estas mudam o estado da carteira
+do investidor — exigem o protocolo L2:
+
+1. MONTE a ação a partir do que o investidor disse.
+2. MOSTRE antes de gravar, em formato claro: "Vou registrar: [campos].
+   Confirma?" — liste cada campo que será gravado.
+3. SÓ chame a tool de escrita DEPOIS de uma confirmação afirmativa explícita
+   ("sim", "pode", "confirma", "grava"). Nunca grave por iniciativa própria.
+4. Se o investidor disser "não" ou pedir ajuste, ajuste a proposta e mostre
+   de novo. Não grave até ele aprovar.
+
+Nunca chame uma tool de escrita na mesma resposta em que propõe — proponha,
+espere a confirmação na próxima mensagem, então grave.
+
+verificar_alertas e forcar_coleta NÃO exigem L2 (não alteram decisões):
+- verificar_alertas: chame no INÍCIO da conversa; se algo disparou, reporte
+  logo. Se nada disparou, não precisa mencionar.
+- forcar_coleta: use quando detectar dado defasado e avise o que está fazendo.
+
+═══════════════════════════════════════════════════════════
 COMO PENSAR (não apenas reportar)
 ═══════════════════════════════════════════════════════════
 
@@ -559,6 +583,119 @@ TOOLS: list[dict] = [
             "required": [],
         },
     },
+    # ── CAMADA 3 — TOOLS DE ESCRITA (L2: confirme antes de chamar) ────────────
+    {
+        "name": "registrar_tese",
+        "description": (
+            "Grava uma nova tese de investimento. ESCRITA L2: só chame DEPOIS "
+            "de mostrar os detalhes ao investidor e ele confirmar explicitamente."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "ticker": {"type": "string", "description": "Código do ativo"},
+                "racional": {"type": "string", "description": "Tese central — por que investir"},
+                "bloco_ips": {"type": "string", "description": "SWING_TRADE | GROWTH | DEFENSIVOS | RENDA_FIXA"},
+                "cenario_esperado": {"type": "string", "description": "Cenário-base esperado"},
+                "criterio_invalidacao": {"type": "string", "description": "O que invalidaria a tese"},
+                "gatilho": {"type": "string", "description": "Gatilho de monitoramento"},
+            },
+            "required": ["ticker", "racional"],
+        },
+    },
+    {
+        "name": "registrar_decisao_diario",
+        "description": (
+            "Grava uma decisão no diário estruturado. ESCRITA L2: só chame "
+            "após o investidor confirmar."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "ticker": {"type": "string", "description": "Código do ativo"},
+                "acao": {"type": "string", "description": "COMPRA | VENDA | AUMENTO | REDUCAO | MANTER | WATCHLIST"},
+                "racional": {"type": "string", "description": "Por que tomou a decisão"},
+                "conviccao": {"type": "integer", "description": "Convicção de 1 a 5 (default 3)"},
+                "preco": {"type": "number", "description": "Preço de entrada/referência"},
+                "cenario_esperado": {"type": "string", "description": "Cenário esperado"},
+                "tese_id": {"type": "integer", "description": "ID de tese a vincular (opcional)"},
+            },
+            "required": ["ticker", "acao", "racional"],
+        },
+    },
+    {
+        "name": "atualizar_tese",
+        "description": (
+            "Atualiza campos de uma tese existente. ESCRITA L2: só após confirmação. "
+            "Passe apenas os campos a alterar."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "tese_id": {"type": "integer", "description": "ID da tese"},
+                "racional": {"type": "string"},
+                "bloco_ips": {"type": "string"},
+                "cenario_esperado": {"type": "string"},
+                "criterio_invalidacao": {"type": "string"},
+                "nivel_invalidacao": {"type": "string", "description": "VERDE | AMARELO | VERMELHO"},
+            },
+            "required": ["tese_id"],
+        },
+    },
+    {
+        "name": "invalidar_tese",
+        "description": (
+            "Marca uma tese como INVALIDADA com motivo. ESCRITA L2: só após confirmação."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "tese_id": {"type": "integer", "description": "ID da tese"},
+                "motivo": {"type": "string", "description": "Motivo da invalidação"},
+            },
+            "required": ["tese_id", "motivo"],
+        },
+    },
+    {
+        "name": "criar_alerta",
+        "description": (
+            "Cadastra um alerta/gatilho monitorável. ESCRITA L2: só após confirmação. "
+            "Tipos: RSI (ativo=ticker), preco (ativo=ticker), banda_IPS (ativo=bloco_ips), "
+            "invalidacao (ativo=tese_id)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "tipo": {"type": "string", "description": "RSI | banda_IPS | preco | invalidacao"},
+                "condicao": {"type": "string", "description": "Operador: '>=', '<=', 'fora_banda'"},
+                "ativo": {"type": "string", "description": "Alvo: ticker, bloco_ips ou tese_id"},
+                "valor_gatilho": {"type": "number", "description": "Limiar numérico (ex: 80 p/ RSI>=80)"},
+            },
+            "required": ["tipo", "condicao"],
+        },
+    },
+    {
+        "name": "verificar_alertas",
+        "description": (
+            "Verifica todos os alertas cadastrados e reporta quais dispararam. "
+            "LEITURA — chame no INÍCIO da conversa e relate os disparos ao investidor."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "forcar_coleta",
+        "description": (
+            "Dispara coleta de dados sob demanda quando detectar dado velho. "
+            "tipo: cotacoes | fundamentos | macro | eventos."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "tipo": {"type": "string", "description": "cotacoes | fundamentos | macro | eventos"},
+            },
+            "required": ["tipo"],
+        },
+    },
 ]
 
 # ── Tool function dispatch ───────────────────────────────────────────────────
@@ -597,6 +734,13 @@ def _dispatch_tool(name: str, inputs: dict) -> dict:
         fn_noticias_ativos,
         fn_impacto_macro,
         fn_consultar_glossario,
+        fn_registrar_tese,
+        fn_registrar_decisao_diario,
+        fn_atualizar_tese,
+        fn_invalidar_tese,
+        fn_criar_alerta,
+        fn_verificar_alertas,
+        fn_forcar_coleta,
     )
 
     dispatch: dict[str, Any] = {
@@ -631,6 +775,13 @@ def _dispatch_tool(name: str, inputs: dict) -> dict:
         "noticias_ativos":                lambda: fn_noticias_ativos(**inputs),
         "impacto_macro":                  lambda: fn_impacto_macro(**inputs),
         "consultar_glossario":            lambda: fn_consultar_glossario(**inputs),
+        "registrar_tese":                 lambda: fn_registrar_tese(**inputs),
+        "registrar_decisao_diario":       lambda: fn_registrar_decisao_diario(**inputs),
+        "atualizar_tese":                 lambda: fn_atualizar_tese(**inputs),
+        "invalidar_tese":                 lambda: fn_invalidar_tese(**inputs),
+        "criar_alerta":                   lambda: fn_criar_alerta(**inputs),
+        "verificar_alertas":              lambda: fn_verificar_alertas(),
+        "forcar_coleta":                  lambda: fn_forcar_coleta(**inputs),
     }
 
     fn = dispatch.get(name)

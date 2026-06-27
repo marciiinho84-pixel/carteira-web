@@ -405,6 +405,41 @@ class DiarioDecisao(Base):
         }
 
 
+class Alerta(Base):
+    """Gatilho monitorável pelo Maestro (Camada 3 do polimento).
+
+    Tipos: RSI, banda_IPS, preco, invalidacao.
+    `ativo` guarda o alvo (ticker, bloco_ips ou tese_id conforme o tipo).
+    `ativo_bool` indica se o alerta está habilitado (1) ou desabilitado (0).
+    """
+    __tablename__ = "alertas"
+
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    tipo          = Column(Text, nullable=False)
+    ativo         = Column(Text, nullable=True)
+    condicao      = Column(Text, nullable=False)
+    valor_gatilho = Column(Float, nullable=True)
+    ativo_bool    = Column(Integer, nullable=False, default=1)
+    disparado_em  = Column(DateTime, nullable=True)
+    criado_em     = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "tipo IN ('RSI','banda_IPS','preco','invalidacao')", name="ck_alerta_tipo"
+        ),
+        Index("ix_alertas_ativo", "ativo"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id, "tipo": self.tipo, "ativo": self.ativo,
+            "condicao": self.condicao, "valor_gatilho": self.valor_gatilho,
+            "habilitado": bool(self.ativo_bool),
+            "disparado_em": self.disparado_em.isoformat() if self.disparado_em else None,
+            "criado_em": self.criado_em.isoformat() if self.criado_em else None,
+        }
+
+
 class RegraAporte(Base):
     """Regra de aporte mensal (Fatia 7). Apenas 1 ativa por vez."""
     __tablename__ = "regra_aportes"
