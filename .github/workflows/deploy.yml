@@ -29,6 +29,22 @@ jobs:
         with:
           project_id: project-e64490eb-e084-4e83-ac5
 
+      - name: Injetar secrets no .env da VM
+        env:
+          BRAVE_KEY: ${{ secrets.BRAVE_API_KEY }}
+        run: |
+          gcloud compute ssh carteira-clean \
+            --zone=us-central1-a \
+            --tunnel-through-iap \
+            --quiet \
+            --command="ENV_FILE=/home/marciiinho84/carteira-web/.env && \
+              sudo touch \$ENV_FILE && \
+              if sudo grep -q '^BRAVE_API_KEY=' \$ENV_FILE; then \
+                sudo sed -i 's|^BRAVE_API_KEY=.*|BRAVE_API_KEY=$BRAVE_KEY|' \$ENV_FILE; \
+              else \
+                echo 'BRAVE_API_KEY=$BRAVE_KEY' | sudo tee -a \$ENV_FILE > /dev/null; \
+              fi"
+
       - name: Deploy na VM via IAP tunnel
         run: |
           gcloud compute ssh carteira-clean \

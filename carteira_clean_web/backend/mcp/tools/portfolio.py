@@ -2847,7 +2847,7 @@ def fn_forcar_coleta(tipo: str) -> dict:
 
 
 def fn_pesquisar_web(query: str, max_results: int = 5) -> dict:
-    """Busca na internet via DuckDuckGo. Use para consenso de analistas,
+    """Busca na internet via Brave Search API. Use para consenso de analistas,
     preço-alvo, notícias recentes, dados não disponíveis no banco interno.
 
     DISCIPLINA DE CITAÇÃO (obrigatória):
@@ -2873,27 +2873,44 @@ def fn_pesquisar_web(query: str, max_results: int = 5) -> dict:
         query: texto da busca (formule queries específicas, idealmente com site:)
         max_results: número máximo de resultados (padrão 5, máximo 10)
     """
-    try:
-        from duckduckgo_search import DDGS
-    except ImportError:
-        return {"erro": "Biblioteca duckduckgo-search não instalada. Execute: pip install duckduckgo-search"}
+    import os
+    import httpx
+
+    api_key = os.environ.get("BRAVE_API_KEY", "")
+    if not api_key:
+        return {"erro": "BRAVE_API_KEY não configurada no ambiente."}
 
     max_results = min(int(max_results or 5), 10)
     try:
-        resultados = []
-        with DDGS() as ddgs:
-            for r in ddgs.text(query, max_results=max_results):
-                resultados.append({
-                    "titulo": r.get("title", ""),
-                    "url": r.get("href", ""),
-                    "snippet": r.get("body", ""),
-                })
+        resp = httpx.get(
+            "https://api.search.brave.com/res/v1/web/search",
+            params={"q": query, "count": max_results},
+            headers={
+                "Accept": "application/json",
+                "Accept-Encoding": "gzip",
+                "X-Subscription-Token": api_key,
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        raw = data.get("web", {}).get("results", [])
+        resultados = [
+            {
+                "titulo": r.get("title", ""),
+                "url": r.get("url", ""),
+                "snippet": r.get("description", ""),
+            }
+            for r in raw
+        ]
         return {
             "query": query,
             "total": len(resultados),
             "resultados": resultados,
-            "nota": "Dados externos — citar fonte ao apresentar. Verificar credibilidade da fonte antes de usar.",
+            "nota": "Dados externos — citar fonte ao apresentar. Verificar credibilidade antes de usar.",
         }
+    except httpx.HTTPStatusError as exc:
+        return {"erro": f"Brave Search retornou erro HTTP {exc.response.status_code}: {exc.response.text[:200]}"}
     except Exception as exc:
         log.exception("Falha em pesquisar_web(%s)", query)
         return {"erro": f"Falha na busca web: {exc}"}
