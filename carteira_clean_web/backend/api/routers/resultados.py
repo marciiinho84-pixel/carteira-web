@@ -17,9 +17,11 @@ from collections import defaultdict
 from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
 
 from carteira_clean_web.backend.api import cache as engine_cache
+from carteira_clean_web.backend.api.deps import get_db
 from carteira_clean_web.backend.api.schemas import (
     PosicaoOut, VendaOut, EvolucaoDiariaOut, AlertaOut,
     DashboardOut, MetaOut, AtribuicaoOut, CarteiraRVOut, BrissonFachlerOut,
@@ -46,8 +48,9 @@ def _exige_cache():
 # ─── Posições ────────────────────────────────────────────────────
 
 @router.get("/posicoes", response_model=list[PosicaoOut])
-def posicoes():
+def posicoes(db: Session = Depends(get_db)):
     """Foto atual de todas as posições com P&L."""
+    from carteira_clean_web.backend.db.models import Ativo as AtivoDB
     estado = _exige_cache()
     posicoes_dict = estado["posicoes"]
     ativos = estado["ativos"]
@@ -55,6 +58,14 @@ def posicoes():
     precos_man = estado.get("precos_manuais", {})
     hoje = estado["hoje"]
     df_evo = estado["df_evo"]
+
+    # Carrega ultima_reconciliacao_lci para ativos LCI/LCA
+    _rec_lci_map = {
+        row.ticker: row.ultima_reconciliacao_lci
+        for row in db.query(AtivoDB).filter(
+            AtivoDB.ultima_reconciliacao_lci.isnot(None)
+        ).all()
+    }
 
     pat_gerida = 0
     pat_funcef = 0
@@ -74,7 +85,11 @@ def posicoes():
         familia = info.get("familia", "")
         composite = info.get("composite", "Gerida")
 
-        if p.qtd < 1e-9 and familia not in AGREGADO_PRIVADO:
+        # LCI/LCA detectado por padrão de ticker mesmo sem familia registrada
+        _is_lci_lca = tkr.upper().startswith(("LCI-", "LCA-"))
+        _is_agregado = familia in AGREGADO_PRIVADO or _is_lci_lca
+
+        if p.qtd < 1e-9 and not _is_agregado:
             continue
 
         preco_atual = None
@@ -83,7 +98,7 @@ def posicoes():
         if preco_atual is None:
             preco_atual = preco_em(precos_man.get(tkr, {}), hoje, max_lookback_dias=60)
 
-        if familia in AGREGADO_PRIVADO:
+        if _is_agregado:
             valor_atual = preco_atual if preco_atual else p.custo_total
         else:
             valor_atual = p.qtd * preco_atual if preco_atual else p.custo_total
@@ -112,7 +127,7 @@ def posicoes():
                 d_minus_1 = pd.bdate_range(end=data_real, periods=2)[0].date()
                 p_d1 = preco_em(serie_man, d_minus_1, max_lookback_dias=10)
                 if p_d1 and p_d1 > 0:
-                    if familia in AGREGADO_PRIVADO:
+                    if _is_agregado:
                         var_dia_pct = (preco_atual - p_d1) / p_d1
                         var_dia = preco_atual - p_d1
                     else:
@@ -125,6 +140,20 @@ def posicoes():
             yield_12m_ativo = round((prov_ativo * (12.0 / meses_periodo)) / valor_atual, 6)
         else:
             yield_12m_ativo = 0.0
+
+        # Badge de staleness para LCI/LCA
+        alerta_reconciliacao = None
+        if familia == "Letra de Crédito" or _is_lci_lca:
+            ultima_rec = _rec_lci_map.get(tkr)
+            if ultima_rec is not None:
+                from datetime import timedelta as _td
+                dias_sem_rec = (hoje - ultima_rec).days
+                if dias_sem_rec > 180:
+                    meses = dias_sem_rec // 30
+                    alerta_reconciliacao = {
+                        "dias": dias_sem_rec,
+                        "mensagem": f"sem reconciliação há {meses} meses",
+                    }
 
         resultado.append(PosicaoOut(
             ticker=tkr,
@@ -141,6 +170,7 @@ def posicoes():
             var_dia=round(var_dia, 2) if var_dia is not None else None,
             var_dia_pct=round(var_dia_pct, 6) if var_dia_pct is not None else None,
             yield_12m=yield_12m_ativo,
+            alerta_reconciliacao=alerta_reconciliacao,
         ))
     return resultado
 

@@ -99,13 +99,19 @@ def run(
             for dt, v in serie.items():
                 precos_manuais[tkr].setdefault(dt, v)  # manual tem prioridade
 
-    # Calcula saldo diário de LCIs com taxa CDI em eventos COMPRA (obs="CDI:xx.x")
+    # Calcula saldo diário de LCIs/LCAs com taxa CDI em eventos COMPRA
+    import re as _re_lci
     from carteira_clean_web.backend.engine.constantes import AGREGADO_PRIVADO
+    _CDI_RE = _re_lci.compile(r"CDI[:\s]+([\d]+)[,\.](\d+)")
     lci_tickers = {
         ev["ativo"]
         for ev in eventos
-        if ev.get("tipo") == "COMPRA" and str(ev.get("obs") or "").startswith("CDI:")
-        and ativos.get(ev["ativo"], {}).get("familia") in AGREGADO_PRIVADO
+        if ev.get("tipo") == "COMPRA"
+        and (
+            str(ev.get("ativo", "")).upper().startswith(("LCI-", "LCA-"))
+            or ativos.get(ev["ativo"], {}).get("familia") in AGREGADO_PRIVADO
+        )
+        and _CDI_RE.search(str(ev.get("obs") or ""))
     }
     if lci_tickers and not no_api:
         for tkr in lci_tickers:

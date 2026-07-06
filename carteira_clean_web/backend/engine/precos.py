@@ -599,16 +599,17 @@ def calcular_saldo_lci(
     if no_api or not HAS_NETWORK:
         return {}
 
+    import re as _re
+    _CDI_RE = _re.compile(r"CDI[:\s]+([\d]+)[,\.](\d+)\s*%?")
     contratos = []
     for ev in eventos:
         if ev.get("ativo") != ticker or ev.get("tipo") != "COMPRA":
             continue
         obs = str(ev.get("obs") or "")
-        import re as _re
-        m = _re.match(r"CDI:([\d.]+)", obs)
+        m = _CDI_RE.search(obs)
         if not m:
             continue
-        taxa_pct = float(m.group(1)) / 100
+        taxa_pct = float(f"{m.group(1)}.{m.group(2)}") / 100
         dt_inicio = ev["data"]
         if hasattr(dt_inicio, "date"):
             dt_inicio = dt_inicio.date()
@@ -647,9 +648,17 @@ def calcular_saldo_lci(
     dias = sorted(cdi_serie.keys())
     running = {i: None for i in range(len(contratos))}
     resultado = {}
+    cdi_ultimo = None
 
     for dt in dias:
-        cdi_d = cdi_serie[dt]
+        if dt in cdi_serie:
+            cdi_d = cdi_serie[dt]
+            cdi_ultimo = cdi_d
+        elif cdi_ultimo is not None:
+            cdi_d = cdi_ultimo
+            log.warning(f"CDI BCB: gap em {dt}, usando último valor {cdi_ultimo:.6f} (WARN)")
+        else:
+            continue
         saldo_total = 0.0
         for i, c in enumerate(contratos):
             if dt < c["data_inicio"]:

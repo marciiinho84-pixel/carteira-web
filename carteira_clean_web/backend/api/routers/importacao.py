@@ -18,8 +18,10 @@ from typing import Optional
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
+import re as _re_importacao
+
 from carteira_clean_web.backend.api.deps import get_db
-from carteira_clean_web.backend.db.models import Evento, Importacao, ImportacaoEvento, PrecoManual
+from carteira_clean_web.backend.db.models import Ativo, Evento, Importacao, ImportacaoEvento, PrecoManual
 from sqlalchemy import func
 
 log = logging.getLogger("api.importacao")
@@ -192,6 +194,92 @@ def _reconciliar_funcef(db: Session, saldo_extrato: dict | None) -> dict:
     return resultado
 
 
+_CDI_RE_IMP = _re_importacao.compile(r"CDI[:\s]+([\d]+)[,\.](\d+)")
+_SALDO_RE = _re_importacao.compile(r"saldo atual R\$([\d\.]+,[\d]+)")
+
+
+def _auto_registrar_ativo_lci(db: Session, ticker: str, data_compra) -> None:
+    """Auto-registra ativo LCI/LCA na tabela ativos se ainda não existir."""
+    existente = db.query(Ativo).filter(Ativo.ticker == ticker).first()
+    if existente is None:
+        db.add(Ativo(
+            ticker=ticker,
+            classe="RENDA_FIXA",
+            bloco_ips="RENDA_FIXA",
+            familia="Letra de Crédito",
+            ultima_reconciliacao_lci=data_compra,
+        ))
+        log.info(f"LCI: auto-registrado ativo {ticker} (Letra de Crédito / RENDA_FIXA)")
+    else:
+        existente.ultima_reconciliacao_lci = data_compra
+        log.info(f"LCI: atualizado ultima_reconciliacao_lci={data_compra} em {ticker}")
+
+
+def _reconciliar_lci(db: Session, ticker: str, obs: str, data_ev) -> dict | None:
+    """
+    Reconcilia saldo LCI/LCA: curva CDI vs saldo do extrato no obs.
+    Retorna dict com resultado ou None se obs não tem padrão de saldo.
+    """
+    m_saldo = _SALDO_RE.search(obs)
+    if not m_saldo:
+        # sem padrão de saldo no obs — atualiza silenciosamente
+        ativo_db = db.query(Ativo).filter(Ativo.ticker == ticker).first()
+        if ativo_db:
+            ativo_db.ultima_reconciliacao_lci = date.today()
+        return None
+
+    # Parseia saldo do extrato (formato "R$11.041,02")
+    saldo_str = m_saldo.group(1).replace(".", "").replace(",", ".")
+    try:
+        saldo_extrato = float(saldo_str)
+    except ValueError:
+        return None
+
+    # Calcula saldo pela curva CDI
+    try:
+        from carteira_clean_web.backend.engine.precos import calcular_saldo_lci
+        from carteira_clean_web.backend.db.models import Evento as EventoDB
+        eventos_db = db.query(EventoDB).filter(
+            EventoDB.ativo == ticker,
+            EventoDB.tipo == "COMPRA",
+        ).all()
+        eventos_lista = [e.to_dict() for e in eventos_db]
+        data_ref = data_ev if isinstance(data_ev, date) else date.fromisoformat(str(data_ev))
+        saldos = calcular_saldo_lci(ticker, eventos_lista, data_ref)
+        saldo_curva = saldos.get(data_ref) or (saldos[max(saldos.keys())] if saldos else None)
+    except Exception as e:
+        log.warning(f"LCI reconciliação {ticker}: erro ao calcular saldo_curva — {e}")
+        saldo_curva = None
+
+    divergencia = abs((saldo_curva or 0) - saldo_extrato)
+    ativo_db = db.query(Ativo).filter(Ativo.ticker == ticker).first()
+
+    if divergencia <= 1.0:
+        if ativo_db:
+            ativo_db.ultima_reconciliacao_lci = date.today()
+        return {
+            "ticker": ticker,
+            "saldo_curva": round(saldo_curva, 2) if saldo_curva else None,
+            "saldo_extrato": round(saldo_extrato, 2),
+            "divergencia": round(divergencia, 2),
+            "status": "OK",
+        }
+    else:
+        log.warning(
+            f"LCI {ticker}: divergência de reconciliação — "
+            f"curva=R${saldo_curva:,.2f} vs extrato=R${saldo_extrato:,.2f} "
+            f"(diff=R${divergencia:,.2f})"
+        )
+        return {
+            "ticker": ticker,
+            "saldo_curva": round(saldo_curva, 2) if saldo_curva else None,
+            "saldo_extrato": round(saldo_extrato, 2),
+            "divergencia": round(divergencia, 2),
+            "status": "DIVERGENCIA",
+            "mensagem": f"Saldo calculado diverge do extrato em R$ {divergencia:,.2f}. Verificar ou gravar AJUSTE.",
+        }
+
+
 def _gravar_eventos(
     db: Session,
     imp_id: int,
@@ -210,11 +298,31 @@ def _gravar_eventos(
     cotas_inseridas = 0
     cotas_conflito = []
     reconciliacao = {}
+    reconciliacao_lci = []
 
     for i, ev in enumerate(eventos):
         if indices_aprovados is not None and i not in indices_aprovados:
             continue
         if ev.get("duplicata") or ev.get("ignorar"):
+            continue
+
+        ticker = str(ev.get("ativo") or "").upper()
+        eh_lci = ticker.startswith(("LCI-", "LCA-"))
+
+        # RENDIMENTO de LCI/LCA: não gravar — a curva CDI já captura o acúmulo.
+        # Em vez disso, reconciliar saldo se obs tiver padrão de saldo.
+        if eh_lci and ev.get("tipo") == "RENDIMENTO":
+            obs = str(ev.get("obs") or "")
+            data_ev_rec = date.fromisoformat(ev["data"]) if isinstance(ev["data"], str) else ev["data"]
+            rec = _reconciliar_lci(db, ticker, obs, data_ev_rec)
+            if rec:
+                reconciliacao_lci.append(rec)
+            else:
+                # atualiza ultima_reconciliacao_lci silenciosamente
+                ativo_db = db.query(Ativo).filter(Ativo.ticker == ticker).first()
+                if ativo_db:
+                    ativo_db.ultima_reconciliacao_lci = date.today()
+            log.info(f"LCI: RENDIMENTO de {ticker} não gravado — curva CDI é fonte de valoração")
             continue
 
         # Processar cotas FUNCEF antes de gravar o evento
@@ -247,6 +355,11 @@ def _gravar_eventos(
             db.add(assoc)
             ids_gravados.append(evento_db.id)
             gravados += 1
+
+            # Auto-registrar ativo LCI/LCA após gravar COMPRA
+            if eh_lci and ev.get("tipo") == "COMPRA":
+                _auto_registrar_ativo_lci(db, ticker, data_ev)
+
         except Exception as e:
             log.warning(f"Evento {i} não gravado: {e} — {ev}")
 
@@ -265,6 +378,7 @@ def _gravar_eventos(
         "cotas_inseridas": cotas_inseridas,
         "cotas_conflito": cotas_conflito,
         "reconciliacao": reconciliacao,
+        "reconciliacao_lci": reconciliacao_lci,
     }
 
 
@@ -496,6 +610,7 @@ def confirmar_importacao(
         "cotas_inseridas": res["cotas_inseridas"],
         "cotas_conflito": res["cotas_conflito"],
         "reconciliacao": rec,
+        "reconciliacao_lci": res.get("reconciliacao_lci", []),
     }
 
 
@@ -566,6 +681,7 @@ def confirmar_direto(
         "cotas_inseridas": res["cotas_inseridas"],
         "cotas_conflito": res["cotas_conflito"],
         "reconciliacao": rec,
+        "reconciliacao_lci": res.get("reconciliacao_lci", []),
     }
 
 

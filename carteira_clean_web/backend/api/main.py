@@ -50,6 +50,7 @@ async def lifespan(app: FastAPI):
     _ddls = [
         "ALTER TABLE conversas ADD COLUMN resumo_historico TEXT",
         "ALTER TABLE mensagens ADD COLUMN incluida_no_resumo INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE ativos ADD COLUMN ultima_reconciliacao_lci DATE",
     ]
     with engine.connect() as conn:
         for ddl in _ddls:
@@ -58,6 +59,28 @@ async def lifespan(app: FastAPI):
                 conn.commit()
             except Exception:
                 pass  # coluna já existe
+
+        # Auto-registrar tickers LCI-*/LCA-* importados sem cadastro em ativos
+        try:
+            compras_lci = conn.execute(text(
+                "SELECT DISTINCT ativo, MIN(data) as data FROM eventos "
+                "WHERE tipo = 'COMPRA' AND (ativo LIKE 'LCI-%' OR ativo LIKE 'LCA-%') "
+                "GROUP BY ativo"
+            )).fetchall()
+            for ativo, data_compra in compras_lci:
+                existente = conn.execute(
+                    text("SELECT id FROM ativos WHERE ticker = :t"), {"t": ativo}
+                ).fetchone()
+                if existente is None:
+                    conn.execute(text(
+                        "INSERT INTO ativos "
+                        "(ticker, classe, familia, composite, bloco_ips, ultima_reconciliacao_lci) "
+                        "VALUES (:t, 'RENDA_FIXA', 'Letra de Crédito', 'Gerida', 'RENDA_FIXA', :d)"
+                    ), {"t": ativo, "d": str(data_compra)[:10]})
+                    log.info(f"Startup: auto-registrado ativo LCI {ativo}")
+            conn.commit()
+        except Exception as exc:
+            log.warning(f"Startup: auto-registro LCI falhou ({exc})")
 
         # Deduplicar precos_manuais: manter o id maior por (ticker, data)
         try:

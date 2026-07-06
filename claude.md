@@ -1,119 +1,199 @@
-# CLAUDE.md
+# CLAUDE.md — App Minha Carteira
 
-Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
+*Instruções para o Claude Code. Lido em toda sessão.*
 
-**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+---
+
+## Sobre o projeto
+
+App Minha Carteira — sistema self-hosted de gestão de portfólio
+de investimentos pessoais. Economista brasileiro, investidor
+individual. Metáfora orquestral: usuário = maestro/compositor,
+~31 tools MCP = instrumentistas, IA orquestradora = maestro.
+
+Conceito central: duas lentes acopladas — "janela para fora"
+(contexto de mercado) + "espelho para dentro" (padrões
+comportamentais do investidor). A decisão é sempre do usuário.
+
+---
+
+## Stack e infra
+
+| Componente | Detalhe |
+|---|---|
+| Backend | FastAPI, porta 8000 |
+| Frontend React | Next.js em Docker, porta 3000 |
+| Frontend legado | Streamlit, porta 8501 (paralelo em /streamlit/) |
+| MCP | FastMCP, porta 8001, ~31 tools, Bearer token |
+| Banco | **PostgreSQL** em Docker (NÃO SQLite) |
+| Proxy | Caddy (HTTPS, Let's Encrypt, basic auth) |
+| Auth | Google OAuth (NextAuth.js), whitelist marciiinho84@gmail.com, JWT 30 dias |
+| VM | `carteira-clean`, e2-small, us-central1-a, IP 34.122.120.77, 25GB disco, 2GB swap |
+| DNS | minhacarteira.duckdns.org |
+| Backup | pg_dump → GCS gs://carteira-backup-474073, cron 22h UTC |
+
+## Deploy — REGRAS CRÍTICAS
+
+**O ambiente de produção é EXCLUSIVAMENTE a VM GCP `carteira-clean`.**
+Nunca fazer deploy no servidor local. Todo deploy:
+1. Confirmar hostname da VM antes de agir
+2. Validar pela URL pública (minhacarteira.duckdns.org) depois
+
+**Deploy automático:** push no master → GitHub Actions (.github/workflows/deploy.yml)
+→ SSH via IAP → git pull + docker compose build + up -d.
+Usa Workload Identity Federation (sem secrets no GitHub).
+
+**⚠️ O workflow deve rebuildar TODOS os containers**, não só nextjs.
+Mudanças no backend não chegam à VM se o workflow só faz build do nextjs.
+
+**Deploy manual (quando necessário):**
+```bash
+gcloud compute ssh carteira-clean --zone=us-central1-a --tunnel-through-iap -- \
+  "cd /home/marciiinho84/carteira-web && git pull && sudo docker compose build --no-cache && sudo docker compose up -d"
+```
+
+**SSH:** exclusivamente via IAP tunnel. Porta 22 NÃO está aberta.
+```bash
+gcloud compute ssh carteira-clean --zone=us-central1-a --tunnel-through-iap
+```
+
+## Banco de dados
+
+- **PostgreSQL** no container `carteira-web-postgres-1`
+- Migrations Alembic (0001-0008). Rodar com:
+  `sudo docker exec carteira-web-backend-1 alembic upgrade head`
+- Tabela de eventos: `eventos` (não "events"). Coluna `ativo` tem ticker direto
+- **NUNCA usar sqlite3.connect()** — tudo via SQLAlchemy/session.py
+- Constraint UNIQUE em séries temporais (ticker, data) para prevenir duplicatas
+
+## Crons na VM
+
+| Horário (UTC) | O que faz |
+|---|---|
+| 03:00 | Duck DNS renewal |
+| 21:30 | Coleta cotações (yfinance) |
+| 22:00 | Backup pg_dump → GCS |
+| 22:15 | Coleta fundamentos (yfinance) |
+| 22:20 | Coleta macro (BCB SGS) |
+| Seg 12:00 | Focus BCB (Olinda) |
+
+## IPS — Classificação de ativos
+
+**Fonte de verdade: coluna `bloco_ips` na tabela `ativos` do PostgreSQL.**
+Consultar com: `SELECT ticker, bloco_ips FROM ativos ORDER BY bloco_ips;`
+
+| Bloco | Alvo | Banda | Benchmark |
+|---|---|---|---|
+| SWING_TRADE | 30% | ±10pp | IBOV |
+| GROWTH | 20% | ±10pp | Nasdaq BRL |
+| DEFENSIVOS | 20% | ±5pp | Ouro BRL |
+| RENDA_FIXA | 30% | ±5pp | CDI |
+| FORA_IPS | — | — | — |
+
+**FUNCEF fica FORA da atribuição IPS.** Composite="FUNCEF".
+Não mostrar o que não se controla.
+
+## Documentação do projeto
+
+```
+docs/produto/
+├── 01-conceito.md          ← constituição (raramente muda)
+├── 02-estrutura.md         ← arquitetura
+├── 03-leituras-x-estrutura.md
+├── 04-reconciliacao.md
+├── IPS.md
+├── 06-plano-implementacao.md  ← plano mestre (onde estamos, decisões)
+├── 07-prompts-implementacao.md ← registro histórico (Fases 1-5 congeladas, 6-7 futuras)
+└── polimento/
+    ├── 00-indice.md        ← índice das frentes de polimento
+    ├── 01-maestro.md       ← polimento do Maestro (atual)
+    └── ...                 ← páginas (criadas quando iniciar)
+```
+
+---
 
 ## 1. Think Before Coding
 
 **Don't assume. Don't hide confusion. Surface tradeoffs.**
 
-Before implementing:
-- State your assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them - don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- If something is unclear, stop. Name what's confusing. Ask.
+- State assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them.
+- If a simpler approach exists, say so.
+- If something is unclear, stop and ask.
 
 ## 2. Simplicity First
 
-**Minimum code that solves the problem. Nothing speculative.**
+**Minimum code that solves the problem.**
 
 - No features beyond what was asked.
 - No abstractions for single-use code.
-- No "flexibility" or "configurability" that wasn't requested.
-- No error handling for impossible scenarios.
-- If you write 200 lines and it could be 50, rewrite it.
-
-Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+- No speculative "flexibility".
+- If 200 lines could be 50, rewrite.
 
 ## 3. Surgical Changes
 
-**Touch only what you must. Clean up only your own mess.**
+**Touch only what you must.**
 
-When editing existing code:
-- Don't "improve" adjacent code, comments, or formatting.
-- Don't refactor things that aren't broken.
-- Match existing style, even if you'd do it differently.
-- If you notice unrelated dead code, mention it - don't delete it.
-
-When your changes create orphans:
-- Remove imports/variables/functions that YOUR changes made unused.
-- Don't remove pre-existing dead code unless asked.
-
-The test: Every changed line should trace directly to the user's request.
+- Don't "improve" adjacent code.
+- Match existing style.
+- Remove only what YOUR changes made unused.
 
 ## 4. Goal-Driven Execution
 
 **Define success criteria. Loop until verified.**
 
-Transform tasks into verifiable goals:
-- "Add validation" → "Write tests for invalid inputs, then make them pass"
-- "Fix the bug" → "Write a test that reproduces it, then make it pass"
-- "Refactor X" → "Ensure tests pass before and after"
+For multi-step tasks: [Step] → verify: [check]
 
-For multi-step tasks, state a brief plan:
-[Step] → verify: [check]
+## 5. Fluxos de registro — Carteira
 
-[Step] → verify: [check]
+### Registrar COMPRA
 
-[Step] → verify: [check]
-Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+**Caso A — Dinheiro NOVO (recurso externo):**
+1. Registrar `APORTE_EXTERNO` no ativo recebedor (ex: CAIXA FIC FUNC)
+2. Registrar `COMPRA` com checkbox "Descontar do FIC FUNC" DESMARCADO
 
----
-
-**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
-
----
-
-## 5. Carteira Clean — Fluxos e UX de Registro
-
-### Como registrar uma COMPRA de ativo
-
-**Caso A — Dinheiro NOVO (recurso externo que entra na carteira):**
-
-1. Registrar `APORTE_EXTERNO` no ativo recebedor (ex: CAIXA FIC FUNC), com o valor do aporte
-2. Registrar `COMPRA` do ativo-alvo com o checkbox **"Descontar do FIC FUNC" DESMARCADO**
-
-> Por quê: O `APORTE_EXTERNO` é processado por `twr.py` como fluxo externo (denominador do TWR). Isso isola o capital novo da rentabilidade real da carteira — sem distorção de performance.
-
-**Caso B — Dinheiro já na carteira (FIC FUNC ou proventos de venda):**
-
-1. Registrar `COMPRA` do ativo-alvo com o checkbox **"Descontar do FIC FUNC" MARCADO**
-   - O sistema auto-cria um `RESGATE` do FIC FUNC na mesma data e valor
-
-> Por quê: É uma transferência interna — nenhum capital externo entra na carteira, então não há fluxo a registrar.
+**Caso B — Dinheiro já na carteira:**
+1. Registrar `COMPRA` com checkbox "Descontar do FIC FUNC" MARCADO
+   (auto-cria RESGATE do FIC FUNC)
 
 ### Mapeamento técnico
 
-| Tipo de evento | Família válida | Efeito no TWR |
+| Tipo | Efeito no TWR |
+|---|---|
+| APORTE_EXTERNO | fluxo positivo (neutro para performance) |
+| RESGATE_EXTERNO | fluxo negativo |
+| CONTRIBUICAO | fluxo para carteira FUNCEF |
+| COMPRA | transferência interna (sem efeito no fluxo) |
+
+`FLUXOS_EXTERNOS = {"CONTRIBUICAO", "RESGATE_EXTERNO", "APORTE_EXTERNO"}`
+
+## 6. Níveis de automação
+
+| Nível | Nome | Default |
 |---|---|---|
-| `APORTE_EXTERNO` | qualquer | fluxo positivo no denominador (neutro para performance) |
-| `RESGATE_EXTERNO` | qualquer | fluxo negativo no denominador |
-| `CONTRIBUICAO` | FUNCEF | fluxo para carteira FUNCEF |
-| `COMPRA` | qualquer | transferência interna (sem efeito no fluxo externo) |
+| L1 | Informar | — |
+| **L2** | **Aconselhar** | **Sim** |
+| L3 | Propor | — |
+| L4 | Executar sob política | — |
 
-**Regra chave:** `FLUXOS_EXTERNOS = {"CONTRIBUICAO", "RESGATE_EXTERNO", "APORTE_EXTERNO"}` — processados diretamente em `twr.py` linhas 115-122, independente de qualquer cutoff de data em `inferencia.py`.
+Configurável por bloco IPS. L5 não existe.
+Tools de escrita do Maestro: L2 com confirmação (propõe, mostra, usuário aprova antes de gravar).
 
----
+## LCI/LCA — Modelo de valoração (atualizado 2026-07-06)
+- Valoração 100% na curva CDI (autônoma, diária). Sem dependência de extrato.
+- `calcular_saldo_lci` em engine/precos.py: CDI BCB × percentual contratado, diário composto.
+- Taxa CDI extraída do obs do evento COMPRA — aceita formatos: `CDI:94.0`, `CDI 94,00%`, etc.
+- Novo LCI/LCA COMPRA → auto-registra ativo com familia="Letra de Crédito", bloco_ips="RENDA_FIXA".
+- Extrato = reconciliação opcional. Rendimentos do extrato NÃO são gravados (curva é fonte).
+- Divergência > R$1,00 em reconciliação: alerta ao usuário, AJUSTE como evento separado.
+- Staleness: badge "sem reconciliação há X meses" se última reconciliação > 180 dias. Saldo continua evoluindo normalmente (regra destrutiva removida 2026-07-06).
 
-## 6. Documentação de produto (constituição)
+## 7. O que NÃO fazer
 
-A visão, o conceito e a estrutura do produto estão em docs/produto/.
-Esses documentos são a referência autoritativa — em caso de conflito
-entre algo neste arquivo e algo em docs/produto/, os documentos de
-produto vencem.
-
-Arquivos:
-- docs/produto/01-conceito.md — O QUE o app é e POR QUÊ. Fechado.
-  Leia em toda sessão. Nunca contrarie.
-- docs/produto/02-estrutura.md — COMO construir. Macro fechado,
-  detalhes por fatia. Inclui protocolo de execução, fontes e
-  fronteira de autoridade.
-- docs/produto/05-brief-fatia-1.md — Brief da fatia em implementação.
-  Escopo fechado, critérios de aceite, lista do que NÃO fazer.
-
-Regras:
-- Decisões visíveis ao usuário ou que tocam o conceito são fechadas
-  em chat, nunca decididas aqui no Code.
-- Sessões de Code recebem um brief específico por fatia.
-- Na dúvida, consulte 01-conceito.md antes de agir.
+- NÃO usar sqlite3 — tudo via SQLAlchemy/PostgreSQL
+- NÃO fazer deploy no servidor local — só VM GCP
+- NÃO desligar o Streamlit sem aval explícito do Márcio
+- NÃO remover arquivos de páginas removidas do navbar (tools MCP continuam)
+- NÃO fabricar dados no Maestro — reportar quando falta dado
+- NÃO recomendar compra/venda — reportar fatos
+- NÃO tratar FUNCEF como parte da carteira gerida

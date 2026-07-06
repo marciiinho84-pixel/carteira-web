@@ -175,6 +175,7 @@ class PosicaoOut(BaseModel):
     var_dia: Optional[float] = None      # variação absoluta no dia (R$)
     var_dia_pct: Optional[float] = None  # variação percentual no dia
     yield_12m: Optional[float] = None    # yield projetado 12m (fração)
+    alerta_reconciliacao: Optional[dict] = None  # badge staleness LCI/LCA
 
 
 class VendaOut(BaseModel):

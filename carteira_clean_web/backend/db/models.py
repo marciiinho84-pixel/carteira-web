@@ -39,6 +39,7 @@ class Ativo(Base):
     data_vencimento = Column(Date, nullable=True)
     cnpj_cvm = Column(String(20), nullable=True)
     bloco_ips = Column(Text, nullable=True)
+    ultima_reconciliacao_lci = Column(Date, nullable=True)
 
     __table_args__ = (
         CheckConstraint("composite IN ('Gerida', 'FUNCEF')", name="ck_composite"),
@@ -59,6 +60,7 @@ class Ativo(Base):
             "data_vencimento": self.data_vencimento,
             "cnpj_cvm": self.cnpj_cvm,
             "bloco_ips": self.bloco_ips,
+            "ultima_reconciliacao_lci": str(self.ultima_reconciliacao_lci) if self.ultima_reconciliacao_lci else None,
         }
 
 
