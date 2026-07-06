@@ -46,21 +46,23 @@ async def lifespan(app: FastAPI):
     engine = get_engine()
     Base.metadata.create_all(engine)
 
-    # Migração inline — adiciona colunas/constraints sem Alembic
+    # Migração inline — cada DDL em transação própria para evitar cascade de aborted transaction
     _ddls = [
-        "ALTER TABLE conversas ADD COLUMN resumo_historico TEXT",
-        "ALTER TABLE mensagens ADD COLUMN incluida_no_resumo INTEGER NOT NULL DEFAULT 0",
-        "ALTER TABLE ativos ADD COLUMN ultima_reconciliacao_lci DATE",
+        "ALTER TABLE conversas ADD COLUMN IF NOT EXISTS resumo_historico TEXT",
+        "ALTER TABLE mensagens ADD COLUMN IF NOT EXISTS incluida_no_resumo INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE ativos ADD COLUMN IF NOT EXISTS ultima_reconciliacao_lci DATE",
     ]
-    with engine.connect() as conn:
-        for ddl in _ddls:
+    for ddl in _ddls:
+        with engine.connect() as conn:
             try:
                 conn.execute(text(ddl))
                 conn.commit()
-            except Exception:
-                pass  # coluna já existe
+            except Exception as exc:
+                conn.rollback()
+                log.debug(f"Startup DDL ignorado ({exc.__class__.__name__}): {ddl[:60]}")
 
-        # Auto-registrar tickers LCI-*/LCA-* importados sem cadastro em ativos
+    # Auto-registrar tickers LCI-*/LCA-* importados sem cadastro em ativos
+    with engine.connect() as conn:
         try:
             compras_lci = conn.execute(text(
                 "SELECT DISTINCT ativo, MIN(data) as data FROM eventos "
@@ -80,9 +82,11 @@ async def lifespan(app: FastAPI):
                     log.info(f"Startup: auto-registrado ativo LCI {ativo}")
             conn.commit()
         except Exception as exc:
+            conn.rollback()
             log.warning(f"Startup: auto-registro LCI falhou ({exc})")
 
-        # Deduplicar precos_manuais: manter o id maior por (ticker, data)
+    # Deduplicar precos_manuais: manter o id maior por (ticker, data)
+    with engine.connect() as conn:
         try:
             conn.execute(text("""
                 DELETE FROM precos_manuais
@@ -94,9 +98,10 @@ async def lifespan(app: FastAPI):
             """))
             conn.commit()
         except Exception:
-            pass
+            conn.rollback()
 
-        # Adicionar unique constraint (ticker, data) se ainda não existir
+    # Adicionar unique constraint (ticker, data) se ainda não existir
+    with engine.connect() as conn:
         try:
             conn.execute(text(
                 "ALTER TABLE precos_manuais "
@@ -104,7 +109,7 @@ async def lifespan(app: FastAPI):
             ))
             conn.commit()
         except Exception:
-            pass  # constraint já existe
+            conn.rollback()  # constraint já existe
 
     from carteira_clean_web.backend.api import cache as engine_cache
     if engine_cache.carregar_disco():
