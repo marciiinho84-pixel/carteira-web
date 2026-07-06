@@ -84,6 +84,9 @@ def recalcular(no_api: bool = False) -> dict:
     try:
         from carteira_clean_web.backend.engine.run import run
         resultado = run(no_api=no_api)
+        # saldos_lci exige API BCB — preservar do estado anterior quando no_api=True
+        if no_api and not resultado.get("saldos_lci") and _estado.get("saldos_lci"):
+            resultado["saldos_lci"] = _estado["saldos_lci"]
         _estado = resultado
         _calculado_em = datetime.now()
         _erro = None
