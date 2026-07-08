@@ -15,6 +15,11 @@ minhacarteira.duckdns.org {
         reverse_proxy nextjs:3000
     }
 
+    # Status de deploy — público, somente metadado (hash/data de commit), sem auth
+    handle /api/status/deploy {
+        reverse_proxy backend:8000
+    }
+
     # API REST FastAPI — autenticada por JWT
     handle /api* {
         reverse_proxy backend:8000

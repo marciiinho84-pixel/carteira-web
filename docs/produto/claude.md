@@ -9,7 +9,7 @@
 App Minha Carteira — sistema self-hosted de gestão de portfólio
 de investimentos pessoais. Economista brasileiro, investidor
 individual. Metáfora orquestral: usuário = maestro/compositor,
-~31 tools MCP = instrumentistas, IA orquestradora = maestro.
+~40 tools MCP = instrumentistas, IA orquestradora = maestro.
 
 Conceito central: duas lentes acopladas — "janela para fora"
 (contexto de mercado) + "espelho para dentro" (padrões
@@ -24,7 +24,7 @@ comportamentais do investidor). A decisão é sempre do usuário.
 | Backend | FastAPI, porta 8000 |
 | Frontend React | Next.js em Docker, porta 3000 |
 | Frontend legado | Streamlit, porta 8501 (paralelo em /streamlit/) |
-| MCP | FastMCP, porta 8001, ~31 tools, Bearer token |
+| MCP | FastMCP, porta 8001, ~40 tools, Bearer token |
 | Banco | **PostgreSQL** em Docker (NÃO SQLite) |
 | Proxy | Caddy (HTTPS, Let's Encrypt, basic auth) |
 | Auth | Google OAuth (NextAuth.js), whitelist marciiinho84@gmail.com, JWT 30 dias |
@@ -199,15 +199,6 @@ For multi-step tasks: [Step] → verify: [check]
 
 Configurável por bloco IPS. L5 não existe.
 Tools de escrita do Maestro: L2 com confirmação (propõe, mostra, usuário aprova antes de gravar).
-
-## LCI/LCA — Modelo de valoração (atualizado 2026-07-06)
-- Valoração 100% na curva CDI (autônoma, diária). Sem dependência de extrato.
-- `calcular_saldo_lci` em engine/precos.py: CDI BCB × percentual contratado, diário composto.
-- Taxa CDI extraída do obs do evento COMPRA — aceita formatos: `CDI:94.0`, `CDI 94,00%`, etc.
-- Novo LCI/LCA COMPRA → auto-registra ativo com familia="Letra de Crédito", bloco_ips="RENDA_FIXA".
-- Extrato = reconciliação opcional. Rendimentos do extrato NÃO são gravados (curva é fonte).
-- Divergência > R$1,00 em reconciliação: alerta ao usuário, AJUSTE como evento separado.
-- Staleness: badge "sem reconciliação há X meses" se última reconciliação > 180 dias. Saldo continua evoluindo normalmente (regra destrutiva removida 2026-07-06).
 
 ## 7. O que NÃO fazer
 

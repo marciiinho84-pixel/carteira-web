@@ -185,6 +185,40 @@ def health():
     return {"status": "ok", "version": "2.5.1"}
 
 
+@app.get("/api/status/deploy", include_in_schema=False)
+def status_deploy():
+    """
+    Status somente-leitura e público: qual commit está rodando na VM.
+    Sem dados de portfólio/credenciais — só metadado de build + DB reachable.
+    """
+    import json
+
+    build_info: dict = {}
+    build_info_path = Path("/app/build_info.json")
+    if build_info_path.exists():
+        try:
+            build_info = json.loads(build_info_path.read_text())
+        except Exception:
+            build_info = {}
+
+    db_ok = True
+    try:
+        from carteira_clean_web.backend.db.session import get_engine
+        from sqlalchemy import text
+        with get_engine().connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception:
+        db_ok = False
+
+    return {
+        "git_commit_hash": build_info.get("git_commit_hash"),
+        "git_commit_date": build_info.get("git_commit_date"),
+        "git_commit_message": build_info.get("git_commit_message"),
+        "deployed_at": build_info.get("build_time"),
+        "status": "ok" if db_ok else "degraded",
+    }
+
+
 @app.get("/", include_in_schema=False)
 def root():
     return {
