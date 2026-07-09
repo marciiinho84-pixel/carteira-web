@@ -19,15 +19,26 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-[#0F1117]">
-      <div className="w-full max-w-sm rounded-2xl border border-zinc-800 bg-zinc-900 p-8 shadow-xl">
+    <main className="min-h-screen flex items-center justify-center" style={{ background: "var(--bg-app)" }}>
+      <div
+        className="w-full max-w-sm rounded-2xl border p-8"
+        style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: "0 4px 20px rgba(61,54,41,0.10)" }}
+      >
         <div className="mb-6 text-center">
-          <h1 className="text-xl font-semibold text-zinc-100">App Minha Carteira</h1>
-          <p className="mt-1 text-sm text-zinc-400">Acesso restrito ao investidor</p>
+          <h1
+            className="text-xl font-semibold"
+            style={{ color: "var(--text-primary)", fontFamily: "var(--font-source-serif)" }}
+          >
+            App Minha Carteira
+          </h1>
+          <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>Acesso restrito ao investidor</p>
         </div>
 
         {error && (
-          <div className="mb-4 rounded-lg border border-red-800 bg-red-900/30 px-3 py-2 text-xs text-red-300">
+          <div
+            className="mb-4 rounded-lg border px-3 py-2 text-xs"
+            style={{ borderColor: "rgba(180,68,44,0.3)", background: "rgba(180,68,44,0.08)", color: "var(--negative)" }}
+          >
             {error}
           </div>
         )}
@@ -35,10 +46,13 @@ export default function LoginPage() {
         <button
           onClick={handleGoogle}
           disabled={loading}
-          className="flex w-full items-center justify-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm font-medium text-zinc-100 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-3 rounded-lg border px-4 py-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50"
+          style={{ borderColor: "var(--border)", background: "var(--bg-card-alt)", color: "var(--text-body)" }}
+          onMouseEnter={(e) => { if (!loading) e.currentTarget.style.background = "var(--border-soft)"; }}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-card-alt)")}
         >
           {loading ? (
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-400 border-t-transparent" />
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-t-transparent" style={{ borderColor: "var(--text-faint)", borderTopColor: "transparent" }} />
           ) : (
             <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
               <path
@@ -62,7 +76,7 @@ export default function LoginPage() {
           {loading ? "Redirecionando…" : "Entrar com Google"}
         </button>
 
-        <p className="mt-6 text-center text-xs text-zinc-600">
+        <p className="mt-6 text-center text-xs" style={{ color: "var(--text-faint)" }}>
           Apenas o e-mail autorizado tem acesso.
         </p>
       </div>

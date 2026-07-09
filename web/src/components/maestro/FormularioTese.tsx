@@ -58,30 +58,33 @@ export default function FormularioTese({ tickerInicial = "", onSuccess }: Formul
   return (
     <form
       onSubmit={handleSubmit}
-      className="rounded-lg border border-[#2A2D3A] bg-[#1A1D27] p-4 my-2 space-y-3"
+      className="rounded-lg border p-4 my-2 space-y-3"
+      style={{ borderColor: "var(--border-soft)", background: "var(--bg-app)" }}
     >
       <div className="flex items-center gap-2 mb-1">
-        <span className="text-sm font-medium text-[#D1D4DC]">Registrar Tese</span>
+        <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Registrar Tese</span>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs text-[#6b7280] mb-1">Ticker *</label>
+          <label className="block text-xs mb-1" style={{ color: "var(--text-faint)" }}>Ticker *</label>
           <input
             type="text"
             value={ticker}
             onChange={(e) => setTicker(e.target.value.toUpperCase())}
             placeholder="WEGE3"
-            className="w-full bg-[#0F1117] border border-[#2A2D3A] rounded px-3 py-1.5 text-xs text-[#D1D4DC] font-mono placeholder-[#6b7280] focus:outline-none focus:border-[#26A69A]"
+            className="w-full rounded px-3 py-1.5 text-xs border focus:outline-none"
+            style={{ background: "var(--bg-card)", borderColor: "var(--border)", color: "var(--text-body)", fontFamily: "var(--font-plex-mono)" }}
             required
           />
         </div>
         <div>
-          <label className="block text-xs text-[#6b7280] mb-1">Horizonte</label>
+          <label className="block text-xs mb-1" style={{ color: "var(--text-faint)" }}>Horizonte</label>
           <select
             value={horizonte}
             onChange={(e) => setHorizonte(e.target.value)}
-            className="w-full bg-[#0F1117] border border-[#2A2D3A] rounded px-3 py-1.5 text-xs text-[#D1D4DC] focus:outline-none focus:border-[#26A69A]"
+            className="w-full rounded px-3 py-1.5 text-xs border focus:outline-none"
+            style={{ background: "var(--bg-card)", borderColor: "var(--border)", color: "var(--text-body)" }}
           >
             <option value="curto prazo">Curto prazo</option>
             <option value="médio prazo">Médio prazo</option>
@@ -91,31 +94,33 @@ export default function FormularioTese({ tickerInicial = "", onSuccess }: Formul
       </div>
 
       <div>
-        <label className="block text-xs text-[#6b7280] mb-1">Tese *</label>
+        <label className="block text-xs mb-1" style={{ color: "var(--text-faint)" }}>Tese *</label>
         <textarea
           value={tese}
           onChange={(e) => setTese(e.target.value)}
           placeholder="Por que você acredita neste ativo?"
           rows={3}
-          className="w-full bg-[#0F1117] border border-[#2A2D3A] rounded px-3 py-1.5 text-xs text-[#D1D4DC] placeholder-[#6b7280] focus:outline-none focus:border-[#26A69A] resize-none"
+          className="w-full rounded px-3 py-1.5 text-xs border focus:outline-none resize-none"
+          style={{ background: "var(--bg-card)", borderColor: "var(--border)", color: "var(--text-body)" }}
           required
         />
       </div>
 
       <div>
-        <label className="block text-xs text-[#6b7280] mb-1">Critério de invalidação</label>
+        <label className="block text-xs mb-1" style={{ color: "var(--text-faint)" }}>Critério de invalidação</label>
         <textarea
           value={invalidacao}
           onChange={(e) => setInvalidacao(e.target.value)}
           placeholder="Quando você sairia? Qual evento invalidaria a tese?"
           rows={2}
-          className="w-full bg-[#0F1117] border border-[#2A2D3A] rounded px-3 py-1.5 text-xs text-[#D1D4DC] placeholder-[#6b7280] focus:outline-none focus:border-[#26A69A] resize-none"
+          className="w-full rounded px-3 py-1.5 text-xs border focus:outline-none resize-none"
+          style={{ background: "var(--bg-card)", borderColor: "var(--border)", color: "var(--text-body)" }}
         />
       </div>
 
       <div>
-        <label className="block text-xs text-[#6b7280] mb-2">
-          Convicção: <span className="text-[#26A69A] font-medium">{convicao}/5</span>
+        <label className="block text-xs mb-2" style={{ color: "var(--text-faint)" }}>
+          Convicção: <span className="font-medium" style={{ color: "var(--positive)" }}>{convicao}/5</span>
         </label>
         <div className="flex gap-1.5">
           {[1, 2, 3, 4, 5].map((n) => (
@@ -125,9 +130,9 @@ export default function FormularioTese({ tickerInicial = "", onSuccess }: Formul
               onClick={() => setConvicao(n)}
               className="w-8 h-8 rounded-full border text-xs font-medium transition-all"
               style={{
-                borderColor: n <= convicao ? "#26A69A" : "#2A2D3A",
-                backgroundColor: n <= convicao ? "#26A69A20" : "transparent",
-                color: n <= convicao ? "#26A69A" : "#6b7280",
+                borderColor: n <= convicao ? "var(--positive)" : "var(--border)",
+                backgroundColor: n <= convicao ? "rgba(74,124,89,0.14)" : "transparent",
+                color: n <= convicao ? "var(--positive)" : "var(--text-faint)",
               }}
             >
               {n}
@@ -137,10 +142,10 @@ export default function FormularioTese({ tickerInicial = "", onSuccess }: Formul
       </div>
 
       {error && (
-        <p className="text-xs text-[#EF5350] bg-[#EF5350]/10 rounded p-2">{error}</p>
+        <p className="text-xs rounded p-2" style={{ color: "var(--negative)", background: "rgba(180,68,44,0.08)" }}>{error}</p>
       )}
       {success && (
-        <p className="text-xs text-[#26A69A] bg-[#26A69A]/10 rounded p-2">
+        <p className="text-xs rounded p-2" style={{ color: "var(--positive)", background: "rgba(74,124,89,0.08)" }}>
           Tese registrada com sucesso!
         </p>
       )}
@@ -148,10 +153,10 @@ export default function FormularioTese({ tickerInicial = "", onSuccess }: Formul
       <button
         type="submit"
         disabled={loading || !ticker.trim() || !tese.trim()}
-        className="w-full py-2 rounded text-xs font-medium transition-all disabled:opacity-50"
+        className="w-full py-2 rounded text-xs font-semibold transition-all disabled:opacity-50"
         style={{
-          backgroundColor: "#26A69A",
-          color: "#0F1117",
+          background: "var(--accent)",
+          color: "var(--bg-card)",
         }}
       >
         {loading ? "Salvando..." : "Registrar Tese"}

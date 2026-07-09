@@ -22,14 +22,9 @@ interface Tese {
 }
 
 const NIVEL_COR: Record<string, string> = {
-  VERDE: "#26A69A",
-  AMARELO: "#F59E0B",
-  VERMELHO: "#EF5350",
-};
-const NIVEL_EMOJI: Record<string, string> = {
-  VERDE: "🟢",
-  AMARELO: "🟡",
-  VERMELHO: "🔴",
+  VERDE: "var(--positive)",
+  AMARELO: "var(--warning)",
+  VERMELHO: "var(--negative)",
 };
 
 const BLOCO_LABEL: Record<string, string> = {
@@ -39,6 +34,18 @@ const BLOCO_LABEL: Record<string, string> = {
   RENDA_FIXA: "Renda Fixa",
   FORA_IPS: "Fora IPS",
 };
+
+const cardShadow = "0 1px 3px rgba(61,54,41,0.06)";
+
+function Semaforo({ nivel }: { nivel: string }) {
+  return (
+    <span
+      title={nivel}
+      className="inline-block shrink-0 rounded-full"
+      style={{ width: 11, height: 11, background: NIVEL_COR[nivel] ?? NIVEL_COR.VERDE }}
+    />
+  );
+}
 
 export default function DetalheTese() {
   const params = useParams<{ id: string }>();
@@ -100,47 +107,63 @@ export default function DetalheTese() {
   }
 
   return (
-    <div className="flex min-h-screen bg-[#0F1117] text-[#D1D4DC]">
+    <div className="flex min-h-screen" style={{ background: "var(--bg-app)", color: "var(--text-body)" }}>
       <Nav />
       <main className="flex-1 px-4 py-6 md:px-8 space-y-4 overflow-auto">
 
         {/* Breadcrumb */}
-        <div className="text-xs text-[#6b7280]">
-          <Link href="/teses" className="hover:text-[#26A69A]">Teses</Link>
+        <div className="text-xs" style={{ color: "var(--text-faint)" }}>
+          <Link href="/teses" className="hover:underline" style={{ color: "var(--text-faint)" }}>Teses</Link>
           <span className="mx-1">›</span>
-          <span className="text-[#D1D4DC]">{tese?.ticker ?? "..."}</span>
+          <span style={{ color: "var(--text-body)" }}>{tese?.ticker ?? "..."}</span>
         </div>
 
-        {loading && <div className="animate-pulse h-64 rounded-xl bg-[#1A1D27]" />}
+        {loading && <div className="animate-pulse h-64 rounded-xl" style={{ background: "var(--bg-card)" }} />}
         {error && (
-          <div className="rounded-xl border border-red-800/50 bg-red-900/20 px-4 py-3 text-sm text-red-400">{error}</div>
+          <div
+            className="rounded-xl border px-4 py-3 text-sm"
+            style={{ borderColor: "rgba(180,68,44,0.3)", background: "rgba(180,68,44,0.08)", color: "var(--negative)" }}
+          >
+            {error}
+          </div>
         )}
 
         {!loading && tese && (
           <>
             {/* Header */}
-            <header className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-4">
+            <header
+              className="rounded-xl border px-5 py-4"
+              style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+            >
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
                   <div className="flex items-center gap-3">
-                    <span className="text-xl">{NIVEL_EMOJI[tese.nivel_invalidacao]}</span>
-                    <h1 className="text-2xl font-bold text-white">{tese.ticker}</h1>
+                    <Semaforo nivel={tese.nivel_invalidacao} />
+                    <h1
+                      className="text-2xl font-semibold"
+                      style={{ color: "var(--text-primary)", fontFamily: "var(--font-source-serif)" }}
+                    >
+                      {tese.ticker}
+                    </h1>
                     {tese.bloco_ips && (
-                      <span className="rounded-md bg-[#6366F1]/20 px-2 py-0.5 text-[10px] font-bold text-[#6366F1] border border-[#6366F1]/30">
+                      <span
+                        className="rounded-md px-2 py-0.5 text-[10px] font-bold border"
+                        style={{ whiteSpace: "nowrap", background: "rgba(108,99,196,0.14)", borderColor: "rgba(108,99,196,0.3)", color: "var(--purple-accent)" }}
+                      >
                         {BLOCO_LABEL[tese.bloco_ips] ?? tese.bloco_ips}
                       </span>
                     )}
                   </div>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="text-xs" style={{ color: NIVEL_COR[tese.nivel_invalidacao] }}>
+                    <span className="text-xs font-semibold" style={{ color: NIVEL_COR[tese.nivel_invalidacao] }}>
                       {tese.nivel_invalidacao}
                     </span>
-                    <span className="text-[#6b7280] text-xs">•</span>
-                    <span className="text-xs text-[#6b7280]">{tese.status}</span>
+                    <span className="text-xs" style={{ color: "var(--text-faint)" }}>•</span>
+                    <span className="text-xs" style={{ color: "var(--text-faint)" }}>{tese.status}</span>
                     {tese.dias_desde_criacao != null && (
                       <>
-                        <span className="text-[#6b7280] text-xs">•</span>
-                        <span className="text-xs text-[#6b7280]">{tese.dias_desde_criacao}d desde criação</span>
+                        <span className="text-xs" style={{ color: "var(--text-faint)" }}>•</span>
+                        <span className="text-xs" style={{ color: "var(--text-faint)" }}>{tese.dias_desde_criacao}d desde criação</span>
                       </>
                     )}
                   </div>
@@ -149,69 +172,81 @@ export default function DetalheTese() {
             </header>
 
             {/* Conteúdo da tese */}
-            <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-5 space-y-4">
+            <section
+              className="rounded-xl border px-5 py-5 space-y-4"
+              style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+            >
               {tese.racional && (
                 <div>
-                  <h2 className="text-xs font-semibold text-[#6b7280] uppercase tracking-wider mb-1">Racional / Tese</h2>
-                  <p className="text-sm text-[#D1D4DC] leading-relaxed">{tese.racional}</p>
+                  <h2 className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--text-faint)" }}>Racional / Tese</h2>
+                  <p className="text-sm leading-relaxed" style={{ color: "var(--text-body)" }}>{tese.racional}</p>
                 </div>
               )}
               {tese.cenario_esperado && (
                 <div>
-                  <h2 className="text-xs font-semibold text-[#6b7280] uppercase tracking-wider mb-1">Cenário Esperado</h2>
-                  <p className="text-sm text-[#D1D4DC] leading-relaxed">{tese.cenario_esperado}</p>
+                  <h2 className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--text-faint)" }}>Cenário Esperado</h2>
+                  <p className="text-sm leading-relaxed" style={{ color: "var(--text-body)" }}>{tese.cenario_esperado}</p>
                 </div>
               )}
               {tese.criterio_invalidacao && (
                 <div>
-                  <h2 className="text-xs font-semibold text-[#F59E0B] uppercase tracking-wider mb-1">⚠️ Critério de Invalidação</h2>
-                  <p className="text-sm text-[#F59E0B] leading-relaxed">{tese.criterio_invalidacao}</p>
+                  <h2 className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--warning)" }}>⚠ Critério de Invalidação</h2>
+                  <p className="text-sm leading-relaxed" style={{ color: "var(--warning)" }}>{tese.criterio_invalidacao}</p>
                 </div>
               )}
             </section>
 
             {/* Edição inline */}
-            <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-5 space-y-4">
-              <h2 className="text-sm font-semibold text-white">Atualizar Tese</h2>
+            <section
+              className="rounded-xl border px-5 py-5 space-y-4"
+              style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+            >
+              <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Atualizar Tese</h2>
               <div className="space-y-3">
                 <div>
-                  <label className="text-xs text-[#6b7280] block mb-1">Nível de Invalidação</label>
+                  <label className="text-xs block mb-1" style={{ color: "var(--text-faint)" }}>Nível de Invalidação</label>
                   <div className="flex gap-2">
-                    {(["VERDE", "AMARELO", "VERMELHO"] as const).map((n) => (
-                      <button
-                        key={n}
-                        onClick={() => setEditNivel(n)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
-                          editNivel === n
-                            ? "border-current"
-                            : "border-[#2A2D3A] text-[#6b7280]"
-                        }`}
-                        style={editNivel === n ? { color: NIVEL_COR[n], borderColor: NIVEL_COR[n] + "60" } : {}}
-                      >
-                        {NIVEL_EMOJI[n]} {n}
-                      </button>
-                    ))}
+                    {(["VERDE", "AMARELO", "VERMELHO"] as const).map((n) => {
+                      const active = editNivel === n;
+                      return (
+                        <button
+                          key={n}
+                          onClick={() => setEditNivel(n)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium border transition flex items-center gap-1.5"
+                          style={{
+                            whiteSpace: "nowrap",
+                            color: active ? NIVEL_COR[n] : "var(--text-muted)",
+                            borderColor: active ? NIVEL_COR[n] : "var(--border)",
+                          }}
+                        >
+                          <span className="inline-block rounded-full shrink-0" style={{ width: 8, height: 8, background: NIVEL_COR[n] }} />
+                          {n}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs text-[#6b7280] block mb-1">Critério de Invalidação</label>
+                  <label className="text-xs block mb-1" style={{ color: "var(--text-faint)" }}>Critério de Invalidação</label>
                   <textarea
                     value={editCriterio ?? ""}
                     onChange={(e) => setEditCriterio(e.target.value)}
                     rows={3}
-                    className="w-full rounded-lg bg-[#0F1117] border border-[#2A2D3A] px-3 py-2 text-sm text-[#D1D4DC] focus:outline-none focus:border-[#6366F1] resize-none"
+                    className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none resize-none"
+                    style={{ background: "var(--bg-app)", borderColor: "var(--border)", color: "var(--text-body)" }}
                   />
                 </div>
                 <div className="flex items-center gap-3">
                   <button
                     onClick={salvar}
                     disabled={saving}
-                    className="rounded-lg px-4 py-1.5 text-sm font-medium bg-[#6366F1] text-white hover:bg-[#6366F1]/80 disabled:opacity-50 transition"
+                    className="rounded-lg px-4 py-1.5 text-sm font-semibold transition disabled:opacity-50"
+                    style={{ whiteSpace: "nowrap", background: "var(--purple-accent)", color: "var(--bg-card)" }}
                   >
                     {saving ? "Salvando…" : "Salvar"}
                   </button>
                   {saveMsg && (
-                    <span className={`text-xs ${saveMsg.includes("Erro") ? "text-[#EF5350]" : "text-[#26A69A]"}`}>
+                    <span className="text-xs" style={{ color: saveMsg.includes("Erro") ? "var(--negative)" : "var(--positive)" }}>
                       {saveMsg}
                     </span>
                   )}
@@ -223,19 +258,22 @@ export default function DetalheTese() {
             <div className="flex flex-wrap gap-3">
               <Link
                 href={`/ativos/${tese.ticker}`}
-                className="rounded-lg px-4 py-2 text-sm border border-[#2A2D3A] text-[#D1D4DC] hover:bg-[#2A2D3A] transition"
+                className="rounded-lg px-4 py-2 text-sm border transition"
+                style={{ borderColor: "var(--border)", color: "var(--text-body)" }}
               >
                 📋 Ver ativo {tese.ticker}
               </Link>
               <Link
                 href={`/maestro?q=Status+da+tese+de+${tese.ticker}`}
-                className="rounded-lg px-4 py-2 text-sm font-medium bg-[#6366F1] text-white hover:bg-[#6366F1]/80 transition"
+                className="rounded-lg px-4 py-2 text-sm font-semibold transition"
+                style={{ whiteSpace: "nowrap", background: "var(--purple-accent)", color: "var(--bg-card)" }}
               >
                 🤖 Perguntar ao Maestro
               </Link>
               <Link
                 href="/teses"
-                className="rounded-lg px-4 py-2 text-sm border border-[#2A2D3A] text-[#D1D4DC] hover:bg-[#2A2D3A] transition"
+                className="rounded-lg px-4 py-2 text-sm border transition"
+                style={{ borderColor: "var(--border)", color: "var(--text-body)" }}
               >
                 ← Voltar às Teses
               </Link>

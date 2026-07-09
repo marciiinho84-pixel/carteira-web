@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Nav from "@/components/Nav";
 import { apiFetch, clearToken } from "@/lib/api";
@@ -24,7 +24,9 @@ interface PrecoManual { id: number; data: string; ticker: string; valor: number;
 interface RegraAporte { id: number; valor_mensal_alvo: number; tipo: string; criterio_oportunismo?: string; ativo: number; data_criacao: string }
 
 const BLOCOS_IPS = ["SWING_TRADE", "GROWTH", "DEFENSIVOS", "RENDA_FIXA", "FORA_IPS"];
-const cls = "w-full rounded-lg bg-[#0F1117] border border-[#2A2D3A] px-3 py-2 text-sm text-[#D1D4DC] focus:outline-none focus:border-[#6366F1] transition";
+const inputClass = "w-full rounded-lg border px-3 py-2 text-sm focus:outline-none transition";
+const inputStyle = { background: "var(--bg-app)", borderColor: "var(--border)", color: "var(--text-body)" } as const;
+const cardShadow = "0 1px 3px rgba(61,54,41,0.06)";
 
 function relativeTime(iso: string | undefined): string {
   if (!iso) return "nunca";
@@ -39,6 +41,10 @@ function relativeTime(iso: string | undefined): string {
 function brl(n: number | null | undefined): string {
   if (n == null) return "—";
   return "R$ " + n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function statusColor(s: string): string {
+  return s.includes("Erro") ? "var(--negative)" : "var(--positive)";
 }
 
 type Tab = "sistema" | "ativos" | "precos" | "aportes";
@@ -211,30 +217,49 @@ export default function Configuracoes() {
   );
 
   return (
-    <div className="flex min-h-screen bg-[#0F1117] text-[#D1D4DC]">
+    <div className="flex min-h-screen" style={{ background: "var(--bg-app)", color: "var(--text-body)" }}>
       <Nav />
       <main className="flex-1 overflow-auto">
-        <div className="px-4 py-4 md:px-8 max-w-4xl space-y-4">
-          <h1 className="text-lg font-bold text-white">Configurações</h1>
+        <div className="px-4 py-4 md:px-8 md:py-6 max-w-4xl space-y-4">
+          <h1
+            className="text-2xl font-semibold"
+            style={{ color: "var(--text-primary)", fontFamily: "var(--font-source-serif)" }}
+          >
+            Configurações
+          </h1>
 
           {/* Tabs */}
-          <div className="flex gap-1 border-b border-[#2A2D3A]">
-            {([["sistema", "Sistema"], ["ativos", "CAD_ATIVOS"], ["precos", "Preços Manuais"], ["aportes", "Regra Aportes"]] as [Tab, string][]).map(([t, label]) => (
-              <button key={t} onClick={() => setTab(t)}
-                className={`px-4 py-2 text-sm font-medium border-b-2 transition -mb-px ${tab === t ? "border-[#26A69A] text-[#26A69A]" : "border-transparent text-[#6b7280] hover:text-[#D1D4DC]"}`}>
-                {label}
-              </button>
-            ))}
+          <div className="flex gap-1 border-b" style={{ borderColor: "var(--border)" }}>
+            {([["sistema", "Sistema"], ["ativos", "CAD_ATIVOS"], ["precos", "Preços Manuais"], ["aportes", "Regra Aportes"]] as [Tab, string][]).map(([t, label]) => {
+              const active = tab === t;
+              return (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  className="px-4 py-2 text-sm font-medium border-b-2 transition -mb-px"
+                  style={{
+                    whiteSpace: "nowrap",
+                    borderColor: active ? "var(--accent)" : "transparent",
+                    color: active ? "var(--accent-strong)" : "var(--text-muted)",
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
 
           {/* ── Tab Sistema ─────────────────────────────────────── */}
           {tab === "sistema" && (
             <>
-              {loading && <div className="animate-pulse h-48 rounded-xl bg-[#1A1D27]" />}
+              {loading && <div className="animate-pulse h-48 rounded-xl" style={{ background: "var(--bg-card)" }} />}
               {!loading && (
                 <>
-                  <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-4 space-y-3">
-                    <h2 className="text-sm font-semibold text-white">Conta</h2>
+                  <section
+                    className="rounded-xl border px-5 py-4 space-y-3"
+                    style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+                  >
+                    <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Conta</h2>
                     {[
                       ["Email", email ?? "—"],
                       ["Versão", "v2.5.1"],
@@ -242,38 +267,55 @@ export default function Configuracoes() {
                       ["Nível de automação", kpis?.nivel_automacao ?? "—"],
                     ].map(([k, v]) => (
                       <div key={k} className="flex justify-between text-sm">
-                        <span className="text-[#6b7280]">{k}</span>
-                        <span className="font-mono text-[#D1D4DC]">{v}</span>
+                        <span style={{ color: "var(--text-muted)" }}>{k}</span>
+                        <span style={{ color: "var(--text-body)", fontFamily: "var(--font-plex-mono)" }}>{v}</span>
                       </div>
                     ))}
                   </section>
 
-                  <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-4 space-y-3">
-                    <h2 className="text-sm font-semibold text-white">Automação L1-L4</h2>
+                  <section
+                    className="rounded-xl border px-5 py-4 space-y-3"
+                    style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+                  >
+                    <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Automação L1-L4</h2>
                     <AutomacaoSettings />
                   </section>
 
-                  <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-4 space-y-3">
-                    <h2 className="text-sm font-semibold text-white">Coleta de Dados Macro</h2>
-                    <p className="text-xs text-[#6b7280]">Coleta BCB SGS, Focus e yfinance. Pode levar até 30s.</p>
-                    <button onClick={coletarMacro}
-                      className="rounded-lg px-4 py-2 text-sm font-medium border border-[#2A2D3A] text-[#D1D4DC] hover:bg-[#2A2D3A] transition">
+                  <section
+                    className="rounded-xl border px-5 py-4 space-y-3"
+                    style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+                  >
+                    <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Coleta de Dados Macro</h2>
+                    <p className="text-xs" style={{ color: "var(--text-muted)" }}>Coleta BCB SGS, Focus e yfinance. Pode levar até 30s.</p>
+                    <button
+                      onClick={coletarMacro}
+                      className="rounded-lg px-4 py-2 text-sm font-medium border transition"
+                      style={{ borderColor: "var(--border)", color: "var(--text-body)" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-card-alt)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                    >
                       Coletar macro agora
                     </button>
-                    {macroStatus && <p className={`text-xs ${macroStatus.includes("Erro") ? "text-[#EF5350]" : "text-[#26A69A]"}`}>{macroStatus}</p>}
+                    {macroStatus && <p className="text-xs" style={{ color: statusColor(macroStatus) }}>{macroStatus}</p>}
                   </section>
 
-                  <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-4 space-y-3">
-                    <h2 className="text-sm font-semibold text-white">Engine de Cálculo</h2>
-                    <p className="text-xs text-[#6b7280]">Recalcula posições, TWR, P&amp;L e benchmarks a partir do event log.</p>
+                  <section
+                    className="rounded-xl border px-5 py-4 space-y-3"
+                    style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+                  >
+                    <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Engine de Cálculo</h2>
+                    <p className="text-xs" style={{ color: "var(--text-muted)" }}>Recalcula posições, TWR, P&amp;L e benchmarks a partir do event log.</p>
                     <div className="flex items-center gap-4">
-                      <button onClick={recalcular}
-                        className="rounded-lg px-4 py-2 text-sm font-medium bg-[#6366F1] text-white hover:bg-[#6366F1]/80 transition">
+                      <button
+                        onClick={recalcular}
+                        className="rounded-lg px-4 py-2 text-sm font-semibold transition"
+                        style={{ whiteSpace: "nowrap", background: "var(--purple-accent)", color: "var(--bg-card)" }}
+                      >
                         Recalcular engine
                       </button>
-                      {kpis?.calculado_em && <span className="text-xs text-[#6b7280]">Último: {relativeTime(kpis.calculado_em)}</span>}
+                      {kpis?.calculado_em && <span className="text-xs" style={{ color: "var(--text-faint)" }}>Último: {relativeTime(kpis.calculado_em)}</span>}
                     </div>
-                    {recalcStatus && <p className={`text-xs ${recalcStatus.includes("Erro") ? "text-[#EF5350]" : "text-[#26A69A]"}`}>{recalcStatus}</p>}
+                    {recalcStatus && <p className="text-xs" style={{ color: statusColor(recalcStatus) }}>{recalcStatus}</p>}
                   </section>
                 </>
               )}
@@ -283,58 +325,86 @@ export default function Configuracoes() {
           {/* ── Tab CAD_ATIVOS ──────────────────────────────────── */}
           {tab === "ativos" && (
             <>
-              <div className="flex gap-3 items-center">
-                <input value={ativoSearch} onChange={(e) => setAtivoSearch(e.target.value)}
+              <div className="flex gap-3 items-center flex-wrap">
+                <input
+                  value={ativoSearch}
+                  onChange={(e) => setAtivoSearch(e.target.value)}
                   placeholder="Buscar ticker ou setor…"
-                  className="rounded-lg bg-[#0F1117] border border-[#2A2D3A] px-3 py-2 text-sm text-[#D1D4DC] focus:outline-none focus:border-[#26A69A] w-56" />
-                <button onClick={() => setShowNovoAtivo((s) => !s)}
-                  className="ml-auto rounded-lg px-3 py-2 text-sm font-medium bg-[#26A69A]/20 text-[#26A69A] border border-[#26A69A]/40 hover:bg-[#26A69A]/30 transition">
+                  className={`${inputClass} w-56`}
+                  style={inputStyle}
+                />
+                <button
+                  onClick={() => setShowNovoAtivo((s) => !s)}
+                  className="ml-auto rounded-lg px-3 py-2 text-sm font-medium border transition"
+                  style={{ whiteSpace: "nowrap", background: "rgba(193,95,60,0.08)", color: "var(--accent-strong)", borderColor: "rgba(193,95,60,0.4)" }}
+                >
                   + Novo ativo
                 </button>
-                {ativoStatus && <span className={`text-xs ${ativoStatus.includes("Erro") ? "text-[#EF5350]" : "text-[#26A69A]"}`}>{ativoStatus}</span>}
+                {ativoStatus && <span className="text-xs" style={{ color: statusColor(ativoStatus) }}>{ativoStatus}</span>}
               </div>
 
               {/* Formulário novo ativo */}
               {showNovoAtivo && (
-                <div className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-4 space-y-3">
-                  <h3 className="text-sm font-semibold text-white">Novo Ativo</h3>
+                <div
+                  className="rounded-xl border px-5 py-4 space-y-3"
+                  style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+                >
+                  <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Novo Ativo</h3>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     {(["ticker", "classe", "familia", "setor"] as const).map((f) => (
                       <div key={f}>
-                        <label className="text-[10px] text-[#6b7280] uppercase">{f}{f === "ticker" ? " *" : ""}</label>
-                        <input value={(novoAtivo as Record<string, string>)[f] ?? ""} onChange={(e) => setNovoAtivo((p) => ({ ...p, [f]: e.target.value }))}
-                          className={cls} placeholder={f === "ticker" ? "Ex: ITSA4" : ""} />
+                        <label className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>{f}{f === "ticker" ? " *" : ""}</label>
+                        <input
+                          value={(novoAtivo as Record<string, string>)[f] ?? ""}
+                          onChange={(e) => setNovoAtivo((p) => ({ ...p, [f]: e.target.value }))}
+                          className={inputClass} style={inputStyle} placeholder={f === "ticker" ? "Ex: ITSA4" : ""}
+                        />
                       </div>
                     ))}
                     <div>
-                      <label className="text-[10px] text-[#6b7280] uppercase">Composite</label>
-                      <select value={novoAtivo.composite ?? "Gerida"} onChange={(e) => setNovoAtivo((p) => ({ ...p, composite: e.target.value }))} className={cls}>
+                      <label className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Composite</label>
+                      <select value={novoAtivo.composite ?? "Gerida"} onChange={(e) => setNovoAtivo((p) => ({ ...p, composite: e.target.value }))} className={inputClass} style={inputStyle}>
                         <option>Gerida</option><option>FUNCEF</option>
                       </select>
                     </div>
                     <div>
-                      <label className="text-[10px] text-[#6b7280] uppercase">Bloco IPS</label>
-                      <select value={novoAtivo.bloco_ips ?? ""} onChange={(e) => setNovoAtivo((p) => ({ ...p, bloco_ips: e.target.value }))} className={cls}>
+                      <label className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Bloco IPS</label>
+                      <select value={novoAtivo.bloco_ips ?? ""} onChange={(e) => setNovoAtivo((p) => ({ ...p, bloco_ips: e.target.value }))} className={inputClass} style={inputStyle}>
                         <option value="">— sem bloco —</option>
                         {BLOCOS_IPS.map((b) => <option key={b}>{b}</option>)}
                       </select>
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={createAtivo} className="rounded px-4 py-1.5 text-sm bg-[#26A69A]/20 text-[#26A69A] border border-[#26A69A]/40 hover:bg-[#26A69A]/30 transition">Criar</button>
-                    <button onClick={() => setShowNovoAtivo(false)} className="rounded px-3 py-1.5 text-sm border border-[#2A2D3A] text-[#6b7280] hover:bg-[#2A2D3A] transition">Cancelar</button>
+                    <button
+                      onClick={createAtivo}
+                      className="rounded px-4 py-1.5 text-sm border transition"
+                      style={{ background: "rgba(193,95,60,0.08)", color: "var(--accent-strong)", borderColor: "rgba(193,95,60,0.4)" }}
+                    >
+                      Criar
+                    </button>
+                    <button
+                      onClick={() => setShowNovoAtivo(false)}
+                      className="rounded px-3 py-1.5 text-sm border transition"
+                      style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+                    >
+                      Cancelar
+                    </button>
                   </div>
                 </div>
               )}
 
-              <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] overflow-hidden">
+              <section
+                className="rounded-xl border overflow-hidden"
+                style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+              >
                 {loadingAtivos ? (
-                  <div className="animate-pulse p-4 space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="h-8 rounded bg-[#2A2D3A]" />)}</div>
+                  <div className="animate-pulse p-4 space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="h-8 rounded" style={{ background: "var(--bg-card-alt)" }} />)}</div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="border-b border-[#2A2D3A] text-[10px] text-[#6b7280] uppercase">
+                        <tr className="border-b text-[10px] uppercase" style={{ borderColor: "var(--border-soft)", color: "var(--text-faint)" }}>
                           <th className="px-3 py-2 text-left">Ticker</th>
                           <th className="px-3 py-2 text-left">Classe</th>
                           <th className="px-3 py-2 text-left">Família</th>
@@ -346,66 +416,99 @@ export default function Configuracoes() {
                       </thead>
                       <tbody>
                         {ativosFiltrados.map((a) => (
-                          <>
-                            <tr key={a.ticker} className="border-b border-[#2A2D3A] hover:bg-[#2A2D3A]/20">
-                              <td className="px-3 py-2 font-bold text-white">{a.ticker}</td>
-                              <td className="px-3 py-2 text-[#6b7280]">{a.classe ?? "—"}</td>
-                              <td className="px-3 py-2 text-[#6b7280]">{a.familia ?? "—"}</td>
-                              <td className="px-3 py-2 text-[#6b7280]">{a.setor ?? "—"}</td>
-                              <td className="px-3 py-2">{a.composite}</td>
-                              <td className="px-3 py-2 text-[#6366F1]">{a.bloco_ips ?? "—"}</td>
+                          <React.Fragment key={a.ticker}>
+                            <tr
+                              className="border-b transition"
+                              style={{ borderColor: "var(--border-soft)" }}
+                              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-card-alt)")}
+                              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                            >
+                              <td className="px-3 py-2 font-bold" style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>{a.ticker}</td>
+                              <td className="px-3 py-2" style={{ color: "var(--text-muted)" }}>{a.classe ?? "—"}</td>
+                              <td className="px-3 py-2" style={{ color: "var(--text-muted)" }}>{a.familia ?? "—"}</td>
+                              <td className="px-3 py-2" style={{ color: "var(--text-muted)" }}>{a.setor ?? "—"}</td>
+                              <td className="px-3 py-2" style={{ color: "var(--text-body)" }}>{a.composite}</td>
+                              <td className="px-3 py-2" style={{ color: "var(--purple-accent)", whiteSpace: "nowrap" }}>{a.bloco_ips ?? "—"}</td>
                               <td className="px-3 py-2 text-center">
                                 <div className="flex gap-2 justify-center">
-                                  <button onClick={() => setEditAtivo(editAtivo?.ticker === a.ticker ? null : { ...a })}
-                                    className="text-[#6366F1] hover:underline text-[10px]">Editar</button>
-                                  <button onClick={() => deleteAtivo(a.ticker)}
-                                    className="text-[#EF5350] hover:underline text-[10px]">Excluir</button>
+                                  <button
+                                    onClick={() => setEditAtivo(editAtivo?.ticker === a.ticker ? null : { ...a })}
+                                    className="hover:underline text-[10px]"
+                                    style={{ color: "var(--purple-accent)" }}
+                                  >
+                                    Editar
+                                  </button>
+                                  <button
+                                    onClick={() => deleteAtivo(a.ticker)}
+                                    className="hover:underline text-[10px]"
+                                    style={{ color: "var(--negative)" }}
+                                  >
+                                    Excluir
+                                  </button>
                                 </div>
                               </td>
                             </tr>
                             {editAtivo?.ticker === a.ticker && (
-                              <tr key={`edit-${a.ticker}`} className="border-b border-[#2A2D3A] bg-[#0F1117]/60">
+                              <tr className="border-b" style={{ borderColor: "var(--border-soft)", background: "var(--bg-app)" }}>
                                 <td colSpan={7} className="px-3 py-3">
                                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                                     {(["classe", "familia", "setor"] as (keyof Ativo)[]).map((f) => (
                                       <div key={String(f)}>
-                                        <label className="text-[10px] text-[#6b7280] uppercase">{String(f)}</label>
-                                        <input value={(editAtivo as unknown as Record<string, string>)[f as string] ?? ""}
+                                        <label className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>{String(f)}</label>
+                                        <input
+                                          value={(editAtivo as unknown as Record<string, string>)[f as string] ?? ""}
                                           onChange={(e) => setEditAtivo((p) => p ? { ...p, [f]: e.target.value } : p)}
-                                          className={cls} />
+                                          className={inputClass} style={inputStyle}
+                                        />
                                       </div>
                                     ))}
                                     <div>
-                                      <label className="text-[10px] text-[#6b7280] uppercase">Composite</label>
-                                      <select value={editAtivo.composite} onChange={(e) => setEditAtivo((p) => p ? { ...p, composite: e.target.value } : p)} className={cls}>
+                                      <label className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Composite</label>
+                                      <select value={editAtivo.composite} onChange={(e) => setEditAtivo((p) => p ? { ...p, composite: e.target.value } : p)} className={inputClass} style={inputStyle}>
                                         <option>Gerida</option><option>FUNCEF</option>
                                       </select>
                                     </div>
                                     <div>
-                                      <label className="text-[10px] text-[#6b7280] uppercase">Bloco IPS</label>
-                                      <select value={editAtivo.bloco_ips ?? ""} onChange={(e) => setEditAtivo((p) => p ? { ...p, bloco_ips: e.target.value || undefined } : p)} className={cls}>
+                                      <label className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Bloco IPS</label>
+                                      <select value={editAtivo.bloco_ips ?? ""} onChange={(e) => setEditAtivo((p) => p ? { ...p, bloco_ips: e.target.value || undefined } : p)} className={inputClass} style={inputStyle}>
                                         <option value="">— sem bloco —</option>
                                         {BLOCOS_IPS.map((b) => <option key={b}>{b}</option>)}
                                       </select>
                                     </div>
                                     <div>
-                                      <label className="text-[10px] text-[#6b7280] uppercase">Vencimento</label>
-                                      <input type="date" value={editAtivo.data_vencimento ?? ""}
-                                        onChange={(e) => setEditAtivo((p) => p ? { ...p, data_vencimento: e.target.value || undefined } : p)} className={cls} />
+                                      <label className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Vencimento</label>
+                                      <input
+                                        type="date"
+                                        value={editAtivo.data_vencimento ?? ""}
+                                        onChange={(e) => setEditAtivo((p) => p ? { ...p, data_vencimento: e.target.value || undefined } : p)}
+                                        className={inputClass} style={inputStyle}
+                                      />
                                     </div>
                                   </div>
                                   <div className="flex gap-2 mt-3">
-                                    <button onClick={saveAtivo} className="rounded px-4 py-1.5 text-sm bg-[#26A69A]/20 text-[#26A69A] border border-[#26A69A]/40 hover:bg-[#26A69A]/30 transition">Salvar</button>
-                                    <button onClick={() => setEditAtivo(null)} className="rounded px-3 py-1.5 text-sm border border-[#2A2D3A] text-[#6b7280] hover:bg-[#2A2D3A] transition">Cancelar</button>
+                                    <button
+                                      onClick={saveAtivo}
+                                      className="rounded px-4 py-1.5 text-sm border transition"
+                                      style={{ background: "rgba(193,95,60,0.08)", color: "var(--accent-strong)", borderColor: "rgba(193,95,60,0.4)" }}
+                                    >
+                                      Salvar
+                                    </button>
+                                    <button
+                                      onClick={() => setEditAtivo(null)}
+                                      className="rounded px-3 py-1.5 text-sm border transition"
+                                      style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+                                    >
+                                      Cancelar
+                                    </button>
                                   </div>
                                 </td>
                               </tr>
                             )}
-                          </>
+                          </React.Fragment>
                         ))}
                       </tbody>
                     </table>
-                    <p className="text-[10px] text-[#6b7280] px-3 py-2">{ativosFiltrados.length} de {ativos.length} ativos</p>
+                    <p className="text-[10px] px-3 py-2" style={{ color: "var(--text-faint)" }}>{ativosFiltrados.length} de {ativos.length} ativos</p>
                   </div>
                 )}
               </section>
@@ -415,46 +518,55 @@ export default function Configuracoes() {
           {/* ── Tab Preços Manuais ──────────────────────────────── */}
           {tab === "precos" && (
             <>
-              <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-4 space-y-3">
-                <h2 className="text-sm font-semibold text-white">Adicionar Preço Manual</h2>
-                <p className="text-xs text-[#6b7280]">Para ativos sem cotação pública (CDBs, fundos fechados, FUNCEF). Upsert por ticker + data.</p>
+              <section
+                className="rounded-xl border px-5 py-4 space-y-3"
+                style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+              >
+                <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Adicionar Preço Manual</h2>
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>Para ativos sem cotação pública (CDBs, fundos fechados, FUNCEF). Upsert por ticker + data.</p>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div>
-                    <label className="text-[10px] text-[#6b7280] uppercase">Ticker *</label>
-                    <input value={novoPreco.ticker} onChange={(e) => setNovoPreco((p) => ({ ...p, ticker: e.target.value.toUpperCase() }))} className={cls} placeholder="Ex: CAIXA FIC FUNC" />
+                    <label className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Ticker *</label>
+                    <input value={novoPreco.ticker} onChange={(e) => setNovoPreco((p) => ({ ...p, ticker: e.target.value.toUpperCase() }))} className={inputClass} style={inputStyle} placeholder="Ex: CAIXA FIC FUNC" />
                   </div>
                   <div>
-                    <label className="text-[10px] text-[#6b7280] uppercase">Data *</label>
-                    <input type="date" value={novoPreco.data} onChange={(e) => setNovoPreco((p) => ({ ...p, data: e.target.value }))} className={cls} />
+                    <label className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Data *</label>
+                    <input type="date" value={novoPreco.data} onChange={(e) => setNovoPreco((p) => ({ ...p, data: e.target.value }))} className={inputClass} style={inputStyle} />
                   </div>
                   <div>
-                    <label className="text-[10px] text-[#6b7280] uppercase">Valor (cota) *</label>
-                    <input type="number" step="0.000001" value={novoPreco.valor} onChange={(e) => setNovoPreco((p) => ({ ...p, valor: e.target.value }))} className={cls} placeholder="0.000000" />
+                    <label className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Valor (cota) *</label>
+                    <input type="number" step="0.000001" value={novoPreco.valor} onChange={(e) => setNovoPreco((p) => ({ ...p, valor: e.target.value }))} className={inputClass} style={inputStyle} placeholder="0.000000" />
                   </div>
                   <div>
-                    <label className="text-[10px] text-[#6b7280] uppercase">Fonte</label>
-                    <input value={novoPreco.fonte} onChange={(e) => setNovoPreco((p) => ({ ...p, fonte: e.target.value }))} className={cls} />
+                    <label className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Fonte</label>
+                    <input value={novoPreco.fonte} onChange={(e) => setNovoPreco((p) => ({ ...p, fonte: e.target.value }))} className={inputClass} style={inputStyle} />
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <button onClick={addPreco}
-                    className="rounded px-4 py-1.5 text-sm bg-[#26A69A]/20 text-[#26A69A] border border-[#26A69A]/40 hover:bg-[#26A69A]/30 transition">
+                  <button
+                    onClick={addPreco}
+                    className="rounded px-4 py-1.5 text-sm border transition"
+                    style={{ background: "rgba(193,95,60,0.08)", color: "var(--accent-strong)", borderColor: "rgba(193,95,60,0.4)" }}
+                  >
                     Salvar preço
                   </button>
-                  {precoStatus && <span className={`text-xs ${precoStatus.includes("Erro") ? "text-[#EF5350]" : "text-[#26A69A]"}`}>{precoStatus}</span>}
+                  {precoStatus && <span className="text-xs" style={{ color: statusColor(precoStatus) }}>{precoStatus}</span>}
                 </div>
               </section>
 
-              <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] overflow-hidden">
-                <div className="px-5 py-3 border-b border-[#2A2D3A] flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-white">Preços salvos ({precos.length})</h2>
-                  <button onClick={loadPrecos} className="text-xs text-[#6b7280] hover:text-[#D1D4DC] transition">↺</button>
+              <section
+                className="rounded-xl border overflow-hidden"
+                style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+              >
+                <div className="px-5 py-3 border-b flex items-center justify-between" style={{ borderColor: "var(--border-soft)" }}>
+                  <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Preços salvos ({precos.length})</h2>
+                  <button onClick={loadPrecos} className="text-xs transition" style={{ color: "var(--text-faint)" }}>↺</button>
                 </div>
-                {loadingPrecos ? <div className="p-4 text-xs text-[#6b7280]">Carregando…</div> : (
+                {loadingPrecos ? <div className="p-4 text-xs" style={{ color: "var(--text-faint)" }}>Carregando…</div> : (
                   <div className="overflow-x-auto max-h-80">
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="border-b border-[#2A2D3A] text-[10px] text-[#6b7280] uppercase sticky top-0 bg-[#1A1D27]">
+                        <tr className="border-b text-[10px] uppercase sticky top-0" style={{ borderColor: "var(--border-soft)", color: "var(--text-faint)", background: "var(--bg-card)" }}>
                           <th className="px-3 py-2 text-left">Ticker</th>
                           <th className="px-3 py-2 text-left">Data</th>
                           <th className="px-3 py-2 text-right">Valor</th>
@@ -463,11 +575,11 @@ export default function Configuracoes() {
                       </thead>
                       <tbody>
                         {[...precos].reverse().map((p) => (
-                          <tr key={p.id} className="border-b border-[#2A2D3A]">
-                            <td className="px-3 py-1.5 font-bold text-white">{p.ticker}</td>
-                            <td className="px-3 py-1.5 font-mono">{String(p.data)}</td>
-                            <td className="px-3 py-1.5 text-right font-mono">{p.valor.toLocaleString("pt-BR", { minimumFractionDigits: 6, maximumFractionDigits: 6 })}</td>
-                            <td className="px-3 py-1.5 text-[#6b7280]">{p.fonte ?? "—"}</td>
+                          <tr key={p.id} className="border-b" style={{ borderColor: "var(--border-soft)" }}>
+                            <td className="px-3 py-1.5 font-bold" style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>{p.ticker}</td>
+                            <td className="px-3 py-1.5" style={{ color: "var(--text-body)", fontFamily: "var(--font-plex-mono)" }}>{String(p.data)}</td>
+                            <td className="px-3 py-1.5 text-right" style={{ color: "var(--text-body)", fontFamily: "var(--font-plex-mono)" }}>{p.valor.toLocaleString("pt-BR", { minimumFractionDigits: 6, maximumFractionDigits: 6 })}</td>
+                            <td className="px-3 py-1.5" style={{ color: "var(--text-muted)" }}>{p.fonte ?? "—"}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -482,8 +594,11 @@ export default function Configuracoes() {
           {tab === "aportes" && (
             <>
               {regraAtiva && (
-                <section className="rounded-xl border border-[#26A69A]/40 bg-[#26A69A]/5 px-5 py-4 space-y-2">
-                  <h2 className="text-sm font-semibold text-white">Regra Ativa</h2>
+                <section
+                  className="rounded-xl border px-5 py-4 space-y-2"
+                  style={{ borderColor: "rgba(74,124,89,0.4)", background: "rgba(74,124,89,0.06)" }}
+                >
+                  <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Regra Ativa</h2>
                   {[
                     ["Valor mensal alvo", brl(regraAtiva.valor_mensal_alvo)],
                     ["Tipo", regraAtiva.tipo],
@@ -491,41 +606,47 @@ export default function Configuracoes() {
                     ["Criada em", String(regraAtiva.data_criacao)],
                   ].map(([k, v]) => (
                     <div key={k} className="flex justify-between text-sm">
-                      <span className="text-[#6b7280]">{k}</span>
-                      <span className="font-mono text-[#D1D4DC]">{v}</span>
+                      <span style={{ color: "var(--text-muted)" }}>{k}</span>
+                      <span style={{ color: "var(--text-body)", fontFamily: "var(--font-plex-mono)" }}>{v}</span>
                     </div>
                   ))}
                 </section>
               )}
 
-              <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-4 space-y-3">
-                <h2 className="text-sm font-semibold text-white">Nova Regra de Aporte</h2>
-                <p className="text-xs text-[#6b7280]">Criar nova regra desativa a anterior automaticamente.</p>
+              <section
+                className="rounded-xl border px-5 py-4 space-y-3"
+                style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+              >
+                <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Nova Regra de Aporte</h2>
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>Criar nova regra desativa a anterior automaticamente.</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[10px] text-[#6b7280] uppercase">Valor mensal alvo (R$) *</label>
+                    <label className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Valor mensal alvo (R$) *</label>
                     <input type="number" step="100" value={novaRegra.valor_mensal_alvo}
-                      onChange={(e) => setNovaRegra((p) => ({ ...p, valor_mensal_alvo: e.target.value }))} className={cls} placeholder="2000" />
+                      onChange={(e) => setNovaRegra((p) => ({ ...p, valor_mensal_alvo: e.target.value }))} className={inputClass} style={inputStyle} placeholder="2000" />
                   </div>
                   <div>
-                    <label className="text-[10px] text-[#6b7280] uppercase">Tipo</label>
-                    <select value={novaRegra.tipo} onChange={(e) => setNovaRegra((p) => ({ ...p, tipo: e.target.value }))} className={cls}>
+                    <label className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Tipo</label>
+                    <select value={novaRegra.tipo} onChange={(e) => setNovaRegra((p) => ({ ...p, tipo: e.target.value }))} className={inputClass} style={inputStyle}>
                       <option>PROGRAMADO</option><option>OPORTUNISTICO</option><option>MISTO</option>
                     </select>
                   </div>
                   <div className="col-span-2">
-                    <label className="text-[10px] text-[#6b7280] uppercase">Critério de oportunismo (opcional)</label>
+                    <label className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Critério de oportunismo (opcional)</label>
                     <input value={novaRegra.criterio_oportunismo}
                       onChange={(e) => setNovaRegra((p) => ({ ...p, criterio_oportunismo: e.target.value }))}
-                      className={cls} placeholder="Ex: IBOV < -5% no mês" />
+                      className={inputClass} style={inputStyle} placeholder="Ex: IBOV < -5% no mês" />
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <button onClick={criarRegra}
-                    className="rounded px-4 py-1.5 text-sm bg-[#6366F1]/20 text-[#6366F1] border border-[#6366F1]/40 hover:bg-[#6366F1]/30 transition">
+                  <button
+                    onClick={criarRegra}
+                    className="rounded px-4 py-1.5 text-sm font-semibold transition"
+                    style={{ background: "var(--purple-accent)", color: "var(--bg-card)" }}
+                  >
                     Criar regra
                   </button>
-                  {regraStatus && <span className={`text-xs ${regraStatus.includes("Erro") ? "text-[#EF5350]" : "text-[#26A69A]"}`}>{regraStatus}</span>}
+                  {regraStatus && <span className="text-xs" style={{ color: statusColor(regraStatus) }}>{regraStatus}</span>}
                 </div>
               </section>
             </>

@@ -32,6 +32,8 @@ function fmt2(n: number | null | undefined): string {
   return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+const cardShadow = "0 1px 3px rgba(61,54,41,0.06)";
+
 interface AtivoData {
   ticker: string;
   posicao: {
@@ -70,13 +72,19 @@ interface Tese {
 }
 
 function Semaforo({ nivel }: { nivel: string }) {
-  const map: Record<string, { color: string; emoji: string }> = {
-    VERDE:    { color: "#26A69A", emoji: "🟢" },
-    AMARELO:  { color: "#F59E0B", emoji: "🟡" },
-    VERMELHO: { color: "#EF5350", emoji: "🔴" },
+  const map: Record<string, string> = {
+    VERDE: "var(--positive)",
+    AMARELO: "var(--warning)",
+    VERMELHO: "var(--negative)",
   };
-  const s = map[nivel] ?? map.VERDE;
-  return <span title={nivel} style={{ color: s.color }}>{s.emoji}</span>;
+  const color = map[nivel] ?? map.VERDE;
+  return (
+    <span
+      title={nivel}
+      className="inline-block shrink-0 rounded-full"
+      style={{ width: 9, height: 9, background: color }}
+    />
+  );
 }
 
 function GraficoTecnico({ ticker }: { ticker: string }) {
@@ -114,14 +122,14 @@ function GraficoTecnico({ ticker }: { ticker: string }) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-48 text-[#6b7280] text-sm">
+      <div className="flex items-center justify-center h-48 text-sm" style={{ color: "var(--text-faint)" }}>
         <span className="animate-pulse">Gerando gráfico técnico…</span>
       </div>
     );
   }
   if (error) {
     return (
-      <div className="text-xs text-[#6b7280] italic px-4 py-3">{error}</div>
+      <div className="text-xs italic px-4 py-3" style={{ color: "var(--text-faint)" }}>{error}</div>
     );
   }
   if (arquivo) {
@@ -176,31 +184,34 @@ export default function DetalheAtivo() {
     load();
   }, [ticker, router]);
 
-  const pnlColor = (v?: number) => (v == null ? "#D1D4DC" : v >= 0 ? "#26A69A" : "#EF5350");
+  const pnlColor = (v?: number) => (v == null ? "var(--text-primary)" : v >= 0 ? "var(--positive)" : "var(--negative)");
   const pos = data?.posicao;
   const fund = data?.fundamentos ?? {};
 
   return (
-    <div className="flex min-h-screen bg-[#0F1117] text-[#D1D4DC]">
+    <div className="flex min-h-screen" style={{ background: "var(--bg-app)", color: "var(--text-body)" }}>
       <Nav />
       <main className="flex-1 px-4 py-6 md:px-8 space-y-4 overflow-auto">
 
         {/* Breadcrumb */}
-        <div className="text-xs text-[#6b7280]">
-          <Link href="/posicoes" className="hover:text-[#26A69A]">Posições</Link>
+        <div className="text-xs" style={{ color: "var(--text-faint)" }}>
+          <Link href="/posicoes" className="hover:underline" style={{ color: "var(--text-faint)" }}>Posições</Link>
           <span className="mx-1">›</span>
-          <span className="text-[#D1D4DC]">{ticker}</span>
+          <span style={{ color: "var(--text-body)" }}>{ticker}</span>
         </div>
 
         {loading && (
           <div className="animate-pulse space-y-4">
-            <div className="h-24 rounded-xl bg-[#1A1D27]" />
-            <div className="h-64 rounded-xl bg-[#1A1D27]" />
+            <div className="h-24 rounded-xl" style={{ background: "var(--bg-card)" }} />
+            <div className="h-64 rounded-xl" style={{ background: "var(--bg-card)" }} />
           </div>
         )}
 
         {error && (
-          <div className="rounded-xl border border-red-800/50 bg-red-900/20 px-4 py-3 text-sm text-red-400">
+          <div
+            className="rounded-xl border px-4 py-3 text-sm"
+            style={{ borderColor: "rgba(180,68,44,0.3)", background: "rgba(180,68,44,0.08)", color: "var(--negative)" }}
+          >
             {error}
           </div>
         )}
@@ -208,46 +219,60 @@ export default function DetalheAtivo() {
         {!loading && data && (
           <>
             {/* 1. Header */}
-            <header className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-4">
+            <header
+              className="rounded-xl border px-5 py-4"
+              style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+            >
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
-                  <div className="flex items-center gap-3">
-                    <h1 className="text-2xl font-bold text-white">{ticker}</h1>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <h1
+                      className="text-2xl font-semibold"
+                      style={{ color: "var(--text-primary)", fontFamily: "var(--font-source-serif)" }}
+                    >
+                      {ticker}
+                    </h1>
                     {pos?.bloco_ips && (
-                      <span className="rounded-md bg-[#6366F1]/20 px-2 py-0.5 text-[10px] font-bold text-[#6366F1] border border-[#6366F1]/30">
+                      <span
+                        className="rounded-md px-2 py-0.5 text-[10px] font-bold border"
+                        style={{ whiteSpace: "nowrap", background: "rgba(108,99,196,0.14)", borderColor: "rgba(108,99,196,0.3)", color: "var(--purple-accent)" }}
+                      >
                         {pos.bloco_ips.replace("_", " ")}
                       </span>
                     )}
                     {pos?.classe && (
-                      <span className="rounded-md bg-[#2A2D3A] px-2 py-0.5 text-[10px] text-[#6b7280] border border-[#2A2D3A]">
+                      <span
+                        className="rounded-md px-2 py-0.5 text-[10px] border"
+                        style={{ whiteSpace: "nowrap", background: "var(--bg-card-alt)", color: "var(--text-muted)", borderColor: "var(--border)" }}
+                      >
                         {pos.classe}
                       </span>
                     )}
                   </div>
                   {pos?.setor && (
-                    <p className="text-xs text-[#6b7280] mt-0.5">{pos.setor}</p>
+                    <p className="text-xs mt-0.5" style={{ color: "var(--text-faint)" }}>{pos.setor}</p>
                   )}
                 </div>
                 {pos && (
                   <div className="flex flex-wrap gap-4">
                     <div className="text-right">
-                      <p className="text-[10px] text-[#6b7280] uppercase">Preço Atual</p>
-                      <p className="text-lg font-bold font-mono text-[#D1D4DC]">
+                      <p className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Preço Atual</p>
+                      <p className="text-lg font-bold" style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>
                         {pos.preco_atual != null ? fmt2(pos.preco_atual) : "—"}
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-[10px] text-[#6b7280] uppercase">Valor Posição</p>
-                      <p className="text-lg font-bold font-mono text-[#D1D4DC]">
+                      <p className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Valor Posição</p>
+                      <p className="text-lg font-bold" style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>
                         {brl(pos.valor_atual)}
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-[10px] text-[#6b7280] uppercase">P&amp;L</p>
-                      <p className="text-lg font-bold font-mono" style={{ color: pnlColor(pos.pnl) }}>
+                      <p className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>P&amp;L</p>
+                      <p className="text-lg font-bold" style={{ color: pnlColor(pos.pnl), fontFamily: "var(--font-plex-mono)" }}>
                         {brl(pos.pnl)}
                       </p>
-                      <p className="text-xs font-mono" style={{ color: pnlColor(pos.pnl_pct) }}>
+                      <p className="text-xs" style={{ color: pnlColor(pos.pnl_pct), fontFamily: "var(--font-plex-mono)" }}>
                         {pct(pos.pnl_pct)}
                       </p>
                     </div>
@@ -257,12 +282,15 @@ export default function DetalheAtivo() {
             </header>
 
             {/* 2. Gráfico técnico */}
-            <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27]">
-              <div className="flex items-center gap-2 px-5 py-3 border-b border-[#2A2D3A]">
+            <section
+              className="rounded-xl border"
+              style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+            >
+              <div className="flex items-center gap-2 px-5 py-3 border-b" style={{ borderColor: "var(--border-soft)" }}>
                 <span className="text-base">📈</span>
                 <div>
-                  <h2 className="text-sm font-semibold text-white">Gráfico Técnico</h2>
-                  <p className="text-[10px] text-[#6b7280]">Via Maestro — RSI e MACD</p>
+                  <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Gráfico Técnico</h2>
+                  <p className="text-[10px]" style={{ color: "var(--text-faint)" }}>Via Maestro — RSI e MACD</p>
                 </div>
               </div>
               <div className="px-2 py-2">
@@ -271,10 +299,13 @@ export default function DetalheAtivo() {
             </section>
 
             {/* 3. Fundamentos */}
-            <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27]">
-              <div className="flex items-center gap-2 px-5 py-3 border-b border-[#2A2D3A]">
+            <section
+              className="rounded-xl border"
+              style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+            >
+              <div className="flex items-center gap-2 px-5 py-3 border-b" style={{ borderColor: "var(--border-soft)" }}>
                 <span className="text-base">📊</span>
-                <h2 className="text-sm font-semibold text-white">Fundamentos</h2>
+                <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Fundamentos</h2>
               </div>
               <div className="px-5 py-4 grid grid-cols-2 md:grid-cols-4 gap-3">
                 {[
@@ -285,9 +316,9 @@ export default function DetalheAtivo() {
                   { label: "Marg. EBITDA", value: fund.margem_ebitda != null ? (fund.margem_ebitda * 100).toFixed(1) + "%" : "—" },
                   { label: "Dív/EBITDA", value: fmt2(fund.div_liq_ebitda) },
                 ].map((f) => (
-                  <div key={f.label} className="rounded-lg bg-[#0F1117] border border-[#2A2D3A] px-3 py-2">
-                    <p className="text-[9px] text-[#6b7280] uppercase tracking-wider">{f.label}</p>
-                    <p className="text-sm font-bold font-mono text-[#D1D4DC] mt-0.5">{f.value}</p>
+                  <div key={f.label} className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--border-soft)", background: "var(--bg-app)" }}>
+                    <p className="text-[9px] uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>{f.label}</p>
+                    <p className="text-sm font-bold mt-0.5" style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>{f.value}</p>
                   </div>
                 ))}
               </div>
@@ -295,24 +326,34 @@ export default function DetalheAtivo() {
 
             {/* 4. Teses vinculadas */}
             {teses.length > 0 && (
-              <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27]">
-                <div className="flex items-center gap-2 px-5 py-3 border-b border-[#2A2D3A]">
+              <section
+                className="rounded-xl border"
+                style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+              >
+                <div className="flex items-center gap-2 px-5 py-3 border-b" style={{ borderColor: "var(--border-soft)" }}>
                   <span className="text-base">🔬</span>
-                  <h2 className="text-sm font-semibold text-white">Teses Vinculadas</h2>
+                  <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Teses Vinculadas</h2>
                 </div>
                 <div className="px-5 py-4 space-y-3">
                   {teses.map((t) => (
-                    <Link key={t.id} href={`/teses/${t.id}`} className="block rounded-lg border border-[#2A2D3A] bg-[#0F1117] px-4 py-3 hover:border-[#6366F1]/50 transition">
+                    <Link
+                      key={t.id}
+                      href={`/teses/${t.id}`}
+                      className="block rounded-lg border px-4 py-3 transition"
+                      style={{ borderColor: "var(--border-soft)", background: "var(--bg-app)" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.borderColor = "rgba(108,99,196,0.4)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--border-soft)")}
+                    >
                       <div className="flex items-center gap-2 mb-1">
                         <Semaforo nivel={t.nivel_invalidacao} />
-                        <span className="text-sm font-semibold text-white">{t.ticker}</span>
-                        <span className="text-xs text-[#6b7280]">({t.status})</span>
+                        <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{t.ticker}</span>
+                        <span className="text-xs" style={{ color: "var(--text-faint)" }}>({t.status})</span>
                       </div>
                       {t.racional && (
-                        <p className="text-xs text-[#D1D4DC] line-clamp-2">{t.racional}</p>
+                        <p className="text-xs line-clamp-2" style={{ color: "var(--text-body)" }}>{t.racional}</p>
                       )}
                       {t.criterio_invalidacao && (
-                        <p className="text-[10px] text-[#F59E0B] mt-1">⚠️ {t.criterio_invalidacao.slice(0, 80)}{t.criterio_invalidacao.length > 80 ? "…" : ""}</p>
+                        <p className="text-[10px] mt-1" style={{ color: "var(--warning)" }}>⚠ {t.criterio_invalidacao.slice(0, 80)}{t.criterio_invalidacao.length > 80 ? "…" : ""}</p>
                       )}
                     </Link>
                   ))}
@@ -324,13 +365,15 @@ export default function DetalheAtivo() {
             <div className="flex flex-wrap gap-3">
               <Link
                 href={`/maestro?q=Analise+${ticker}`}
-                className="rounded-lg px-4 py-2 text-sm font-medium bg-[#6366F1] text-white hover:bg-[#6366F1]/80 transition"
+                className="rounded-lg px-4 py-2 text-sm font-semibold transition"
+                style={{ whiteSpace: "nowrap", background: "var(--purple-accent)", color: "var(--bg-card)" }}
               >
                 🤖 Perguntar ao Maestro sobre {ticker}
               </Link>
               <Link
                 href="/posicoes"
-                className="rounded-lg px-4 py-2 text-sm border border-[#2A2D3A] text-[#D1D4DC] hover:bg-[#2A2D3A] transition"
+                className="rounded-lg px-4 py-2 text-sm border transition"
+                style={{ borderColor: "var(--border)", color: "var(--text-body)" }}
               >
                 ← Voltar às Posições
               </Link>
