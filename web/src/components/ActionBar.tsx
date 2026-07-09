@@ -35,22 +35,27 @@ export default function ActionBar() {
   const busy = updating || recalculating;
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2 border-b border-[#2A2D3A] bg-[#0F1117]/80 backdrop-blur sticky top-0 z-30">
-      {ok && <span className="text-xs text-[#26A69A]">✓ {ok}</span>}
-      {err && <span className="text-xs text-[#EF5350]">✕ {err}</span>}
-      {!ok && !err && <span className="text-xs text-[#6b7280]">Dados ao vivo</span>}
+    <div
+      className="flex items-center gap-3 px-4 py-2 border-b backdrop-blur sticky top-0 z-30"
+      style={{ borderColor: "var(--border)", background: "rgba(244,238,226,0.85)" }}
+    >
+      {ok && <span className="text-xs" style={{ color: "var(--positive)" }}>✓ {ok}</span>}
+      {err && <span className="text-xs" style={{ color: "var(--negative)" }}>✕ {err}</span>}
+      {!ok && !err && <span className="text-xs" style={{ color: "var(--text-muted)" }}>Dados ao vivo</span>}
       <div className="ml-auto flex gap-2">
         <button
           onClick={atualizar}
           disabled={busy}
-          className="rounded px-3 py-1.5 text-xs font-medium border border-[#26A69A]/40 text-[#26A69A] bg-[#26A69A]/10 hover:bg-[#26A69A]/20 disabled:opacity-40 transition"
+          className="rounded-lg px-3 py-1.5 text-xs font-medium border disabled:opacity-40 transition"
+          style={{ borderColor: "rgba(193,95,60,0.4)", color: "var(--accent-strong)", background: "rgba(193,95,60,0.08)" }}
         >
           {updating ? "Atualizando…" : "⟳ Atualizar cotações"}
         </button>
         <button
           onClick={recalcular}
           disabled={busy}
-          className="rounded px-3 py-1.5 text-xs font-medium border border-[#2A2D3A] text-[#D1D4DC] bg-[#1A1D27] hover:bg-[#2A2D3A] disabled:opacity-40 transition"
+          className="rounded-lg px-3 py-1.5 text-xs font-medium border disabled:opacity-40 transition"
+          style={{ borderColor: "var(--border)", color: "var(--text-body)", background: "var(--bg-card)" }}
         >
           {recalculating ? "Recalculando…" : "⚡ Recalcular"}
         </button>

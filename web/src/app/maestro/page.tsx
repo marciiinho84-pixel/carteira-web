@@ -84,20 +84,24 @@ function ToolCallIndicator({ tool, done }: { tool: ToolCallState; done: boolean 
   return (
     <div className="my-1.5 text-xs">
       <div className="flex items-start gap-2">
-        <span className="mt-0.5 text-[#26A69A]">{done ? "✓" : "⟳"}</span>
+        <span className="mt-0.5" style={{ color: "var(--positive)" }}>{done ? "✓" : "⟳"}</span>
         <div className="flex-1">
           <button
             onClick={() => setExpanded(!expanded)}
-            className="text-[#6b7280] hover:text-[#D1D4DC] transition-colors text-left"
+            className="transition-colors text-left"
+            style={{ color: "var(--text-muted)" }}
           >
             {done ? "chamou" : "chamando"}{" "}
-            <span className="font-mono text-[#26A69A]">{tool.name}</span>
+            <span style={{ color: "var(--accent-strong)", fontFamily: "var(--font-plex-mono)" }}>{tool.name}</span>
             {tool.args && tool.args !== "{}" && (
-              <span className="ml-1 text-[#6b7280]">▾</span>
+              <span className="ml-1" style={{ color: "var(--text-faint)" }}>▾</span>
             )}
           </button>
           {expanded && tool.args && (
-            <pre className="mt-1 text-[10px] text-[#6b7280] bg-[#0F1117] rounded p-2 overflow-x-auto max-h-32">
+            <pre
+              className="mt-1 text-[10px] rounded p-2 overflow-x-auto max-h-32"
+              style={{ color: "var(--text-muted)", background: "var(--bg-app)" }}
+            >
               {(() => {
                 try {
                   return JSON.stringify(JSON.parse(tool.args), null, 2);
@@ -110,7 +114,7 @@ function ToolCallIndicator({ tool, done }: { tool: ToolCallState; done: boolean 
         </div>
       </div>
       {chartArquivo && (
-        <div className="mt-2 rounded-lg overflow-hidden border border-[#2A2D3A]">
+        <div className="mt-2 rounded-lg overflow-hidden border" style={{ borderColor: "var(--border)" }}>
           <iframe
             src={`${API_BASE}/charts/${chartArquivo}`}
             className="w-full border-0"
@@ -131,20 +135,24 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
   return (
     <div className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
       {!isUser && (
-        <div className="w-7 h-7 rounded-full bg-[#26A69A]/20 border border-[#26A69A]/40 flex items-center justify-center shrink-0 mt-1">
-          <span className="text-xs text-[#26A69A]">M</span>
+        <div
+          className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-1 border"
+          style={{ background: "rgba(193,95,60,0.14)", borderColor: "rgba(193,95,60,0.3)" }}
+        >
+          <span className="text-xs font-bold" style={{ color: "var(--accent-strong)" }}>M</span>
         </div>
       )}
       <div
-        className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+        className="max-w-[80%] rounded-2xl px-4 py-3 border"
+        style={
           isUser
-            ? "bg-[#26A69A]/20 border border-[#26A69A]/30 text-[#D1D4DC]"
-            : "bg-[#1A1D27] border border-[#2A2D3A] text-[#D1D4DC]"
-        }`}
+            ? { background: "rgba(193,95,60,0.12)", borderColor: "rgba(193,95,60,0.3)", color: "var(--text-body)" }
+            : { background: "var(--bg-card)", borderColor: "var(--border)", color: "var(--text-body)" }
+        }
       >
         {/* Tool calls */}
         {msg.toolCalls && msg.toolCalls.length > 0 && (
-          <div className="mb-2 pb-2 border-b border-[#2A2D3A]">
+          <div className="mb-2 pb-2 border-b" style={{ borderColor: "var(--border-soft)" }}>
             {msg.toolCalls.map((tc) => (
               <ToolCallIndicator key={tc.id} tool={tc} done={tc.done} />
             ))}
@@ -155,8 +163,11 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
         <div className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</div>
       </div>
       {isUser && (
-        <div className="w-7 h-7 rounded-full bg-[#6366F1]/20 border border-[#6366F1]/40 flex items-center justify-center shrink-0 mt-1">
-          <span className="text-xs text-[#6366F1]">V</span>
+        <div
+          className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-1 border"
+          style={{ background: "rgba(108,99,196,0.14)", borderColor: "rgba(108,99,196,0.3)" }}
+        >
+          <span className="text-xs font-bold" style={{ color: "var(--purple-accent)" }}>V</span>
         </div>
       )}
     </div>
@@ -473,10 +484,10 @@ export default function MaestroPage() {
   };
 
   const NIVEL_COLOR: Record<string, string> = {
-    L1: "#6b7280",
-    L2: "#26A69A",
-    L3: "#F59E0B",
-    L4: "#EF5350",
+    L1: "var(--text-faint)",
+    L2: "var(--positive)",
+    L3: "var(--warning)",
+    L4: "var(--negative)",
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -484,7 +495,7 @@ export default function MaestroPage() {
   return (
     <div
       className="flex h-screen overflow-hidden"
-      style={{ backgroundColor: "#0F1117", color: "#D1D4DC" }}
+      style={{ background: "var(--bg-app)", color: "var(--text-body)" }}
     >
       {/* ── Sidebar ── */}
       {/* Backdrop mobile */}
@@ -498,14 +509,20 @@ export default function MaestroPage() {
         className={`fixed md:relative inset-y-0 left-0 z-40 md:z-auto h-full md:h-auto w-64 flex flex-col shrink-0 border-r transition-transform duration-200 md:transition-none ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full md:hidden"
         }`}
-        style={{ borderColor: "#2A2D3A", backgroundColor: "#0D0F17" }}
+        style={{ borderColor: "var(--border)", background: "var(--bg-card-alt)" }}
         >
           {/* Sidebar header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "#2A2D3A" }}>
-            <span className="text-sm font-semibold text-[#D1D4DC]">Maestro</span>
+          <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "var(--border)" }}>
+            <span
+              className="text-sm font-bold"
+              style={{ color: "var(--text-primary)", fontFamily: "var(--font-source-serif)" }}
+            >
+              Maestro
+            </span>
             <button
               onClick={newConversation}
-              className="text-xs px-2 py-1 rounded border border-[#2A2D3A] text-[#6b7280] hover:text-[#D1D4DC] hover:border-[#26A69A] transition-colors"
+              className="text-xs px-2.5 py-1 rounded-md border font-semibold transition-colors"
+              style={{ whiteSpace: "nowrap", color: "var(--accent-strong)", borderColor: "rgba(193,95,60,0.3)", background: "rgba(193,95,60,0.10)" }}
             >
               + Nova
             </button>
@@ -514,82 +531,96 @@ export default function MaestroPage() {
           {/* Conversations list — 9b: ocultar conversas sem mensagens */}
           <div className="flex-1 overflow-y-auto py-2">
             {conversas.filter((c) => (c.total_msgs ?? 0) > 0).length === 0 ? (
-              <p className="text-xs text-[#6b7280] px-4 py-2">Sem conversas ainda</p>
+              <p className="text-xs px-4 py-2" style={{ color: "var(--text-faint)" }}>Sem conversas ainda</p>
             ) : (
               conversas
                 .filter((c) => (c.total_msgs ?? 0) > 0)
-                .map((c) => (
-                  <div
-                    key={c.id}
-                    className={`group flex items-center gap-1 pr-1 transition-colors hover:bg-[#1A1D27] ${
-                      activeThreadId === String(c.id) ? "bg-[#1A1D27]" : ""
-                    }`}
-                  >
-                    {renamingId === c.id ? (
-                      /* Inline rename input */
-                      <input
-                        autoFocus
-                        className="flex-1 min-w-0 mx-2 my-1 px-2 py-1 text-xs rounded bg-[#0F1117] border border-[#26A69A] text-[#D1D4DC] outline-none"
-                        value={renameValue}
-                        onChange={(e) => setRenameValue(e.target.value)}
-                        onBlur={() => commitRename(c.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") commitRename(c.id);
-                          if (e.key === "Escape") setRenamingId(null);
-                        }}
-                      />
-                    ) : (
-                      /* Normal row */
-                      <button
-                        onClick={() => openConversation(c.id)}
-                        className="flex-1 min-w-0 text-left px-4 py-2.5 text-xs"
-                      >
-                        <div className={`truncate ${activeThreadId === String(c.id) ? "text-[#D1D4DC]" : "text-[#6b7280]"}`}>
-                          {c.titulo || "Conversa"}
-                        </div>
-                        {c.criado_em && (
-                          <div className="text-[10px] text-[#6b7280] mt-0.5">
-                            {formatTime(c.criado_em)}
+                .map((c) => {
+                  const active = activeThreadId === String(c.id);
+                  return (
+                    <div
+                      key={c.id}
+                      className="group flex items-center gap-1 pr-1 transition-colors border-l-2"
+                      style={{
+                        background: active ? "rgba(193,95,60,0.10)" : "transparent",
+                        borderColor: active ? "var(--accent)" : "transparent",
+                      }}
+                    >
+                      {renamingId === c.id ? (
+                        /* Inline rename input */
+                        <input
+                          autoFocus
+                          className="flex-1 min-w-0 mx-2 my-1 px-2 py-1 text-xs rounded border outline-none"
+                          style={{ background: "var(--bg-app)", borderColor: "var(--accent)", color: "var(--text-body)" }}
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onBlur={() => commitRename(c.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") commitRename(c.id);
+                            if (e.key === "Escape") setRenamingId(null);
+                          }}
+                        />
+                      ) : (
+                        /* Normal row */
+                        <button
+                          onClick={() => openConversation(c.id)}
+                          className="flex-1 min-w-0 text-left px-4 py-2.5 text-xs"
+                        >
+                          <div className="truncate" style={{ color: active ? "var(--text-primary)" : "var(--text-muted)" }}>
+                            {c.titulo || "Conversa"}
                           </div>
-                        )}
-                      </button>
-                    )}
-                    {/* Botões de ação (visíveis no hover) */}
-                    {renamingId !== c.id && (
-                      <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 shrink-0 transition-all">
-                        <button
-                          onClick={(e) => startRename(c.id, c.titulo || "", e)}
-                          className="text-[#6b7280] hover:text-[#26A69A] p-1 rounded"
-                          title="Renomear"
-                        >
-                          ✎
+                          {c.criado_em && (
+                            <div className="text-[10px] mt-0.5" style={{ color: "var(--text-faint)" }}>
+                              {formatTime(c.criado_em)}
+                            </div>
+                          )}
                         </button>
-                        <button
-                          onClick={(e) => deleteConversation(c.id, e)}
-                          className="text-[#6b7280] hover:text-[#EF5350] p-1 rounded"
-                          title="Apagar"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))
+                      )}
+                      {/* Botões de ação (visíveis no hover) */}
+                      {renamingId !== c.id && (
+                        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 shrink-0 transition-all">
+                          <button
+                            onClick={(e) => startRename(c.id, c.titulo || "", e)}
+                            className="p-1 rounded transition-colors"
+                            style={{ color: "var(--text-faint)" }}
+                            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--accent-strong)")}
+                            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-faint)")}
+                            title="Renomear"
+                          >
+                            ✎
+                          </button>
+                          <button
+                            onClick={(e) => deleteConversation(c.id, e)}
+                            className="p-1 rounded transition-colors"
+                            style={{ color: "var(--text-faint)" }}
+                            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--negative)")}
+                            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-faint)")}
+                            title="Apagar"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
             )}
           </div>
 
           {/* Bottom links */}
-          <div className="border-t px-4 py-3 space-y-2" style={{ borderColor: "#2A2D3A" }}>
+          <div className="border-t px-4 py-3 space-y-2" style={{ borderColor: "var(--border)" }}>
             <button
               onClick={() => setShowSettings(!showSettings)}
-              className="w-full text-left text-xs text-[#6b7280] hover:text-[#D1D4DC] transition-colors flex items-center gap-2"
+              className="w-full text-left text-xs transition-colors flex items-center gap-2"
+              style={{ whiteSpace: "nowrap", color: "var(--text-muted)" }}
             >
               <span>⚙</span>
               Automação
             </button>
             <Link
               href="/sala-de-comando"
-              className="block text-xs text-[#6b7280] hover:text-[#D1D4DC] transition-colors"
+              className="block text-xs transition-colors"
+              style={{ whiteSpace: "nowrap", color: "var(--text-muted)" }}
             >
               ← Sala de Comando
             </Link>
@@ -601,18 +632,20 @@ export default function MaestroPage() {
         {/* Header */}
         <header
           className="flex items-center gap-3 px-4 py-3 border-b shrink-0"
-          style={{ borderColor: "#2A2D3A", backgroundColor: "#0F1117" }}
+          style={{ borderColor: "var(--border)", background: "var(--bg-app)" }}
         >
           <Link
             href="/sala-de-comando"
-            className="text-[#6b7280] hover:text-[#D1D4DC] transition-colors text-xs px-2 py-1 rounded border border-[#2A2D3A] hover:border-[#4A4D5A]"
+            className="transition-colors text-xs px-2 py-1 rounded border"
+            style={{ whiteSpace: "nowrap", color: "var(--text-muted)", borderColor: "var(--border)" }}
             title="Voltar ao início"
           >
             ← Home
           </Link>
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="text-[#6b7280] hover:text-[#D1D4DC] transition-colors"
+            className="transition-colors"
+            style={{ color: "var(--text-muted)" }}
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -620,21 +653,25 @@ export default function MaestroPage() {
           </button>
 
           <div className="flex items-center gap-2 flex-1">
-            <div className="w-6 h-6 rounded-full bg-[#26A69A]/20 border border-[#26A69A]/40 flex items-center justify-center">
-              <span className="text-xs text-[#26A69A]">M</span>
+            <div
+              className="w-6 h-6 rounded-full flex items-center justify-center border"
+              style={{ background: "rgba(193,95,60,0.14)", borderColor: "rgba(193,95,60,0.3)" }}
+            >
+              <span className="text-xs font-bold" style={{ color: "var(--accent-strong)" }}>M</span>
             </div>
-            <span className="text-sm font-medium text-[#D1D4DC]">Maestro</span>
-            <span className="text-xs text-[#6b7280]">—</span>
-            <span className="text-xs text-[#6b7280]">claude-opus-4-8 · 31 tools</span>
+            <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Maestro</span>
+            <span className="text-xs" style={{ color: "var(--text-faint)" }}>—</span>
+            <span className="text-xs" style={{ color: "var(--text-faint)" }}>claude-opus-4-8 · 31 tools</span>
           </div>
 
           {/* Automação badge */}
           <div
-            className="flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-xs"
+            className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-xs font-semibold"
             style={{
-              borderColor: NIVEL_COLOR[nivelMaximo] + "40",
+              whiteSpace: "nowrap",
+              borderColor: NIVEL_COLOR[nivelMaximo],
               color: NIVEL_COLOR[nivelMaximo],
-              backgroundColor: NIVEL_COLOR[nivelMaximo] + "10",
+              background: "var(--bg-card)",
             }}
           >
             <span>{nivelMaximo}</span>
@@ -643,7 +680,8 @@ export default function MaestroPage() {
           {streaming && (
             <button
               onClick={stopStreaming}
-              className="text-xs text-[#EF5350] hover:text-[#EF5350]/80 transition-colors"
+              className="text-xs transition-colors"
+              style={{ color: "var(--negative)" }}
             >
               Parar
             </button>
@@ -654,7 +692,7 @@ export default function MaestroPage() {
         {showSettings && (
           <div
             className="border-b px-4 py-4"
-            style={{ borderColor: "#2A2D3A", backgroundColor: "#0D0F17" }}
+            style={{ borderColor: "var(--border)", background: "var(--bg-card-alt)" }}
           >
             <AutomacaoSettings />
           </div>
@@ -664,12 +702,15 @@ export default function MaestroPage() {
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full text-center gap-4 py-16">
-              <div className="w-16 h-16 rounded-full bg-[#26A69A]/10 border border-[#26A69A]/20 flex items-center justify-center">
-                <span className="text-2xl">M</span>
+              <div
+                className="w-16 h-16 rounded-full flex items-center justify-center border"
+                style={{ background: "rgba(193,95,60,0.10)", borderColor: "rgba(193,95,60,0.2)" }}
+              >
+                <span className="text-2xl font-bold" style={{ color: "var(--accent-strong)" }}>M</span>
               </div>
               <div>
-                <p className="text-[#D1D4DC] font-medium mb-1">Maestro da Carteira</p>
-                <p className="text-sm text-[#6b7280] max-w-sm">
+                <p className="font-medium mb-1" style={{ color: "var(--text-primary)" }}>Maestro da Carteira</p>
+                <p className="text-sm max-w-sm" style={{ color: "var(--text-muted)" }}>
                   Consulte posições, performance, análise técnica, fundamentos, perfil comportamental
                   e muito mais — com dados reais da sua carteira.
                 </p>
@@ -684,7 +725,10 @@ export default function MaestroPage() {
                   <button
                     key={suggestion}
                     onClick={() => sendMessage(suggestion)}
-                    className="text-left text-xs p-3 rounded-lg border border-[#2A2D3A] hover:border-[#26A69A]/40 hover:bg-[#1A1D27] transition-colors text-[#6b7280] hover:text-[#D1D4DC]"
+                    className="text-left text-xs p-3 rounded-lg border transition-colors"
+                    style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(193,95,60,0.4)"; e.currentTarget.style.background = "var(--bg-card)"; e.currentTarget.style.color = "var(--text-body)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text-muted)"; }}
                   >
                     {suggestion}
                   </button>
@@ -700,16 +744,19 @@ export default function MaestroPage() {
           {/* Streaming indicator */}
           {streaming && (
             <div className="flex gap-3 justify-start">
-              <div className="w-7 h-7 rounded-full bg-[#26A69A]/20 border border-[#26A69A]/40 flex items-center justify-center shrink-0 mt-1">
-                <span className="text-xs text-[#26A69A]">M</span>
+              <div
+                className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-1 border"
+                style={{ background: "rgba(193,95,60,0.14)", borderColor: "rgba(193,95,60,0.3)" }}
+              >
+                <span className="text-xs font-bold" style={{ color: "var(--accent-strong)" }}>M</span>
               </div>
-              <div className="bg-[#1A1D27] border border-[#2A2D3A] rounded-2xl px-4 py-3">
+              <div className="rounded-2xl px-4 py-3 border" style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}>
                 <span className="inline-flex gap-1">
                   {[0, 150, 300].map((delay) => (
                     <span
                       key={delay}
-                      className="w-1.5 h-1.5 rounded-full bg-[#26A69A] animate-bounce"
-                      style={{ animationDelay: `${delay}ms` }}
+                      className="w-1.5 h-1.5 rounded-full animate-bounce"
+                      style={{ background: "var(--accent)", animationDelay: `${delay}ms` }}
                     />
                   ))}
                 </span>
@@ -723,11 +770,11 @@ export default function MaestroPage() {
         {/* Input */}
         <div
           className="px-4 py-3 border-t shrink-0"
-          style={{ borderColor: "#2A2D3A", backgroundColor: "#0F1117" }}
+          style={{ borderColor: "var(--border)", background: "var(--bg-app)" }}
         >
           <div
             className="flex items-end gap-2 rounded-xl border p-2"
-            style={{ borderColor: "#2A2D3A", backgroundColor: "#1A1D27" }}
+            style={{ borderColor: "var(--border)", background: "var(--bg-card)" }}
           >
             <textarea
               ref={textareaRef}
@@ -736,8 +783,8 @@ export default function MaestroPage() {
               onKeyDown={handleKeyDown}
               placeholder="Pergunte ao Maestro... (Enter para enviar, Shift+Enter para nova linha)"
               rows={1}
-              className="flex-1 bg-transparent text-sm text-[#D1D4DC] placeholder-[#6b7280] resize-none focus:outline-none py-1 px-1 min-h-[32px] max-h-[120px]"
-              style={{ lineHeight: "1.5" }}
+              className="flex-1 bg-transparent text-sm resize-none focus:outline-none py-1 px-1 min-h-[32px] max-h-[120px]"
+              style={{ lineHeight: "1.5", color: "var(--text-body)" }}
               onInput={(e) => {
                 const el = e.currentTarget;
                 el.style.height = "auto";
@@ -748,14 +795,14 @@ export default function MaestroPage() {
               onClick={() => sendMessage(input)}
               disabled={!input.trim() || streaming}
               className="w-8 h-8 rounded-lg flex items-center justify-center transition-all disabled:opacity-40"
-              style={{ backgroundColor: "#26A69A" }}
+              style={{ background: "var(--accent)" }}
             >
-              <svg className="w-4 h-4 text-[#0F1117]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" style={{ color: "var(--bg-card)" }}>
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 12h14M12 5l7 7-7 7" />
               </svg>
             </button>
           </div>
-          <p className="text-[10px] text-[#6b7280] mt-1.5 text-center">
+          <p className="text-[10px] mt-1.5 text-center" style={{ color: "var(--text-faint)" }}>
             Instrumento de gestão pessoal — não é consultoria CVM regulamentada.
           </p>
         </div>

@@ -3,6 +3,23 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Papel & Tinta — design tokens (docs/PROMPT_CLAUDE_CODE.md) */
+  --bg-app: #F4EEE2;
+  --bg-card: #FBF6EC;
+  --bg-card-alt: #EFE7D8;
+  --border: #DDD2BF;
+  --border-soft: #E5DBC8;
+  --text-primary: #2E2921;
+  --text-body: #3D3629;
+  --text-muted: #7A7160;
+  --text-faint: #A69C88;
+  --accent: #C15F3C;
+  --accent-strong: #A64E2E;
+  --positive: #4A7C59;
+  --negative: #B4442C;
+  --warning: #C9862B;
+  --purple-accent: #6C63C4;
 }
 
 @theme inline {
@@ -10,17 +27,12 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-serif: var(--font-source-serif);
+  --font-plex-mono: var(--font-plex-mono);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg-app);
+  color: var(--text-body);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }

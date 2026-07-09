@@ -16,16 +16,11 @@ import { useAutomacao } from "@/lib/automacao";
 import Nav from "@/components/Nav";
 import ActionBar from "@/components/ActionBar";
 
-// ─── Paleta TradingView ───────────────────────────────────────────────────────
-// bg: #0F1117   card: #1A1D27   border: #2A2D3A
-// teal: #26A69A  red: #EF5350   text: #D1D4DC   purple: #6366F1
+// ─── Papel & Tinta — tokens em globals.css ────────────────────────────────────
+
+const cardShadow = "0 1px 3px rgba(61,54,41,0.06)";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function fmt(n: number | undefined | null, digits = 2): string {
-  if (n == null) return "—";
-  return n.toLocaleString("pt-BR", { minimumFractionDigits: digits, maximumFractionDigits: digits });
-}
 
 function pct(n: number | undefined | null, digits = 2): string {
   if (n == null) return "—";
@@ -62,11 +57,17 @@ const GLOSSARIO: Record<string, string> = {
 
 function Tooltip({ term }: { term: string }) {
   const tip = GLOSSARIO[term];
-  if (!tip) return <span className="text-[#D1D4DC]">{term}</span>;
+  if (!tip) return <span style={{ color: "var(--text-body)" }}>{term}</span>;
   return (
-    <span className="relative group cursor-help border-b border-dotted border-[#6366F1] text-[#D1D4DC]">
+    <span
+      className="relative group cursor-help border-b border-dotted"
+      style={{ borderColor: "var(--purple-accent)", color: "var(--text-body)" }}
+    >
       {term}
-      <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 rounded-lg border border-[#2A2D3A] bg-[#1A1D27] px-3 py-2 text-xs text-[#D1D4DC] opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-xl leading-relaxed">
+      <span
+        className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 rounded-lg border px-3 py-2 text-xs opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-xl leading-relaxed"
+        style={{ borderColor: "var(--border)", background: "var(--bg-card)", color: "var(--text-body)" }}
+      >
         {tip}
       </span>
     </span>
@@ -76,13 +77,19 @@ function Tooltip({ term }: { term: string }) {
 // ─── Semáforo ────────────────────────────────────────────────────────────────
 
 function Semaforo({ nivel }: { nivel: string }) {
-  const map: Record<string, { color: string; label: string }> = {
-    VERDE:    { color: "#26A69A", label: "🟢" },
-    AMARELO:  { color: "#F59E0B", label: "🟡" },
-    VERMELHO: { color: "#EF5350", label: "🔴" },
+  const map: Record<string, string> = {
+    VERDE: "var(--positive)",
+    AMARELO: "var(--warning)",
+    VERMELHO: "var(--negative)",
   };
-  const s = map[nivel] ?? map.VERDE;
-  return <span title={nivel} style={{ color: s.color }} className="text-lg">{s.label}</span>;
+  const color = map[nivel] ?? map.VERDE;
+  return (
+    <span
+      title={nivel}
+      className="inline-block shrink-0 rounded-full"
+      style={{ width: 9, height: 9, background: color }}
+    />
+  );
 }
 
 // ─── Barra IPS ───────────────────────────────────────────────────────────────
@@ -92,7 +99,7 @@ function BarraIPS({ b }: { b: BlocoIPS }) {
   const alvo  = Math.round(b.pct_alvo * 100);
   const bMin  = Math.round(b.banda_min * 100);
   const bMax  = Math.round(b.banda_max * 100);
-  const color = b.status === "OK" ? "#26A69A" : "#EF5350";
+  const color = b.status === "OK" ? "var(--positive)" : "var(--negative)";
   const pctPos = Math.min(100, Math.max(0, b.pct_real / (b.banda_max || 0.5) * 100));
 
   const blocoLabel: Record<string, string> = {
@@ -106,30 +113,26 @@ function BarraIPS({ b }: { b: BlocoIPS }) {
   return (
     <div className="space-y-1 cursor-pointer" onClick={() => { if (typeof window !== "undefined") window.location.href = `/blocos/${b.bloco}`; }}>
       <div className="flex justify-between items-center text-xs">
-        <span className="text-[#D1D4DC] font-medium hover:text-[#26A69A] transition">{blocoLabel[b.bloco] ?? b.bloco}</span>
-        <span className="font-mono" style={{ color }}>
-          {real}% <span className="text-[#6b7280]">/ alvo {alvo}%</span>
+        <span style={{ color: "var(--text-body)", whiteSpace: "nowrap" }}>{blocoLabel[b.bloco] ?? b.bloco}</span>
+        <span style={{ fontFamily: "var(--font-plex-mono)", color }}>
+          {real}% <span style={{ color: "var(--text-faint)" }}>/ alvo {alvo}%</span>
         </span>
       </div>
-      <div className="relative h-2 rounded-full bg-[#2A2D3A] overflow-hidden">
+      <div className="relative rounded-full overflow-hidden" style={{ height: 6, background: "var(--border-soft)" }}>
         {/* banda */}
         <div
-          className="absolute h-full opacity-20"
+          className="absolute h-full"
           style={{
             left:  `${bMin / (bMax || 50) * 100}%`,
             right: `${100 - Math.min(100, bMax / (bMax || 50) * 100)}%`,
-            backgroundColor: "#26A69A",
+            background: "rgba(122,113,96,0.18)",
           }}
         />
         {/* real */}
         <div
           className="absolute h-full rounded-full transition-all"
-          style={{ width: `${pctPos}%`, backgroundColor: color }}
+          style={{ width: `${pctPos}%`, background: color }}
         />
-      </div>
-      <div className="flex justify-between text-[10px] text-[#6b7280]">
-        <span>{bMin}%</span>
-        <span>{bMax}%</span>
       </div>
     </div>
   );
@@ -141,12 +144,12 @@ function CoerenciaCircle({ score }: { score: number }) {
   const r = 36;
   const circ = 2 * Math.PI * r;
   const dash = (score / 100) * circ;
-  const color = score >= 70 ? "#26A69A" : score >= 40 ? "#F59E0B" : "#EF5350";
+  const color = score >= 70 ? "var(--positive)" : score >= 40 ? "var(--warning)" : "var(--negative)";
 
   return (
-    <div className="flex flex-col items-center">
+    <div className="relative shrink-0" style={{ width: 96, height: 96 }}>
       <svg width={96} height={96} className="-rotate-90">
-        <circle cx={48} cy={48} r={r} fill="none" stroke="#2A2D3A" strokeWidth={8} />
+        <circle cx={48} cy={48} r={r} fill="none" stroke="var(--border-soft)" strokeWidth={8} />
         <circle
           cx={48} cy={48} r={r} fill="none"
           stroke={color} strokeWidth={8}
@@ -154,13 +157,10 @@ function CoerenciaCircle({ score }: { score: number }) {
           strokeLinecap="round"
         />
       </svg>
-      <div className="mt-[-72px] flex flex-col items-center pointer-events-none">
-        <span className="text-2xl font-bold" style={{ color }}>{score}</span>
-        <span className="text-[10px] text-[#6b7280] mt-[-2px]">/ 100</span>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="font-bold" style={{ fontSize: 22, color, fontFamily: "var(--font-plex-mono)" }}>{score}</span>
+        <span style={{ fontSize: 9, color: "var(--text-faint)" }}>/ 100</span>
       </div>
-      <p className="mt-8 text-xs text-[#6b7280]">
-        <Tooltip term="Coerência" />
-      </p>
     </div>
   );
 }
@@ -224,16 +224,16 @@ export default function SalaDeComando() {
   // ── Skeleton ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#0F1117] p-4 md:p-8">
+      <main className="min-h-screen p-4 md:p-8" style={{ background: "var(--bg-app)" }}>
         <div className="mx-auto max-w-7xl space-y-4 animate-pulse">
-          <div className="h-28 rounded-xl bg-[#1A1D27]" />
+          <div className="h-28 rounded-xl" style={{ background: "var(--bg-card)" }} />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="md:col-span-2 h-64 rounded-xl bg-[#1A1D27]" />
-            <div className="h-64 rounded-xl bg-[#1A1D27]" />
+            <div className="md:col-span-2 h-64 rounded-xl" style={{ background: "var(--bg-card)" }} />
+            <div className="h-64 rounded-xl" style={{ background: "var(--bg-card)" }} />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="h-56 rounded-xl bg-[#1A1D27]" />
-            <div className="h-56 rounded-xl bg-[#1A1D27]" />
+            <div className="h-56 rounded-xl" style={{ background: "var(--bg-card)" }} />
+            <div className="h-56 rounded-xl" style={{ background: "var(--bg-card)" }} />
           </div>
         </div>
       </main>
@@ -244,41 +244,48 @@ export default function SalaDeComando() {
   const engineOk = kpis?.engine_ok === true;
 
   return (
-    <div className="flex min-h-screen bg-[#0F1117] text-[#D1D4DC]">
+    <div className="flex min-h-screen" style={{ background: "var(--bg-app)", color: "var(--text-body)" }}>
       <Nav />
       <main className="flex-1 overflow-auto flex flex-col">
       <ActionBar />
       <div className="mx-auto max-w-7xl px-4 py-4 md:px-8 md:py-6 space-y-4 flex-1">
 
         {/* ── 1. HEADER ─────────────────────────────────────────────────────── */}
-        <header className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-4">
+        <header
+          className="rounded-xl border px-5 py-4"
+          style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+        >
           <div className="flex items-start justify-between gap-4 flex-wrap">
             {/* título + badge */}
             <div className="flex items-center gap-3">
               <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-lg font-bold text-white">App Minha Carteira</h1>
-                  <span className="rounded-md bg-[#6366F1]/20 px-2 py-0.5 text-[10px] font-bold text-[#6366F1] border border-[#6366F1]/30">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1
+                    className="text-lg font-bold"
+                    style={{ color: "var(--text-primary)", fontFamily: "var(--font-source-serif)" }}
+                  >
+                    App Minha Carteira
+                  </h1>
+                  <span
+                    className="rounded-md px-2 py-0.5 text-[10px] font-bold border"
+                    style={{ whiteSpace: "nowrap", background: "rgba(193,95,60,0.14)", borderColor: "rgba(193,95,60,0.3)", color: "var(--accent-strong)" }}
+                  >
                     {kpis?.nivel_automacao ?? "L2"}
                   </span>
                   <Link
                     href="/maestro"
                     className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold border transition-colors hover:opacity-80"
-                    style={{
-                      backgroundColor: "#6366F1" + "20",
-                      borderColor: "#6366F1" + "50",
-                      color: "#6366F1",
-                    }}
+                    style={{ whiteSpace: "nowrap", background: "rgba(90,124,89,0.14)", borderColor: "rgba(90,124,89,0.3)", color: "var(--positive)" }}
                     title="Abrir Maestro"
                   >
                     Maestro {nivelMaximo !== "L1" ? nivelMaximo : ""}
                   </Link>
                 </div>
                 {email && (
-                  <p className="text-xs text-[#6b7280] mt-0.5">
-                    Olá, <span className="text-[#26A69A]">{email}</span>
+                  <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+                    Olá, <span style={{ color: "var(--accent-strong)" }}>{email}</span>
                     {kpis?.data_referencia && (
-                      <span className="ml-2 text-[#4b5563]">· ref. {kpis.data_referencia}</span>
+                      <span className="ml-2" style={{ color: "var(--text-faint)" }}>· ref. {kpis.data_referencia}</span>
                     )}
                   </p>
                 )}
@@ -292,30 +299,33 @@ export default function SalaDeComando() {
                   label="Patrimônio Total"
                   value={brl(kpis?.patrimonio_total)}
                   sub={kpis?.var_dia_pct != null ? pct(kpis.var_dia_pct) + " hoje" : undefined}
-                  subColor={kpis?.var_dia_pct != null && kpis.var_dia_pct >= 0 ? "#26A69A" : "#EF5350"}
+                  subColor={kpis?.var_dia_pct != null && kpis.var_dia_pct >= 0 ? "var(--positive)" : "var(--negative)"}
                 />
                 <KpiBlock
                   label={<Tooltip term="TWR" />}
                   value={pct(kpis?.twr_ytd)}
-                  valueColor={kpis?.twr_ytd != null && kpis.twr_ytd >= 0 ? "#26A69A" : "#EF5350"}
+                  valueColor={kpis?.twr_ytd != null && kpis.twr_ytd >= 0 ? "var(--positive)" : "var(--negative)"}
                   sub={"vs " + pct(kpis?.cdi_ytd) + " CDI"}
                 />
                 <KpiBlock
                   label={<Tooltip term="IBOV" />}
                   value={pct(kpis?.ibov_ytd)}
                   sub={"excesso " + pct(kpis?.excesso_cdi)}
-                  subColor={kpis?.excesso_cdi != null && kpis.excesso_cdi >= 0 ? "#26A69A" : "#EF5350"}
+                  subColor={kpis?.excesso_cdi != null && kpis.excesso_cdi >= 0 ? "var(--positive)" : "var(--negative)"}
                 />
               </div>
             ) : (
-              <div className="text-xs text-[#6b7280] italic">
+              <div className="text-xs italic" style={{ color: "var(--text-muted)" }}>
                 Engine não calculado — use POST /calcular no Streamlit para atualizar os dados.
               </div>
             )}
 
             <button
               onClick={logout}
-              className="rounded-lg border border-[#2A2D3A] px-3 py-1.5 text-xs text-[#6b7280] hover:border-[#4b5563] hover:text-[#D1D4DC] transition self-start"
+              className="rounded-lg border px-3 py-1.5 text-xs transition self-start"
+              style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--negative)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
             >
               Sair
             </button>
@@ -323,7 +333,10 @@ export default function SalaDeComando() {
         </header>
 
         {error && (
-          <div className="rounded-xl border border-red-800/50 bg-red-900/20 px-4 py-3 text-sm text-red-400">
+          <div
+            className="rounded-xl border px-4 py-3 text-sm"
+            style={{ borderColor: "rgba(180,68,44,0.3)", background: "rgba(180,68,44,0.08)", color: "var(--negative)" }}
+          >
             {error}
             <button onClick={load} className="ml-3 underline text-xs">tentar novamente</button>
           </div>
@@ -333,11 +346,14 @@ export default function SalaDeComando() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
           {/* ── 2. ORQUESTRA ────────────────────────────────────────────────── */}
-          <section className="md:col-span-2 rounded-xl border border-[#2A2D3A] bg-[#1A1D27]">
+          <section
+            className="md:col-span-2 rounded-xl border"
+            style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+          >
             <SectionHeader icon="🎼" title="Orquestra" sub="Últimas observações do maestro" />
             <div className="px-5 pb-5 space-y-3">
               {!data?.observacoes?.length ? (
-                <p className="text-xs text-[#4b5563] italic">
+                <p className="text-xs italic" style={{ color: "var(--text-faint)" }}>
                   Nenhuma observação ainda. Converse com o maestro no Streamlit para alimentar esta seção.
                 </p>
               ) : (
@@ -347,23 +363,28 @@ export default function SalaDeComando() {
                   return (
                     <div
                       key={obs.id}
-                      className="rounded-lg border border-[#2A2D3A] bg-[#0F1117] p-3 space-y-1.5"
+                      className="rounded-lg border p-3 space-y-1.5"
+                      style={{ borderColor: "var(--border-soft)", background: "var(--bg-app)" }}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-[10px] rounded bg-[#6366F1]/15 border border-[#6366F1]/30 px-1.5 py-0.5 text-[#6366F1] font-medium">
+                        <span
+                          className="text-[10px] rounded px-1.5 py-0.5 font-medium border"
+                          style={{ whiteSpace: "nowrap", background: "rgba(193,95,60,0.10)", borderColor: "rgba(193,95,60,0.25)", color: "var(--accent-strong)" }}
+                        >
                           {tag}
                         </span>
-                        <span className="text-[10px] text-[#4b5563] shrink-0">
+                        <span className="text-[10px] shrink-0" style={{ color: "var(--text-faint)" }}>
                           {relativeTime(obs.criada_em)}
                         </span>
                       </div>
-                      <p className={`text-xs text-[#D1D4DC] leading-relaxed ${expanded ? "" : "line-clamp-3"}`}>
+                      <p className={`text-xs leading-relaxed ${expanded ? "" : "line-clamp-3"}`} style={{ color: "var(--text-body)" }}>
                         {obs.content}
                       </p>
                       {obs.content.length > 120 && (
                         <button
                           onClick={() => setExpandedObs(expanded ? null : obs.id)}
-                          className="text-[10px] text-[#6366F1] hover:underline"
+                          className="text-[10px] hover:underline"
+                          style={{ color: "var(--purple-accent)" }}
                         >
                           {expanded ? "▲ menos" : "▼ Por quê? ver mais"}
                         </button>
@@ -376,39 +397,46 @@ export default function SalaDeComando() {
           </section>
 
           {/* ── 3. SEMÁFOROS DE TESES ───────────────────────────────────────── */}
-          <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27]">
+          <section
+            className="rounded-xl border"
+            style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+          >
             <SectionHeader icon="🔬" title="Teses Ativas" sub="Semáforos de invalidação" />
             <div className="px-4 pb-4 space-y-2">
               {!data?.teses?.length ? (
-                <p className="text-xs text-[#4b5563] italic">
+                <p className="text-xs italic" style={{ color: "var(--text-faint)" }}>
                   Nenhuma tese ativa. Cadastre no Streamlit → Teses.
                 </p>
               ) : (
                 data.teses.map((t) => (
                   <div
                     key={t.id}
-                    className="rounded-lg border border-[#2A2D3A] bg-[#0F1117] px-3 py-2.5 space-y-1"
+                    className="rounded-lg border px-3 py-2.5 space-y-1"
+                    style={{ borderColor: "var(--border-soft)", background: "var(--bg-app)" }}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <Semaforo nivel={t.nivel_invalidacao} />
-                        <span className="font-bold text-sm text-white">{t.ticker}</span>
+                        <span className="font-bold text-sm" style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>{t.ticker}</span>
                         {t.bloco_ips && (
-                          <span className="text-[9px] text-[#6b7280] border border-[#2A2D3A] rounded px-1 py-0.5">
+                          <span
+                            className="text-[9px] rounded px-1 py-0.5 border"
+                            style={{ whiteSpace: "nowrap", color: "var(--text-faint)", borderColor: "var(--border)" }}
+                          >
                             {t.bloco_ips.replace("_", " ")}
                           </span>
                         )}
                       </div>
                       {t.dias_desde_criacao != null && (
-                        <span className="text-[9px] text-[#4b5563]">{t.dias_desde_criacao}d</span>
+                        <span className="text-[9px]" style={{ color: "var(--text-faint)" }}>{t.dias_desde_criacao}d</span>
                       )}
                     </div>
                     {t.racional && (
-                      <p className="text-[10px] text-[#6b7280] line-clamp-2">{t.racional}</p>
+                      <p className="text-[10px] line-clamp-2" style={{ color: "var(--text-muted)" }}>{t.racional}</p>
                     )}
                     {t.criterio_invalidacao && (
-                      <p className="text-[10px] text-[#F59E0B]">
-                        ⚠️ {t.criterio_invalidacao.slice(0, 80)}
+                      <p className="text-[10px]" style={{ color: "var(--negative)" }}>
+                        ⚠ {t.criterio_invalidacao.slice(0, 80)}
                         {t.criterio_invalidacao.length > 80 ? "…" : ""}
                       </p>
                     )}
@@ -423,7 +451,10 @@ export default function SalaDeComando() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
           {/* ── 4. ESPELHO COMPORTAMENTAL ───────────────────────────────────── */}
-          <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27]">
+          <section
+            className="rounded-xl border"
+            style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+          >
             <SectionHeader icon="🪞" title="Espelho Comportamental" sub="Coerência dito vs. feito" />
             <div className="px-5 pb-5 space-y-5">
 
@@ -432,8 +463,8 @@ export default function SalaDeComando() {
                 <CoerenciaCircle score={data?.comportamental?.indice_coerencia ?? 0} />
                 <div className="flex-1 space-y-2">
                   {!data?.comportamental?.vieses?.length ? (
-                    <p className="text-xs text-[#4b5563] italic">
-                      Sem vieses calculados. Acesse a tool <code className="text-[#6366F1]">vieses_comportamentais</code> no Claude Desktop.
+                    <p className="text-xs italic" style={{ color: "var(--text-faint)" }}>
+                      Sem vieses calculados. Acesse a tool <code style={{ color: "var(--purple-accent)" }}>vieses_comportamentais</code> no Claude Desktop.
                     </p>
                   ) : (
                     data.comportamental.vieses.map((v) => (
@@ -445,14 +476,14 @@ export default function SalaDeComando() {
 
               {/* Alocação vs IPS */}
               {data?.comportamental?.blocos?.length ? (
-                <div className="space-y-3 pt-2 border-t border-[#2A2D3A]">
-                  <p className="text-xs font-medium text-[#6b7280]">Alocação real vs. IPS (Gerida)</p>
+                <div className="space-y-3 pt-2 border-t" style={{ borderColor: "var(--border-soft)" }}>
+                  <p className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>Alocação real vs. IPS (Gerida)</p>
                   {data.comportamental.blocos.map((b) => (
                     <BarraIPS key={b.bloco} b={b} />
                   ))}
                 </div>
               ) : engineOk ? (
-                <p className="text-xs text-[#4b5563] italic pt-2 border-t border-[#2A2D3A]">
+                <p className="text-xs italic pt-2 border-t" style={{ color: "var(--text-faint)", borderColor: "var(--border-soft)" }}>
                   Alocação por bloco IPS não disponível — recalcule o engine.
                 </p>
               ) : null}
@@ -460,30 +491,36 @@ export default function SalaDeComando() {
           </section>
 
           {/* ── 5. PROGRESS-TO-GOAL ─────────────────────────────────────────── */}
-          <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27]">
+          <section
+            className="rounded-xl border"
+            style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+          >
             <SectionHeader icon="🎯" title="Meta R$ 3M" sub="Progress-to-goal" />
             <div className="px-5 pb-5 space-y-5">
               {!data?.meta?.patrimonio_atual ? (
-                <p className="text-xs text-[#4b5563] italic">Engine não calculado.</p>
+                <p className="text-xs italic" style={{ color: "var(--text-faint)" }}>Engine não calculado.</p>
               ) : (
                 <>
                   {/* Barra de progresso */}
                   <div className="space-y-2">
                     <div className="flex justify-between text-xs">
-                      <span className="text-[#D1D4DC] font-medium">{brl(data.meta.patrimonio_atual)}</span>
-                      <span className="text-[#6b7280]">R$ 3.000.000</span>
+                      <span className="font-semibold" style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>{brl(data.meta.patrimonio_atual)}</span>
+                      <span style={{ color: "var(--text-faint)" }}>R$ 3.000.000</span>
                     </div>
-                    <div className="h-4 rounded-full bg-[#2A2D3A] overflow-hidden">
+                    <div className="rounded-full overflow-hidden" style={{ height: 14, background: "var(--border-soft)" }}>
                       <div
-                        className="h-full rounded-full bg-gradient-to-r from-[#26A69A] to-[#6366F1] transition-all"
-                        style={{ width: `${Math.min(100, (data.meta.pct_atingido ?? 0) * 100)}%` }}
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${Math.min(100, (data.meta.pct_atingido ?? 0) * 100)}%`,
+                          background: "linear-gradient(90deg, var(--accent), var(--accent-strong))",
+                        }}
                       />
                     </div>
                     <div className="flex justify-between text-xs">
-                      <span className="text-[#26A69A] font-bold">
+                      <span className="font-bold" style={{ color: "var(--positive)" }}>
                         {((data.meta.pct_atingido ?? 0) * 100).toFixed(1)}% atingido
                       </span>
-                      <span className="text-[#6b7280]">
+                      <span style={{ color: "var(--text-faint)" }}>
                         Falta {brl(3_000_000 - (data.meta.patrimonio_atual ?? 0))}
                       </span>
                     </div>
@@ -494,12 +531,12 @@ export default function SalaDeComando() {
                     <MetaBlock
                       label="Projeção"
                       value={data.meta.projecao_ano_meta ? `até ${data.meta.projecao_ano_meta}` : "—"}
-                      color="#6366F1"
+                      color="var(--accent-strong)"
                     />
                     <MetaBlock
                       label={<Tooltip term="TWR" />}
                       value={pct(data.meta.twr_anualizado) + " a.a."}
-                      color="#26A69A"
+                      color="var(--positive)"
                     />
                     <MetaBlock
                       label="Aporte atual / mês"
@@ -513,21 +550,21 @@ export default function SalaDeComando() {
 
                   {/* Drift alerts */}
                   {data?.comportamental?.blocos?.filter((b) => b.status !== "OK").length ? (
-                    <div className="pt-2 border-t border-[#2A2D3A] space-y-1.5">
-                      <p className="text-xs font-medium text-[#EF5350]">⚠️ Blocos fora da banda IPS</p>
+                    <div className="pt-2 border-t space-y-1.5" style={{ borderColor: "var(--border-soft)" }}>
+                      <p className="text-xs font-semibold" style={{ color: "var(--negative)" }}>⚠ Blocos fora da banda IPS</p>
                       {data.comportamental.blocos
                         .filter((b) => b.status !== "OK")
                         .map((b) => (
                           <div key={b.bloco} className="flex justify-between text-xs">
-                            <span className="text-[#D1D4DC]">{b.bloco.replace("_", " ")}</span>
-                            <span className="text-[#EF5350]">
+                            <span style={{ color: "var(--text-body)" }}>{b.bloco.replace("_", " ")}</span>
+                            <span style={{ color: "var(--negative)" }}>
                               {Math.round(b.pct_real * 100)}% — {b.status === "ACIMA" ? "acima" : "abaixo"} da banda
                             </span>
                           </div>
                         ))}
                     </div>
                   ) : data?.comportamental?.blocos?.length ? (
-                    <p className="text-xs text-[#26A69A] pt-2 border-t border-[#2A2D3A]">
+                    <p className="text-xs pt-2 border-t" style={{ color: "var(--positive)", borderColor: "var(--border-soft)" }}>
                       ✓ Todos os blocos IPS dentro da banda
                     </p>
                   ) : null}
@@ -538,10 +575,10 @@ export default function SalaDeComando() {
         </div>
 
         {/* ── Rodapé ─────────────────────────────────────────────────────────── */}
-        <footer className="text-center text-[10px] text-[#4b5563] pb-4">
+        <footer className="text-center text-[10px] pb-4" style={{ color: "var(--text-faint)" }}>
           App Minha Carteira · v2.5.1 ·{" "}
           <a href="https://minhacarteira.duckdns.org" target="_blank" rel="noreferrer"
-            className="text-[#26A69A] hover:underline">Streamlit</a>
+            className="hover:underline" style={{ color: "var(--accent-strong)" }}>Streamlit</a>
           {kpis?.calculado_em && (
             <span className="ml-2">· atualizado {relativeTime(kpis.calculado_em)}</span>
           )}
@@ -556,11 +593,11 @@ export default function SalaDeComando() {
 
 function SectionHeader({ icon, title, sub }: { icon: string; title: string; sub?: string }) {
   return (
-    <div className="flex items-center gap-2 px-5 py-3 border-b border-[#2A2D3A]">
+    <div className="flex items-center gap-2 px-5 py-3 border-b" style={{ borderColor: "var(--border-soft)" }}>
       <span className="text-base">{icon}</span>
       <div>
-        <h2 className="text-sm font-semibold text-white">{title}</h2>
-        {sub && <p className="text-[10px] text-[#6b7280]">{sub}</p>}
+        <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{title}</h2>
+        {sub && <p className="text-[10px]" style={{ color: "var(--text-faint)" }}>{sub}</p>}
       </div>
     </div>
   );
@@ -577,34 +614,37 @@ function KpiBlock({
 }) {
   return (
     <div className="text-right md:text-left">
-      <p className="text-[10px] text-[#6b7280] uppercase tracking-wider">{label}</p>
-      <p className="text-lg font-bold font-mono" style={{ color: valueColor ?? "#D1D4DC" }}>{value}</p>
-      {sub && <p className="text-[10px] font-mono" style={{ color: subColor ?? "#6b7280" }}>{sub}</p>}
+      <p className="text-[10px] uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>{label}</p>
+      <p className="text-lg font-bold" style={{ color: valueColor ?? "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>{value}</p>
+      {sub && <p className="text-[10px]" style={{ color: subColor ?? "var(--text-faint)", fontFamily: "var(--font-plex-mono)" }}>{sub}</p>}
     </div>
   );
 }
 
 function ViesCard({ v }: { v: Vies }) {
   const severityColor = v.detectado
-    ? v.severidade === "CRITICO" ? "#EF5350"
-      : v.severidade === "ATENCAO" ? "#F59E0B"
-      : "#26A69A"
-    : "#4b5563";
+    ? v.severidade === "CRITICO" ? "var(--negative)"
+      : v.severidade === "ATENCAO" ? "var(--warning)"
+      : "var(--positive)"
+    : "var(--text-faint)";
 
   return (
-    <div className={`rounded border px-2 py-1.5 ${v.detectado ? "border-[#2A2D3A]" : "border-[#1e2030] opacity-50"}`}>
+    <div
+      className="rounded border px-2 py-1.5"
+      style={{ borderColor: "var(--border-soft)", opacity: v.detectado ? 1 : 0.5 }}
+    >
       <div className="flex items-center justify-between gap-1">
         <span className="text-[10px] font-semibold" style={{ color: severityColor }}>
           {v.detectado ? "● " : "○ "}<Tooltip term={v.nome_vies as keyof typeof GLOSSARIO} />
         </span>
         {v.detectado && (
-          <span className="text-[9px] border rounded px-1" style={{ color: severityColor, borderColor: severityColor + "40" }}>
+          <span className="text-[9px] border rounded px-1" style={{ whiteSpace: "nowrap", color: severityColor, borderColor: severityColor }}>
             {v.severidade}
           </span>
         )}
       </div>
       {v.detectado && v.fato_mensuravel && (
-        <p className="text-[9px] text-[#6b7280] mt-0.5 leading-snug">{v.fato_mensuravel}</p>
+        <p className="text-[9px] mt-0.5 leading-snug" style={{ color: "var(--text-muted)" }}>{v.fato_mensuravel}</p>
       )}
     </div>
   );
@@ -612,9 +652,9 @@ function ViesCard({ v }: { v: Vies }) {
 
 function MetaBlock({ label, value, color }: { label: React.ReactNode; value: string; color?: string }) {
   return (
-    <div className="rounded-lg bg-[#0F1117] border border-[#2A2D3A] px-3 py-2">
-      <p className="text-[9px] text-[#6b7280] uppercase tracking-wider">{label}</p>
-      <p className="text-sm font-bold font-mono mt-0.5" style={{ color: color ?? "#D1D4DC" }}>{value}</p>
+    <div className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--border-soft)", background: "var(--bg-app)" }}>
+      <p className="text-[9px] uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>{label}</p>
+      <p className="text-sm font-bold mt-0.5" style={{ color: color ?? "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>{value}</p>
     </div>
   );
 }

@@ -22,21 +22,15 @@ interface Tese {
 }
 
 const STATUS_COR: Record<string, string> = {
-  ATIVA: "#26A69A",
-  INVALIDADA: "#EF5350",
-  ENCERRADA: "#6b7280",
+  ATIVA: "var(--positive)",
+  INVALIDADA: "var(--negative)",
+  ENCERRADA: "var(--text-faint)",
 };
 
 const NIVEL_COR: Record<string, string> = {
-  VERDE: "#26A69A",
-  AMARELO: "#F59E0B",
-  VERMELHO: "#EF5350",
-};
-
-const NIVEL_EMOJI: Record<string, string> = {
-  VERDE: "🟢",
-  AMARELO: "🟡",
-  VERMELHO: "🔴",
+  VERDE: "var(--positive)",
+  AMARELO: "var(--warning)",
+  VERMELHO: "var(--negative)",
 };
 
 const BLOCOS = ["Todos", "SWING_TRADE", "GROWTH", "DEFENSIVOS", "RENDA_FIXA", "FORA_IPS"];
@@ -47,6 +41,8 @@ const BLOCO_LABEL: Record<string, string> = {
   RENDA_FIXA: "Renda Fixa",
   FORA_IPS: "Fora IPS",
 };
+
+const cardShadow = "0 1px 3px rgba(61,54,41,0.06)";
 
 export default function Teses() {
   const router = useRouter();
@@ -87,15 +83,21 @@ export default function Teses() {
   const porNivel = (nivel: string) => filtered.filter((t) => t.nivel_invalidacao === nivel);
 
   return (
-    <div className="flex min-h-screen bg-[#0F1117] text-[#D1D4DC]">
+    <div className="flex min-h-screen" style={{ background: "var(--bg-app)", color: "var(--text-body)" }}>
       <Nav />
       <main className="flex-1 px-4 py-6 md:px-8 space-y-4 overflow-auto">
 
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <h1 className="text-lg font-bold text-white">Teses de Investimento</h1>
+          <h1
+            className="text-2xl font-semibold"
+            style={{ color: "var(--text-primary)", fontFamily: "var(--font-source-serif)" }}
+          >
+            Teses de Investimento
+          </h1>
           <button
             onClick={() => setShowForm(!showForm)}
-            className="rounded-lg px-4 py-1.5 text-sm font-medium bg-[#6366F1] text-white hover:bg-[#6366F1]/80 transition"
+            className="rounded-lg px-4 py-1.5 text-sm font-semibold transition"
+            style={{ whiteSpace: "nowrap", background: "var(--purple-accent)", color: "var(--bg-card)" }}
           >
             {showForm ? "✕ Cancelar" : "＋ Nova Tese"}
           </button>
@@ -103,7 +105,10 @@ export default function Teses() {
 
         {/* Formulário nova tese */}
         {showForm && (
-          <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-5">
+          <section
+            className="rounded-xl border px-5 py-5"
+            style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+          >
             <FormularioTese
               onSuccess={() => {
                 setShowForm(false);
@@ -115,29 +120,39 @@ export default function Teses() {
 
         {/* Filtro bloco */}
         <div className="flex flex-wrap gap-2">
-          {BLOCOS.map((b) => (
-            <button
-              key={b}
-              onClick={() => setFiltroBloco(b)}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition border ${
-                filtroBloco === b
-                  ? "bg-[#26A69A]/20 border-[#26A69A] text-[#26A69A]"
-                  : "border-[#2A2D3A] text-[#6b7280] hover:border-[#4b5563] hover:text-[#D1D4DC]"
-              }`}
-            >
-              {b === "Todos" ? "Todos" : (BLOCO_LABEL[b] ?? b)}
-            </button>
-          ))}
+          {BLOCOS.map((b) => {
+            const active = filtroBloco === b;
+            return (
+              <button
+                key={b}
+                onClick={() => setFiltroBloco(b)}
+                className="px-3.5 py-1.5 rounded-full text-xs font-semibold transition border"
+                style={{
+                  whiteSpace: "nowrap",
+                  borderColor: active ? "var(--accent)" : "var(--border)",
+                  color: active ? "var(--accent-strong)" : "var(--text-muted)",
+                  background: active ? "rgba(193,95,60,0.12)" : "transparent",
+                }}
+              >
+                {b === "Todos" ? "Todos" : (BLOCO_LABEL[b] ?? b)}
+              </button>
+            );
+          })}
         </div>
 
         {loading && (
           <div className="animate-pulse space-y-2">
-            {[...Array(4)].map((_, i) => <div key={i} className="h-24 rounded-xl bg-[#1A1D27]" />)}
+            {[...Array(4)].map((_, i) => <div key={i} className="h-24 rounded-xl" style={{ background: "var(--bg-card)" }} />)}
           </div>
         )}
 
         {error && (
-          <div className="rounded-xl border border-red-800/50 bg-red-900/20 px-4 py-3 text-sm text-red-400">{error}</div>
+          <div
+            className="rounded-xl border px-4 py-3 text-sm"
+            style={{ borderColor: "rgba(180,68,44,0.3)", background: "rgba(180,68,44,0.08)", color: "var(--negative)" }}
+          >
+            {error}
+          </div>
         )}
 
         {!loading && !error && (
@@ -146,42 +161,54 @@ export default function Teses() {
               const lista = porNivel(nivel);
               if (!lista.length) return null;
               return (
-                <section key={nivel} className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27]">
-                  <div className="flex items-center gap-2 px-5 py-3 border-b border-[#2A2D3A]">
-                    <span>{NIVEL_EMOJI[nivel]}</span>
-                    <h2 className="text-sm font-semibold" style={{ color: NIVEL_COR[nivel] }}>
+                <section
+                  key={nivel}
+                  className="rounded-xl border"
+                  style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+                >
+                  <div className="flex items-center gap-2 px-5 py-3 border-b" style={{ borderColor: "var(--border-soft)" }}>
+                    <span className="inline-block rounded-full shrink-0" style={{ width: 9, height: 9, background: NIVEL_COR[nivel] }} />
+                    <h2 className="text-sm font-bold" style={{ color: NIVEL_COR[nivel] }}>
                       {nivel} ({lista.length})
                     </h2>
                   </div>
-                  <div className="divide-y divide-[#2A2D3A]">
+                  <div className="divide-y" style={{ borderColor: "var(--border-soft)" }}>
                     {lista.map((t) => (
                       <Link
                         key={t.id}
                         href={`/teses/${t.id}`}
-                        className="block px-5 py-3 hover:bg-[#2A2D3A]/30 transition"
+                        className="block px-5 py-3 transition"
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-card-alt)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                       >
                         <div className="flex items-center justify-between gap-2 flex-wrap">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-white">{t.ticker}</span>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold" style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>{t.ticker}</span>
                             {t.bloco_ips && (
-                              <span className="text-[9px] text-[#6b7280] border border-[#2A2D3A] rounded px-1 py-0.5">
+                              <span
+                                className="text-[9px] rounded px-1.5 py-0.5 border"
+                                style={{ whiteSpace: "nowrap", color: "var(--text-faint)", borderColor: "var(--border)" }}
+                              >
                                 {BLOCO_LABEL[t.bloco_ips] ?? t.bloco_ips}
                               </span>
                             )}
-                            <span className="text-[9px] rounded px-1 py-0.5 border" style={{ color: STATUS_COR[t.status] ?? "#6b7280", borderColor: (STATUS_COR[t.status] ?? "#6b7280") + "40" }}>
+                            <span
+                              className="text-[9px] rounded px-1.5 py-0.5 border"
+                              style={{ whiteSpace: "nowrap", color: STATUS_COR[t.status] ?? "var(--text-faint)", borderColor: STATUS_COR[t.status] ?? "var(--border)" }}
+                            >
                               {t.status}
                             </span>
                           </div>
-                          <div className="flex items-center gap-2 text-[10px] text-[#6b7280]">
+                          <div className="flex items-center gap-2 text-[10px]" style={{ color: "var(--text-faint)" }}>
                             {t.dias_desde_criacao != null && <span>{t.dias_desde_criacao}d</span>}
-                            <span className="text-[#6b7280]">›</span>
+                            <span>›</span>
                           </div>
                         </div>
                         {t.racional && (
-                          <p className="mt-1 text-xs text-[#D1D4DC] line-clamp-2">{t.racional}</p>
+                          <p className="mt-1 text-xs line-clamp-2" style={{ color: "var(--text-body)" }}>{t.racional}</p>
                         )}
                         {t.criterio_invalidacao && (
-                          <p className="mt-0.5 text-[10px] text-[#F59E0B]">⚠️ {t.criterio_invalidacao.slice(0, 80)}{t.criterio_invalidacao.length > 80 ? "…" : ""}</p>
+                          <p className="mt-0.5 text-[10px]" style={{ color: "var(--warning)" }}>⚠ {t.criterio_invalidacao.slice(0, 80)}{t.criterio_invalidacao.length > 80 ? "…" : ""}</p>
                         )}
                       </Link>
                     ))}
@@ -191,7 +218,7 @@ export default function Teses() {
             })}
 
             {filtered.length === 0 && (
-              <p className="text-center text-xs text-[#6b7280] italic py-8">
+              <p className="text-center text-xs italic py-8" style={{ color: "var(--text-faint)" }}>
                 Nenhuma tese {filtroBloco !== "Todos" ? `no bloco ${BLOCO_LABEL[filtroBloco] ?? filtroBloco}` : "cadastrada"}.
               </p>
             )}

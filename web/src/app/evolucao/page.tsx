@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Nav from "@/components/Nav";
 import ActionBar from "@/components/ActionBar";
@@ -31,6 +31,8 @@ function pct(n: number, digits = 2): string {
   const sign = n >= 0 ? "+" : "";
   return sign + (n * 100).toFixed(digits) + "%";
 }
+
+const cardShadow = "0 1px 3px rgba(61,54,41,0.06)";
 
 type Filtro = "3M" | "6M" | "YTD" | "1A" | "Tudo";
 
@@ -84,7 +86,7 @@ function GraficoSVG({ serie }: { serie: EvolucaoDiaria[] }) {
   const W = 900, H = 200, PAD = { top: 16, right: 16, bottom: 24, left: 70 };
 
   if (serie.length < 2) {
-    return <div className="text-xs text-[#6b7280] italic px-4 py-8 text-center">Dados insuficientes para o gráfico.</div>;
+    return <div className="text-xs italic px-4 py-8 text-center" style={{ color: "var(--text-faint)" }}>Dados insuficientes para o gráfico.</div>;
   }
 
   const valores = serie.map((d) => d.patrimonio_total);
@@ -117,27 +119,27 @@ function GraficoSVG({ serie }: { serie: EvolucaoDiaria[] }) {
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: H }}>
       <defs>
         <linearGradient id="grad-evo" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#26A69A" stopOpacity="0.25" />
-          <stop offset="100%" stopColor="#26A69A" stopOpacity="0" />
+          <stop offset="0%" stopColor="#C15F3C" stopOpacity="0.18" />
+          <stop offset="100%" stopColor="#C15F3C" stopOpacity="0" />
         </linearGradient>
       </defs>
       {/* Grid lines */}
       {yLabels.map((lbl, i) => (
-        <line key={i} x1={PAD.left} x2={W - PAD.right} y1={lbl.y} y2={lbl.y} stroke="#2A2D3A" strokeWidth="1" />
+        <line key={i} x1={PAD.left} x2={W - PAD.right} y1={lbl.y} y2={lbl.y} stroke="#E5DBC8" strokeWidth="1" />
       ))}
       {/* Area */}
       <path d={area} fill="url(#grad-evo)" />
       {/* Line */}
-      <path d={path} fill="none" stroke="#26A69A" strokeWidth="1.5" />
+      <path d={path} fill="none" stroke="#C15F3C" strokeWidth="2" />
       {/* Y labels */}
       {yLabels.map((lbl, i) => (
-        <text key={i} x={PAD.left - 4} y={lbl.y + 4} textAnchor="end" fill="#6b7280" fontSize="10">
+        <text key={i} x={PAD.left - 4} y={lbl.y + 4} textAnchor="end" fill="#A69C88" fontSize="10">
           {brl(lbl.v)}
         </text>
       ))}
       {/* X labels */}
       {xLabels.map((lbl, i) => (
-        <text key={i} x={lbl.x} y={H - 4} textAnchor="middle" fill="#6b7280" fontSize="9">
+        <text key={i} x={lbl.x} y={H - 4} textAnchor="middle" fill="#A69C88" fontSize="9">
           {lbl.label}
         </text>
       ))}
@@ -187,52 +189,70 @@ export default function Evolucao() {
   [serie]);
   const ultimo = serie.length > 0 ? serie[serie.length - 1] : null;
 
-  const pnlColor = (v: number) => v >= 0 ? "#26A69A" : "#EF5350";
+  const pnlColor = (v: number) => v >= 0 ? "var(--positive)" : "var(--negative)";
 
   return (
-    <div className="flex min-h-screen bg-[#0F1117] text-[#D1D4DC]">
+    <div className="flex min-h-screen" style={{ background: "var(--bg-app)", color: "var(--text-body)" }}>
       <Nav />
       <main className="flex-1 overflow-auto flex flex-col">
         <ActionBar />
-        <div className="flex-1 px-4 py-4 md:px-8 space-y-4">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <h1 className="text-lg font-bold text-white">Evolução do Patrimônio</h1>
+        <div className="flex-1 px-4 py-4 md:px-8 md:py-6 space-y-4">
+        <div className="flex items-end justify-between flex-wrap gap-2">
+          <h1
+            className="text-2xl font-semibold"
+            style={{ color: "var(--text-primary)", fontFamily: "var(--font-source-serif)" }}
+          >
+            Evolução do Patrimônio
+          </h1>
           {ultimo && (
             <div className="text-right">
-              <p className="text-xl font-bold font-mono text-white">{brl(ultimo.patrimonio_total)}</p>
-              <p className="text-xs text-[#6b7280]">{ultimo.data}</p>
+              <p className="text-xl font-bold" style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>{brl(ultimo.patrimonio_total)}</p>
+              <p className="text-xs" style={{ color: "var(--text-faint)" }}>{ultimo.data}</p>
             </div>
           )}
         </div>
 
-        {loading && <div className="animate-pulse h-48 rounded-xl bg-[#1A1D27]" />}
+        {loading && <div className="animate-pulse h-48 rounded-xl" style={{ background: "var(--bg-card)" }} />}
         {error && (
-          <div className="rounded-xl border border-red-800/50 bg-red-900/20 px-4 py-3 text-sm text-red-400">{error}</div>
+          <div
+            className="rounded-xl border px-4 py-3 text-sm"
+            style={{ borderColor: "rgba(180,68,44,0.3)", background: "rgba(180,68,44,0.08)", color: "var(--negative)" }}
+          >
+            {error}
+          </div>
         )}
 
         {!loading && !error && (
           <>
             {/* Filtros */}
             <div className="flex gap-2">
-              {(["3M", "6M", "YTD", "1A", "Tudo"] as Filtro[]).map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setFiltro(f)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition border ${
-                    filtro === f
-                      ? "bg-[#26A69A]/20 border-[#26A69A] text-[#26A69A]"
-                      : "border-[#2A2D3A] text-[#6b7280] hover:border-[#4b5563] hover:text-[#D1D4DC]"
-                  }`}
-                >
-                  {f}
-                </button>
-              ))}
+              {(["3M", "6M", "YTD", "1A", "Tudo"] as Filtro[]).map((f) => {
+                const active = filtro === f;
+                return (
+                  <button
+                    key={f}
+                    onClick={() => setFiltro(f)}
+                    className="px-3.5 py-1.5 rounded-full text-xs font-semibold transition border"
+                    style={{
+                      whiteSpace: "nowrap",
+                      borderColor: active ? "var(--accent)" : "var(--border)",
+                      color: active ? "var(--accent-strong)" : "var(--text-muted)",
+                      background: active ? "rgba(193,95,60,0.12)" : "transparent",
+                    }}
+                  >
+                    {f}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Gráfico */}
-            <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] overflow-hidden">
-              <div className="px-4 py-2 border-b border-[#2A2D3A]">
-                <p className="text-xs font-semibold text-white">Patrimônio Total</p>
+            <section
+              className="rounded-xl border overflow-hidden"
+              style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+            >
+              <div className="px-4 py-2.5 border-b" style={{ borderColor: "var(--border-soft)" }}>
+                <p className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>Patrimônio Total</p>
               </div>
               <div className="p-2">
                 <GraficoSVG serie={serieFiltrada} />
@@ -241,18 +261,21 @@ export default function Evolucao() {
 
             {/* Comparativos TWR */}
             {ultimo && (
-              <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-4">
-                <h2 className="text-sm font-semibold text-white mb-3">Performance Acumulada</h2>
+              <section
+                className="rounded-xl border px-5 py-4"
+                style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+              >
+                <h2 className="text-sm font-semibold mb-3" style={{ color: "var(--text-primary)" }}>Performance Acumulada</h2>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {[
-                    { label: "TWR Gerida", value: pct(serieFiltrada.length > 0 ? serieFiltrada[serieFiltrada.length - 1].twr_gerida : 0), color: "#26A69A" },
-                    { label: "TWR Total", value: pct(serieFiltrada.length > 0 ? serieFiltrada[serieFiltrada.length - 1].twr_total : 0), color: "#26A69A" },
-                    { label: "CDI", value: pct(serieFiltrada.length > 0 ? serieFiltrada[serieFiltrada.length - 1].cdi_acum : 0), color: "#6b7280" },
-                    { label: "IBOV", value: pct(serieFiltrada.length > 0 ? serieFiltrada[serieFiltrada.length - 1].ibov_acum : 0), color: "#6b7280" },
+                    { label: "TWR Gerida", value: pct(serieFiltrada.length > 0 ? serieFiltrada[serieFiltrada.length - 1].twr_gerida : 0), color: "var(--positive)" },
+                    { label: "TWR Total", value: pct(serieFiltrada.length > 0 ? serieFiltrada[serieFiltrada.length - 1].twr_total : 0), color: "var(--positive)" },
+                    { label: "CDI", value: pct(serieFiltrada.length > 0 ? serieFiltrada[serieFiltrada.length - 1].cdi_acum : 0), color: "var(--text-muted)" },
+                    { label: "IBOV", value: pct(serieFiltrada.length > 0 ? serieFiltrada[serieFiltrada.length - 1].ibov_acum : 0), color: "var(--text-muted)" },
                   ].map((k) => (
-                    <div key={k.label} className="rounded-lg bg-[#0F1117] border border-[#2A2D3A] px-3 py-2">
-                      <p className="text-[9px] text-[#6b7280] uppercase tracking-wider">{k.label}</p>
-                      <p className="text-sm font-bold font-mono mt-0.5" style={{ color: k.color }}>{k.value}</p>
+                    <div key={k.label} className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--border-soft)", background: "var(--bg-app)" }}>
+                      <p className="text-[9px] uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>{k.label}</p>
+                      <p className="text-sm font-bold mt-0.5" style={{ color: k.color, fontFamily: "var(--font-plex-mono)" }}>{k.value}</p>
                     </div>
                   ))}
                 </div>
@@ -260,14 +283,19 @@ export default function Evolucao() {
             )}
 
             {/* Tabela mensal com accordion diário */}
-            <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] overflow-hidden">
-              <div className="px-5 py-3 border-b border-[#2A2D3A]">
-                <h2 className="text-sm font-semibold text-white">Evolução Mensal <span className="text-[10px] text-[#6b7280] font-normal ml-2">clique no mês para ver dias</span></h2>
+            <section
+              className="rounded-xl border overflow-hidden"
+              style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+            >
+              <div className="px-5 py-3 border-b" style={{ borderColor: "var(--border-soft)" }}>
+                <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                  Evolução Mensal <span className="text-[10px] font-normal ml-2" style={{ color: "var(--text-faint)" }}>clique no mês para ver dias</span>
+                </h2>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-[#2A2D3A] text-[10px] text-[#6b7280] uppercase">
+                    <tr className="border-b text-[10px] uppercase" style={{ borderColor: "var(--border-soft)", color: "var(--text-faint)" }}>
                       <th className="px-4 py-2 text-left">Mês</th>
                       <th className="px-4 py-2 text-right">Patrimônio</th>
                       <th className="px-4 py-2 text-right">Variação R$</th>
@@ -279,21 +307,21 @@ export default function Evolucao() {
                       const expanded = expandedMes === m.mes;
                       const dias = expanded ? diasDoMes(m.mes) : [];
                       return (
-                        <>
+                        <React.Fragment key={m.mes}>
                           <tr
-                            key={m.mes}
                             onClick={() => toggleMes(m.mes)}
-                            className={`border-b border-[#2A2D3A] cursor-pointer transition ${expanded ? "bg-[#26A69A]/5" : "hover:bg-[#2A2D3A]/20"}`}
+                            className="border-b cursor-pointer transition"
+                            style={{ borderColor: "var(--border-soft)", background: expanded ? "rgba(193,95,60,0.06)" : "transparent" }}
                           >
-                            <td className="px-4 py-2 text-xs font-mono">
-                              <span className="mr-1 text-[#6b7280]">{expanded ? "▼" : "▶"}</span>
+                            <td className="px-4 py-2 text-xs" style={{ fontFamily: "var(--font-plex-mono)", color: "var(--text-body)" }}>
+                              <span className="mr-1" style={{ color: "var(--text-faint)" }}>{expanded ? "▼" : "▶"}</span>
                               {m.mes}
                             </td>
-                            <td className="px-4 py-2 text-right text-xs font-mono">{brl(m.patrimonio)}</td>
-                            <td className="px-4 py-2 text-right text-xs font-mono" style={{ color: pnlColor(m.variacao) }}>
+                            <td className="px-4 py-2 text-right text-xs" style={{ color: "var(--text-body)", fontFamily: "var(--font-plex-mono)" }}>{brl(m.patrimonio)}</td>
+                            <td className="px-4 py-2 text-right text-xs" style={{ color: pnlColor(m.variacao), fontFamily: "var(--font-plex-mono)" }}>
                               {m.variacao >= 0 ? "+" : ""}{brl(m.variacao)}
                             </td>
-                            <td className="px-4 py-2 text-right text-xs font-mono" style={{ color: pnlColor(m.twr_mes) }}>
+                            <td className="px-4 py-2 text-right text-xs" style={{ color: pnlColor(m.twr_mes), fontFamily: "var(--font-plex-mono)" }}>
                               {pct(m.twr_mes)}
                             </td>
                           </tr>
@@ -302,19 +330,19 @@ export default function Evolucao() {
                             const varDia = prev ? d.patrimonio_total - prev.patrimonio_total : 0;
                             const twrDia = prev ? d.twr_total - prev.twr_total : 0;
                             return (
-                              <tr key={d.data} className="border-b border-[#2A2D3A]/40 bg-[#0F1117]/60">
-                                <td className="pl-10 pr-4 py-1.5 text-[10px] font-mono text-[#6b7280]">{d.data}</td>
-                                <td className="px-4 py-1.5 text-right text-[10px] font-mono text-[#D1D4DC]">{brl(d.patrimonio_total)}</td>
-                                <td className="px-4 py-1.5 text-right text-[10px] font-mono" style={{ color: pnlColor(varDia) }}>
+                              <tr key={d.data} className="border-b" style={{ borderColor: "var(--border-soft)", background: "var(--bg-app)" }}>
+                                <td className="pl-10 pr-4 py-1.5 text-[10px]" style={{ color: "var(--text-faint)", fontFamily: "var(--font-plex-mono)" }}>{d.data}</td>
+                                <td className="px-4 py-1.5 text-right text-[10px]" style={{ color: "var(--text-body)", fontFamily: "var(--font-plex-mono)" }}>{brl(d.patrimonio_total)}</td>
+                                <td className="px-4 py-1.5 text-right text-[10px]" style={{ color: pnlColor(varDia), fontFamily: "var(--font-plex-mono)" }}>
                                   {i > 0 ? (varDia >= 0 ? "+" : "") + brl(varDia) : "—"}
                                 </td>
-                                <td className="px-4 py-1.5 text-right text-[10px] font-mono" style={{ color: pnlColor(twrDia) }}>
+                                <td className="px-4 py-1.5 text-right text-[10px]" style={{ color: pnlColor(twrDia), fontFamily: "var(--font-plex-mono)" }}>
                                   {i > 0 ? pct(twrDia, 3) : "—"}
                                 </td>
                               </tr>
                             );
                           })}
-                        </>
+                        </React.Fragment>
                       );
                     })}
                   </tbody>

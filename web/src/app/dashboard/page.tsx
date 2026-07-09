@@ -55,15 +55,24 @@ function fmt(n: number | null | undefined, d = 2): string {
   if (n == null) return "—";
   return n.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 }
-const green = "#26A69A", red = "#EF5350", amber = "#F59E0B", purple = "#6366F1";
-const valColor = (n: number | null | undefined) => (n == null ? "#D1D4DC" : n >= 0 ? green : red);
+const green = "var(--positive)", red = "var(--negative)", amber = "var(--warning)", purple = "var(--purple-accent)";
+const valColor = (n: number | null | undefined) => (n == null ? "var(--text-primary)" : n >= 0 ? green : red);
+const cardShadow = "0 1px 3px rgba(61,54,41,0.06)";
 
 function KPI({ label, value, color, sub }: { label: string; value: string; color?: string; sub?: string }) {
   return (
-    <div className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-4 py-3">
-      <p className="text-[10px] text-[#6b7280] uppercase tracking-wider">{label}</p>
-      <p className="text-base font-bold font-mono mt-0.5" style={{ color: color ?? "#D1D4DC" }}>{value}</p>
-      {sub && <p className="text-[10px] text-[#6b7280] mt-0.5">{sub}</p>}
+    <div
+      className="rounded-xl border px-4 py-3"
+      style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+    >
+      <p className="text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{label}</p>
+      <p
+        className="text-base font-semibold mt-0.5"
+        style={{ color: color ?? "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}
+      >
+        {value}
+      </p>
+      {sub && <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>{sub}</p>}
     </div>
   );
 }
@@ -90,50 +99,73 @@ export default function Dashboard() {
   const nivelCor: Record<string, string> = { CRITICO: red, ATENCAO: amber, OK: green };
 
   return (
-    <div className="flex min-h-screen bg-[#0F1117] text-[#D1D4DC]">
+    <div className="flex min-h-screen" style={{ background: "var(--bg-app)", color: "var(--text-body)" }}>
       <Nav />
       <main className="flex-1 overflow-auto flex flex-col">
         <ActionBar />
         <div className="flex-1 px-4 py-4 md:px-8 md:py-6 space-y-4">
-          <h1 className="text-lg font-bold text-white">Dashboard</h1>
+          <h1
+            className="text-2xl font-semibold"
+            style={{ color: "var(--text-primary)", fontFamily: "var(--font-source-serif)" }}
+          >
+            Dashboard
+          </h1>
 
           {loading && (
             <div className="animate-pulse space-y-3">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{[...Array(8)].map((_, i) => <div key={i} className="h-16 rounded-xl bg-[#1A1D27]" />)}</div>
-              <div className="h-40 rounded-xl bg-[#1A1D27]" />
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{[...Array(8)].map((_, i) => <div key={i} className="h-16 rounded-xl" style={{ background: "var(--bg-card)" }} />)}</div>
+              <div className="h-40 rounded-xl" style={{ background: "var(--bg-card)" }} />
             </div>
           )}
 
-          {error && <div className="rounded-xl border border-red-800/50 bg-red-900/20 px-4 py-3 text-sm text-red-400">{error}</div>}
+          {error && (
+            <div
+              className="rounded-xl border px-4 py-3 text-sm"
+              style={{ borderColor: "rgba(180,68,44,0.3)", background: "rgba(180,68,44,0.08)", color: "var(--negative)" }}
+            >
+              {error}
+            </div>
+          )}
 
           {!loading && !error && data && (
             <>
               {/* Patrimônio */}
-              <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-4">
-                <h2 className="text-xs text-[#6b7280] uppercase tracking-wider mb-3">Patrimônio</h2>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <KPI label="Total" value={brl(data.patrimonio_total)} color="#D1D4DC" />
+              <section
+                className="rounded-xl border px-5 py-4"
+                style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+              >
+                <h2 className="text-xs uppercase tracking-wider mb-3" style={{ color: "var(--text-muted)" }}>Patrimônio</h2>
+                <p
+                  className="mb-3"
+                  style={{ color: "var(--text-primary)", fontFamily: "var(--font-source-serif)", fontSize: 34, fontWeight: 600 }}
+                >
+                  {brl(data.patrimonio_total)}
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   <KPI label="Carteira Gerida" value={brl(data.patrimonio_gerida)} color={green} />
                   <KPI label="FUNCEF" value={brl(data.patrimonio_funcef)} color={amber} sub="excluída do IPS" />
                   <KPI label="Renda Variável" value={brl(data.patrimonio_rv)} color={purple} />
                 </div>
                 {data.var_dia != null && (
-                  <div className="mt-3 flex flex-wrap gap-4 text-xs border-t border-[#2A2D3A] pt-3">
-                    <span>Var. dia: <span className="font-mono font-bold" style={{ color: valColor(data.var_dia) }}>{brl(data.var_dia)}</span></span>
-                    <span>Mercado: <span className="font-mono" style={{ color: valColor(data.var_mercado_dia) }}>{brl(data.var_mercado_dia)}</span></span>
-                    {data.fluxo_dia != null && <span>Fluxo externo: <span className="font-mono text-[#6b7280]">{brl(data.fluxo_dia)}</span></span>}
-                    <span>Var. % dia: <span className="font-mono font-bold" style={{ color: valColor(data.var_dia_pct) }}>{pct(data.var_dia_pct)}</span></span>
+                  <div className="mt-3 flex flex-wrap gap-4 text-xs border-t pt-3" style={{ borderColor: "var(--border-soft)" }}>
+                    <span style={{ color: "var(--text-muted)" }}>Var. dia: <span className="font-semibold" style={{ color: valColor(data.var_dia), fontFamily: "var(--font-plex-mono)" }}>{brl(data.var_dia)}</span></span>
+                    <span style={{ color: "var(--text-muted)" }}>Mercado: <span style={{ color: valColor(data.var_mercado_dia), fontFamily: "var(--font-plex-mono)" }}>{brl(data.var_mercado_dia)}</span></span>
+                    {data.fluxo_dia != null && <span style={{ color: "var(--text-muted)" }}>Fluxo externo: <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-plex-mono)" }}>{brl(data.fluxo_dia)}</span></span>}
+                    <span style={{ color: "var(--text-muted)" }}>Var. % dia: <span className="font-semibold" style={{ color: valColor(data.var_dia_pct), fontFamily: "var(--font-plex-mono)" }}>{pct(data.var_dia_pct)}</span></span>
                   </div>
                 )}
               </section>
 
               {/* Performance */}
-              <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-4">
-                <h2 className="text-xs text-[#6b7280] uppercase tracking-wider mb-3">Performance YTD</h2>
+              <section
+                className="rounded-xl border px-5 py-4"
+                style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+              >
+                <h2 className="text-xs uppercase tracking-wider mb-3" style={{ color: "var(--text-muted)" }}>Performance YTD</h2>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                   <KPI label="TWR Gerida YTD" value={pct(data.twr_gerida_ytd)} color={valColor(data.twr_gerida_ytd)} />
                   <KPI label="TWR Total YTD" value={pct(data.twr_total_ytd)} color={valColor(data.twr_total_ytd)} />
-                  <KPI label="CDI YTD" value={pct(data.cdi_ytd)} color="#D1D4DC" />
+                  <KPI label="CDI YTD" value={pct(data.cdi_ytd)} color="var(--text-primary)" />
                   <KPI label="IBOV YTD" value={pct(data.ibov_ytd)} color={valColor(data.ibov_ytd)} />
                   <KPI label="S&P500 BRL YTD" value={pct(data.sp500_brl_ytd)} color={valColor(data.sp500_brl_ytd)} />
                   <KPI label="Excesso CDI" value={pct(data.excesso_cdi)} color={valColor(data.excesso_cdi)} />
@@ -142,18 +174,24 @@ export default function Dashboard() {
 
               {/* Risco e Renda */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-4">
-                  <h2 className="text-xs text-[#6b7280] uppercase tracking-wider mb-3">Métricas de Risco</h2>
+                <section
+                  className="rounded-xl border px-5 py-4"
+                  style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+                >
+                  <h2 className="text-xs uppercase tracking-wider mb-3" style={{ color: "var(--text-muted)" }}>Métricas de Risco</h2>
                   <div className="grid grid-cols-2 gap-3">
                     <KPI label="Sharpe" value={fmt(data.sharpe, 2)} />
                     <KPI label="Vol. anualizada" value={pct(data.vol_anualizada, 2)} />
-                    <KPI label="Drawdown máx." value={pct(data.drawdown_max, 2)} color={data.drawdown_max != null ? red : "#D1D4DC"}
+                    <KPI label="Drawdown máx." value={pct(data.drawdown_max, 2)} color={data.drawdown_max != null ? red : "var(--text-primary)"}
                       sub={data.drawdown_max_data ?? undefined} />
                     <KPI label="Beta vs IBOV" value={fmt(data.beta_ibov, 2)} />
                   </div>
                 </section>
-                <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-4">
-                  <h2 className="text-xs text-[#6b7280] uppercase tracking-wider mb-3">Renda Estimada</h2>
+                <section
+                  className="rounded-xl border px-5 py-4"
+                  style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+                >
+                  <h2 className="text-xs uppercase tracking-wider mb-3" style={{ color: "var(--text-muted)" }}>Renda Estimada</h2>
                   <div className="grid grid-cols-2 gap-3">
                     <KPI label="Yield 12m (total)" value={pct(data.yield_12m, 2)} color={green} />
                     <KPI label="Yield 12m (gerida)" value={pct(data.yield_12m_gerida, 2)} color={green} />
@@ -165,16 +203,19 @@ export default function Dashboard() {
 
               {/* Alertas */}
               {data.alertas.length > 0 && (
-                <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27]">
-                  <div className="px-5 py-3 border-b border-[#2A2D3A]">
-                    <h2 className="text-sm font-semibold text-white">{data.n_alertas} Alerta{data.n_alertas !== 1 ? "s" : ""}</h2>
+                <section
+                  className="rounded-xl border overflow-hidden"
+                  style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+                >
+                  <div className="px-5 py-3 border-b" style={{ borderColor: "var(--border-soft)" }}>
+                    <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{data.n_alertas} Alerta{data.n_alertas !== 1 ? "s" : ""}</h2>
                   </div>
-                  <div className="divide-y divide-[#2A2D3A]">
+                  <div className="divide-y" style={{ borderColor: "var(--border-soft)" }}>
                     {data.alertas.map((a, i) => (
                       <div key={i} className="flex items-start gap-3 px-5 py-3">
                         <span className="text-xs font-bold shrink-0 mt-0.5" style={{ color: nivelCor[a.nivel] ?? amber }}>{a.nivel}</span>
-                        <span className="text-xs font-semibold text-white shrink-0">{a.ativo}</span>
-                        <span className="text-xs text-[#D1D4DC]">{a.mensagem}</span>
+                        <span className="text-xs font-semibold shrink-0" style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>{a.ativo}</span>
+                        <span className="text-xs" style={{ color: "var(--text-body)" }}>{a.mensagem}</span>
                       </div>
                     ))}
                   </div>
@@ -183,14 +224,17 @@ export default function Dashboard() {
 
               {/* Vencimentos RF */}
               {data.vencimentos_rf.length > 0 && (
-                <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27]">
-                  <div className="px-5 py-3 border-b border-[#2A2D3A]">
-                    <h2 className="text-sm font-semibold text-white">Vencimentos Renda Fixa</h2>
+                <section
+                  className="rounded-xl border overflow-hidden"
+                  style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+                >
+                  <div className="px-5 py-3 border-b" style={{ borderColor: "var(--border-soft)" }}>
+                    <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Vencimentos Renda Fixa</h2>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="border-b border-[#2A2D3A] text-[10px] text-[#6b7280] uppercase">
+                        <tr className="border-b text-[10px] uppercase" style={{ borderColor: "var(--border-soft)", color: "var(--text-muted)" }}>
                           <th className="px-4 py-2 text-left">Ativo</th>
                           <th className="px-4 py-2 text-left">Família</th>
                           <th className="px-4 py-2 text-right">Vencimento</th>
@@ -201,13 +245,13 @@ export default function Dashboard() {
                       </thead>
                       <tbody>
                         {data.vencimentos_rf.map((v) => (
-                          <tr key={v.ticker} className="border-b border-[#2A2D3A]">
-                            <td className="px-4 py-2 font-bold text-white">{v.ticker}</td>
-                            <td className="px-4 py-2 text-[#6b7280]">{v.familia ?? "—"}</td>
-                            <td className="px-4 py-2 text-right font-mono">{v.data_vencimento}</td>
-                            <td className="px-4 py-2 text-right font-mono" style={{ color: nivelCor[v.alerta] ?? "#D1D4DC" }}>{v.dias_restantes}d</td>
-                            <td className="px-4 py-2 text-right font-mono">{brl(v.valor_atual)}</td>
-                            <td className="px-4 py-2 text-right font-bold" style={{ color: nivelCor[v.alerta] ?? "#D1D4DC" }}>{v.alerta}</td>
+                          <tr key={v.ticker} className="border-b" style={{ borderColor: "var(--border-soft)" }}>
+                            <td className="px-4 py-2 font-semibold" style={{ color: "var(--text-primary)" }}>{v.ticker}</td>
+                            <td className="px-4 py-2" style={{ color: "var(--text-muted)" }}>{v.familia ?? "—"}</td>
+                            <td className="px-4 py-2 text-right" style={{ fontFamily: "var(--font-plex-mono)", color: "var(--text-body)" }}>{v.data_vencimento}</td>
+                            <td className="px-4 py-2 text-right" style={{ fontFamily: "var(--font-plex-mono)", color: nivelCor[v.alerta] ?? "var(--text-primary)" }}>{v.dias_restantes}d</td>
+                            <td className="px-4 py-2 text-right" style={{ fontFamily: "var(--font-plex-mono)", color: "var(--text-body)" }}>{brl(v.valor_atual)}</td>
+                            <td className="px-4 py-2 text-right font-semibold" style={{ color: nivelCor[v.alerta] ?? "var(--text-primary)" }}>{v.alerta}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -217,9 +261,12 @@ export default function Dashboard() {
               )}
 
               {/* P&L Vendas */}
-              <div className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-3 flex items-center justify-between">
-                <span className="text-xs text-[#6b7280]">P&L realizado RV (vendas)</span>
-                <span className="font-mono font-bold text-sm" style={{ color: valColor(data.pnl_vendas_rv) }}>{brl(data.pnl_vendas_rv, 2)}</span>
+              <div
+                className="rounded-xl border px-5 py-3 flex items-center justify-between"
+                style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+              >
+                <span className="text-xs" style={{ color: "var(--text-muted)" }}>P&L realizado RV (vendas)</span>
+                <span className="font-semibold text-sm" style={{ color: valColor(data.pnl_vendas_rv), fontFamily: "var(--font-plex-mono)" }}>{brl(data.pnl_vendas_rv, 2)}</span>
               </div>
             </>
           )}

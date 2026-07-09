@@ -26,6 +26,8 @@ function pct(n: number | null | undefined, d = 2): string {
   return sign + (n * 100).toFixed(d) + "%";
 }
 
+const cardShadow = "0 1px 3px rgba(61,54,41,0.06)";
+
 function calcProjecao(
   patrimonioAtual: number,
   twrAnual: number,
@@ -81,16 +83,16 @@ function GraficoProjecao({
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: H }}>
       <defs>
         <linearGradient id="grad-meta" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#6366F1" stopOpacity="0.3" />
-          <stop offset="100%" stopColor="#6366F1" stopOpacity="0" />
+          <stop offset="0%" stopColor="#C15F3C" stopOpacity="0.2" />
+          <stop offset="100%" stopColor="#C15F3C" stopOpacity="0" />
         </linearGradient>
       </defs>
       {/* Meta line */}
-      <line x1={PAD.left} x2={W - PAD.right} y1={metaY} y2={metaY} stroke="#F59E0B" strokeWidth="1" strokeDasharray="4 3" />
-      <text x={W - PAD.right + 2} y={metaY + 4} fill="#F59E0B" fontSize="9">Meta</text>
+      <line x1={PAD.left} x2={W - PAD.right} y1={metaY} y2={metaY} stroke="#C9862B" strokeWidth="1" strokeDasharray="4 3" />
+      <text x={W - PAD.right + 2} y={metaY + 4} fill="#C9862B" fontSize="9">Meta</text>
       {/* Grid */}
       {yLabels.map((l, i) => (
-        <line key={i} x1={PAD.left} x2={W - PAD.right} y1={l.y} y2={l.y} stroke="#2A2D3A" strokeWidth="1" />
+        <line key={i} x1={PAD.left} x2={W - PAD.right} y1={l.y} y2={l.y} stroke="#E5DBC8" strokeWidth="1" />
       ))}
       {/* Area */}
       <path
@@ -98,16 +100,16 @@ function GraficoProjecao({
         fill="url(#grad-meta)"
       />
       {/* Line */}
-      <path d={path} fill="none" stroke="#6366F1" strokeWidth="2" />
+      <path d={path} fill="none" stroke="#C15F3C" strokeWidth="2" />
       {/* Y labels */}
       {yLabels.map((l, i) => (
-        <text key={i} x={PAD.left - 4} y={l.y + 4} textAnchor="end" fill="#6b7280" fontSize="9">
+        <text key={i} x={PAD.left - 4} y={l.y + 4} textAnchor="end" fill="#A69C88" fontSize="9">
           {brl(l.v)}
         </text>
       ))}
       {/* X labels */}
       {xLabels.map((l, i) => (
-        <text key={i} x={l.x} y={H - 6} textAnchor="middle" fill="#6b7280" fontSize="9">{l.label}</text>
+        <text key={i} x={l.x} y={H - 6} textAnchor="middle" fill="#A69C88" fontSize="9">{l.label}</text>
       ))}
     </svg>
   );
@@ -170,57 +172,83 @@ export default function MetaPage() {
   const anoMetaExtra = projecaoExtra.find((p) => p.patrimonio >= META)?.ano ?? null;
 
   return (
-    <div className="flex min-h-screen bg-[#0F1117] text-[#D1D4DC]">
+    <div className="flex min-h-screen" style={{ background: "var(--bg-app)", color: "var(--text-body)" }}>
       <Nav />
       <main className="flex-1 px-4 py-6 md:px-8 space-y-4 overflow-auto">
-        <h1 className="text-lg font-bold text-white">Meta R$ 3 Milhões</h1>
+        <h1
+          className="text-2xl font-semibold"
+          style={{ color: "var(--text-primary)", fontFamily: "var(--font-source-serif)" }}
+        >
+          Meta R$ 3 Milhões
+        </h1>
 
-        {loading && <div className="animate-pulse h-64 rounded-xl bg-[#1A1D27]" />}
+        {loading && <div className="animate-pulse h-64 rounded-xl" style={{ background: "var(--bg-card)" }} />}
         {error && (
-          <div className="rounded-xl border border-red-800/50 bg-red-900/20 px-4 py-3 text-sm text-red-400">{error}</div>
+          <div
+            className="rounded-xl border px-4 py-3 text-sm"
+            style={{ borderColor: "rgba(180,68,44,0.3)", background: "rgba(180,68,44,0.08)", color: "var(--negative)" }}
+          >
+            {error}
+          </div>
         )}
 
         {!loading && !error && (
           <>
             {/* Progress */}
-            <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-5">
+            <section
+              className="rounded-xl border px-5 py-5"
+              style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+            >
               <div className="flex justify-between text-sm mb-2">
-                <span className="font-bold text-white">{brl(patAtual)}</span>
-                <span className="text-[#6b7280]">{brl(META)}</span>
+                <span className="font-bold" style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>{brl(patAtual)}</span>
+                <span style={{ color: "var(--text-faint)" }}>{brl(META)}</span>
               </div>
-              <div className="h-5 rounded-full bg-[#2A2D3A] overflow-hidden">
+              <div className="rounded-full overflow-hidden" style={{ height: 18, background: "var(--border-soft)" }}>
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-[#26A69A] to-[#6366F1] transition-all"
-                  style={{ width: `${Math.min(100, pctAtingido * 100)}%` }}
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${Math.min(100, pctAtingido * 100)}%`,
+                    background: "linear-gradient(90deg, var(--accent), var(--accent-strong))",
+                  }}
                 />
               </div>
-              <div className="flex justify-between mt-1 text-xs">
-                <span className="text-[#26A69A] font-bold">{(pctAtingido * 100).toFixed(1)}% atingido</span>
-                <span className="text-[#6b7280]">Falta {brl(META - patAtual)}</span>
+              <div className="flex justify-between mt-1.5 text-xs">
+                <span className="font-bold" style={{ color: "var(--positive)" }}>{(pctAtingido * 100).toFixed(1)}% atingido</span>
+                <span style={{ color: "var(--text-faint)" }}>Falta {brl(META - patAtual)}</span>
               </div>
             </section>
 
             {/* KPIs */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
-                { label: "Projeção (base)", value: anoMetaBase ? `até ${anoMetaBase}` : "—", color: "#6366F1" },
-                { label: "TWR Anualizado", value: pct(twr), color: "#26A69A" },
-                { label: "Aporte Mensal (base)", value: brl(aporteAnual / 12), color: "#D1D4DC" },
-                { label: "Necessário / mês", value: sdMeta?.ritmo_mensal_necessario ? brl(sdMeta.ritmo_mensal_necessario) : "—", color: "#F59E0B" },
+                { label: "Projeção (base)", value: anoMetaBase ? `até ${anoMetaBase}` : "—", color: "var(--accent-strong)" },
+                { label: "TWR Anualizado", value: pct(twr), color: "var(--positive)" },
+                { label: "Aporte Mensal (base)", value: brl(aporteAnual / 12), color: "var(--text-primary)" },
+                { label: "Necessário / mês", value: sdMeta?.ritmo_mensal_necessario ? brl(sdMeta.ritmo_mensal_necessario) : "—", color: "var(--warning)" },
               ].map((k) => (
-                <div key={k.label} className="rounded-lg bg-[#1A1D27] border border-[#2A2D3A] px-4 py-3">
-                  <p className="text-[9px] text-[#6b7280] uppercase tracking-wider">{k.label}</p>
-                  <p className="text-sm font-bold font-mono mt-0.5" style={{ color: k.color }}>{k.value}</p>
+                <div
+                  key={k.label}
+                  className="rounded-lg border px-4 py-3"
+                  style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+                >
+                  <p className="text-[9px] uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>{k.label}</p>
+                  <p className="text-sm font-bold mt-0.5" style={{ color: k.color, fontFamily: "var(--font-plex-mono)" }}>{k.value}</p>
                 </div>
               ))}
             </div>
 
             {/* Simulador de Projeção */}
-            <section className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] px-5 py-5 space-y-4">
+            <section
+              className="rounded-xl border px-5 py-5 space-y-4"
+              style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+            >
               <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-white">Simulador de Projeção</h2>
-                <button onClick={() => { setTwrSlider(null); setAporteExtra(0); }}
-                  className="text-[10px] text-[#6b7280] hover:text-[#D1D4DC] border border-[#2A2D3A] rounded px-2 py-0.5 transition">
+                <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Simulador de Projeção</h2>
+                <button
+                  onClick={() => { setTwrSlider(null); setAporteExtra(0); }}
+                  className="text-[10px] border rounded px-2 py-0.5 transition"
+                  style={{ whiteSpace: "nowrap", color: "var(--text-muted)", borderColor: "var(--border)" }}
+                >
                   Resetar
                 </button>
               </div>
@@ -228,11 +256,11 @@ export default function MetaPage() {
               {/* Slider TWR */}
               <div className="space-y-2">
                 <div className="flex justify-between text-xs">
-                  <span className="text-[#D1D4DC]">TWR anualizado:</span>
+                  <span style={{ color: "var(--text-body)" }}>TWR anualizado:</span>
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-[#26A69A]">{(twr * 100).toFixed(1)}% a.a.</span>
+                    <span className="font-semibold" style={{ color: "var(--positive)", fontFamily: "var(--font-plex-mono)" }}>{(twr * 100).toFixed(1)}% a.a.</span>
                     {twrSlider !== null && (
-                      <span className="text-[10px] text-[#F59E0B]">real: {(twrReal * 100).toFixed(1)}%</span>
+                      <span className="text-[10px]" style={{ color: "var(--warning)" }}>real: {(twrReal * 100).toFixed(1)}%</span>
                     )}
                   </div>
                 </div>
@@ -243,9 +271,10 @@ export default function MetaPage() {
                   step="0.5"
                   value={twrSlider !== null ? twrSlider : twrReal * 100}
                   onChange={(e) => setTwrSlider(Number(e.target.value))}
-                  className="w-full accent-[#26A69A]"
+                  className="w-full"
+                  style={{ accentColor: "var(--accent)" }}
                 />
-                <div className="flex justify-between text-[10px] text-[#6b7280]">
+                <div className="flex justify-between text-[10px]" style={{ color: "var(--text-faint)" }}>
                   <span>0% a.a.</span>
                   <span>30% a.a.</span>
                 </div>
@@ -254,8 +283,8 @@ export default function MetaPage() {
               {/* Slider Aporte Extra */}
               <div className="space-y-2">
                 <div className="flex justify-between text-xs">
-                  <span className="text-[#D1D4DC]">Aporte extra mensal:</span>
-                  <span className="font-mono text-[#26A69A]">{brl(aporteExtra)}/mês</span>
+                  <span style={{ color: "var(--text-body)" }}>Aporte extra mensal:</span>
+                  <span className="font-semibold" style={{ color: "var(--positive)", fontFamily: "var(--font-plex-mono)" }}>{brl(aporteExtra)}/mês</span>
                 </div>
                 <input
                   type="range"
@@ -264,26 +293,30 @@ export default function MetaPage() {
                   step="500"
                   value={aporteExtra}
                   onChange={(e) => setAporteExtra(Number(e.target.value))}
-                  className="w-full accent-[#26A69A]"
+                  className="w-full"
+                  style={{ accentColor: "var(--accent)" }}
                 />
-                <div className="flex justify-between text-[10px] text-[#6b7280]">
+                <div className="flex justify-between text-[10px]" style={{ color: "var(--text-faint)" }}>
                   <span>R$ 0</span>
                   <span>R$ 20.000</span>
                 </div>
               </div>
 
               {/* Resumo */}
-              <div className="rounded-lg border border-[#2A2D3A] bg-[#0F1117] px-4 py-3 text-xs space-y-1">
+              <div className="rounded-lg border px-4 py-3 text-xs space-y-1" style={{ borderColor: "var(--border-soft)", background: "var(--bg-app)" }}>
                 <div className="flex justify-between">
-                  <span className="text-[#6b7280]">Cenário atual</span>
-                  <span className="font-mono text-white">meta em <span className="text-[#26A69A] font-bold">{anoMetaBase ? `${anoMetaBase}` : "30+ anos"}</span></span>
+                  <span style={{ color: "var(--text-muted)" }}>Cenário atual</span>
+                  <span style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>
+                    meta em <span className="font-bold" style={{ color: "var(--positive)" }}>{anoMetaBase ? `${anoMetaBase}` : "30+ anos"}</span>
+                  </span>
                 </div>
                 {aporteExtra > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-[#6b7280]">+ Aporte extra</span>
-                    <span className="font-mono text-white">meta em <span className="text-[#F59E0B] font-bold">{anoMetaExtra ? `${anoMetaExtra}` : "30+ anos"}</span>
+                    <span style={{ color: "var(--text-muted)" }}>+ Aporte extra</span>
+                    <span style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>
+                      meta em <span className="font-bold" style={{ color: "var(--warning)" }}>{anoMetaExtra ? `${anoMetaExtra}` : "30+ anos"}</span>
                       {anoMetaBase && anoMetaExtra && anoMetaExtra < anoMetaBase && (
-                        <span className="text-[#F59E0B] ml-1">(-{anoMetaBase - anoMetaExtra} anos)</span>
+                        <span className="ml-1" style={{ color: "var(--warning)" }}>(-{anoMetaBase - anoMetaExtra} anos)</span>
                       )}
                     </span>
                   </div>

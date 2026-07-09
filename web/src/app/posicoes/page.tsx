@@ -52,6 +52,8 @@ function fmt2(n: number | null | undefined): string {
   return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+const cardShadow = "0 1px 3px rgba(61,54,41,0.06)";
+
 export default function Posicoes() {
   const router = useRouter();
   const [posicoes, setPosicoes] = useState<Posicao[]>([]);
@@ -90,57 +92,76 @@ export default function Posicoes() {
   const totalValor = filtered.reduce((s, p) => s + (p.valor_atual ?? 0), 0);
   const totalPnl   = filtered.reduce((s, p) => s + (p.pnl ?? 0), 0);
 
-  const pnlColor = (v: number) => v >= 0 ? "#26A69A" : "#EF5350";
+  const pnlColor = (v: number) => v >= 0 ? "var(--positive)" : "var(--negative)";
 
   return (
-    <div className="flex min-h-screen bg-[#0F1117] text-[#D1D4DC]">
+    <div className="flex min-h-screen" style={{ background: "var(--bg-app)", color: "var(--text-body)" }}>
       <Nav />
       <main className="flex-1 overflow-auto flex flex-col">
         <ActionBar />
-        <div className="flex-1 px-4 py-4 md:px-8 space-y-4">
+        <div className="flex-1 px-4 py-4 md:px-8 md:py-6 space-y-4">
 
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <h1 className="text-lg font-bold text-white">Posições</h1>
-          <span className="text-xs text-[#6b7280]">{filtered.length} ativos</span>
+          <h1
+            className="text-2xl font-semibold"
+            style={{ color: "var(--text-primary)", fontFamily: "var(--font-source-serif)" }}
+          >
+            Posições
+          </h1>
+          <span className="text-xs" style={{ color: "var(--text-faint)" }}>{filtered.length} ativos</span>
         </div>
 
         {/* Filtros de bloco */}
         <div className="flex flex-wrap gap-2">
-          {BLOCOS.map((b) => (
-            <button
-              key={b}
-              onClick={() => setFiltroBloco(b)}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition border ${
-                filtroBloco === b
-                  ? "bg-[#26A69A]/20 border-[#26A69A] text-[#26A69A]"
-                  : "border-[#2A2D3A] text-[#6b7280] hover:border-[#4b5563] hover:text-[#D1D4DC]"
-              }`}
-            >
-              {b === "Todos" ? "Todos" : (BLOCO_LABEL[b] ?? b)}
-            </button>
-          ))}
+          {BLOCOS.map((b) => {
+            const active = filtroBloco === b;
+            return (
+              <button
+                key={b}
+                onClick={() => setFiltroBloco(b)}
+                className="px-3.5 py-1.5 rounded-full text-xs font-semibold transition border"
+                style={{
+                  whiteSpace: "nowrap",
+                  borderColor: active ? "var(--accent)" : "var(--border)",
+                  color: active ? "var(--accent-strong)" : "var(--text-muted)",
+                  background: active ? "rgba(193,95,60,0.12)" : "transparent",
+                }}
+              >
+                {b === "Todos" ? "Todos" : (BLOCO_LABEL[b] ?? b)}
+              </button>
+            );
+          })}
         </div>
 
         {loading && (
           <div className="animate-pulse space-y-2">
             {[...Array(6)].map((_, i) => (
-              <div key={i} className="h-10 rounded-lg bg-[#1A1D27]" />
+              <div key={i} className="h-10 rounded-lg" style={{ background: "var(--bg-card)" }} />
             ))}
           </div>
         )}
 
         {error && (
-          <div className="rounded-xl border border-red-800/50 bg-red-900/20 px-4 py-3 text-sm text-red-400">
+          <div
+            className="rounded-xl border px-4 py-3 text-sm"
+            style={{ borderColor: "rgba(180,68,44,0.3)", background: "rgba(180,68,44,0.08)", color: "var(--negative)" }}
+          >
             {error}
           </div>
         )}
 
         {!loading && !error && (
-          <div className="rounded-xl border border-[#2A2D3A] bg-[#1A1D27] overflow-hidden">
+          <div
+            className="rounded-xl border overflow-hidden"
+            style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+          >
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-[#2A2D3A] text-[10px] text-[#6b7280] uppercase">
+                  <tr
+                    className="border-b text-[10px] uppercase tracking-wider"
+                    style={{ borderColor: "var(--border-soft)", color: "var(--text-faint)" }}
+                  >
                     <th className="px-4 py-2 text-left">Ativo</th>
                     <th className="px-4 py-2 text-left">Classe</th>
                     <th className="px-4 py-2 text-left">Bloco IPS</th>
@@ -159,53 +180,60 @@ export default function Posicoes() {
                     return (
                       <tr
                         key={p.ticker}
-                        className="border-b border-[#2A2D3A] hover:bg-[#2A2D3A]/30 cursor-pointer transition"
+                        className="border-b cursor-pointer transition"
+                        style={{ borderColor: "var(--border-soft)" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-card-alt)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                         onClick={() => router.push(`/ativos/${p.ticker}`)}
                       >
                         <td className="px-4 py-2.5">
                           <div className="flex items-center gap-2">
-                            <span className="font-bold text-white">{p.ticker}</span>
+                            <span className="font-bold" style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>{p.ticker}</span>
                             {alertaPnl && (
-                              <span className="text-[9px] rounded px-1 py-0.5 bg-red-900/40 text-[#EF5350] border border-red-800/50">
-                                ⚠️ -15%+
+                              <span
+                                className="text-[10px] rounded px-1.5 py-0.5 border"
+                                style={{ whiteSpace: "nowrap", color: "var(--negative)", background: "rgba(180,68,44,0.10)", borderColor: "rgba(180,68,44,0.25)" }}
+                              >
+                                -15%+
                               </span>
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-2.5 text-[#6b7280] text-xs">{p.classe ?? "—"}</td>
+                        <td className="px-4 py-2.5 text-xs" style={{ color: "var(--text-muted)" }}>{p.classe ?? "—"}</td>
                         <td className="px-4 py-2.5 text-xs">
                           {p.bloco_ips ? (
                             <Link
                               href={`/blocos/${p.bloco_ips}`}
                               onClick={(e) => e.stopPropagation()}
-                              className="text-[#6366F1] hover:underline"
+                              className="hover:underline"
+                              style={{ color: "var(--purple-accent)", whiteSpace: "nowrap" }}
                             >
                               {BLOCO_LABEL[p.bloco_ips] ?? p.bloco_ips}
                             </Link>
                           ) : (
-                            <span className="text-[#6b7280]">—</span>
+                            <span style={{ color: "var(--text-faint)" }}>—</span>
                           )}
                         </td>
-                        <td className="px-4 py-2.5 text-right font-mono text-xs">{fmt2(p.qtd)}</td>
-                        <td className="px-4 py-2.5 text-right font-mono text-xs">{fmt2(p.preco_atual)}</td>
-                        <td className="px-4 py-2.5 text-right font-mono text-xs">{brl(p.valor_atual)}</td>
-                        <td className="px-4 py-2.5 text-right font-mono text-xs" style={{ color: pnlColor(p.pnl) }}>{brl(p.pnl)}</td>
-                        <td className="px-4 py-2.5 text-right font-mono text-xs" style={{ color: pnlColor(p.pnl_pct) }}>{pct(p.pnl_pct)}</td>
-                        <td className="px-4 py-2.5 text-right font-mono text-xs">{peso.toFixed(1)}%</td>
+                        <td className="px-4 py-2.5 text-right text-xs" style={{ color: "var(--text-body)", fontFamily: "var(--font-plex-mono)" }}>{fmt2(p.qtd)}</td>
+                        <td className="px-4 py-2.5 text-right text-xs" style={{ color: "var(--text-body)", fontFamily: "var(--font-plex-mono)" }}>{fmt2(p.preco_atual)}</td>
+                        <td className="px-4 py-2.5 text-right text-xs" style={{ color: "var(--text-body)", fontFamily: "var(--font-plex-mono)" }}>{brl(p.valor_atual)}</td>
+                        <td className="px-4 py-2.5 text-right text-xs font-semibold" style={{ color: pnlColor(p.pnl), fontFamily: "var(--font-plex-mono)" }}>{brl(p.pnl)}</td>
+                        <td className="px-4 py-2.5 text-right text-xs font-semibold" style={{ color: pnlColor(p.pnl_pct), fontFamily: "var(--font-plex-mono)" }}>{pct(p.pnl_pct)}</td>
+                        <td className="px-4 py-2.5 text-right text-xs" style={{ color: "var(--text-muted)", fontFamily: "var(--font-plex-mono)" }}>{peso.toFixed(1)}%</td>
                       </tr>
                     );
                   })}
                 </tbody>
                 {/* Totais */}
                 <tfoot>
-                  <tr className="border-t border-[#2A2D3A] bg-[#0F1117] text-xs font-bold">
-                    <td className="px-4 py-2.5" colSpan={5}>Total ({filtered.length} ativos)</td>
-                    <td className="px-4 py-2.5 text-right font-mono">{brl(totalValor)}</td>
-                    <td className="px-4 py-2.5 text-right font-mono" style={{ color: pnlColor(totalPnl) }}>{brl(totalPnl)}</td>
-                    <td className="px-4 py-2.5 text-right font-mono" style={{ color: pnlColor(totalPnl) }}>
+                  <tr className="border-t text-xs font-bold" style={{ borderColor: "var(--border)", background: "var(--bg-card-alt)" }}>
+                    <td className="px-4 py-2.5" style={{ color: "var(--text-primary)" }} colSpan={5}>Total ({filtered.length} ativos)</td>
+                    <td className="px-4 py-2.5 text-right" style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>{brl(totalValor)}</td>
+                    <td className="px-4 py-2.5 text-right" style={{ color: pnlColor(totalPnl), fontFamily: "var(--font-plex-mono)" }}>{brl(totalPnl)}</td>
+                    <td className="px-4 py-2.5 text-right" style={{ color: pnlColor(totalPnl), fontFamily: "var(--font-plex-mono)" }}>
                       {totalValor > 0 ? pct(totalPnl / (totalValor - totalPnl)) : "—"}
                     </td>
-                    <td className="px-4 py-2.5 text-right font-mono">100%</td>
+                    <td className="px-4 py-2.5 text-right" style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>100%</td>
                   </tr>
                 </tfoot>
               </table>
