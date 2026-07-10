@@ -14,6 +14,7 @@ import pandas as pd
 from carteira_clean_web.backend.api import cache as engine_cache
 from carteira_clean_web.backend.engine.constantes import COTIZADO_PUBLICO, AGREGADO_PRIVADO
 from carteira_clean_web.backend.engine.utils import preco_em
+from carteira_clean_web.backend.engine.valorizacao import valorizar_posicao, determinar_preco_atual
 from carteira_clean_web.backend.mcp.schemas import (
     PorClasse, Resumo, Posicao, ResultadoPosicoes,
     RetornoBenchmark, Risco, ResultadoPerformance,
@@ -94,18 +95,9 @@ def fn_obter_posicoes() -> dict:
         if p.qtd < 1e-9 and familia not in AGREGADO_PRIVADO:
             continue
 
-        # Preço atual
-        preco_atual = None
-        if familia in COTIZADO_PUBLICO:
-            preco_atual = preco_em(precos_pub.get(tkr, {}), hoje)
-        if preco_atual is None:
-            preco_atual = preco_em(precos_man.get(tkr, {}), hoje, max_lookback_dias=60)
-
-        # Valor atual
-        if familia in AGREGADO_PRIVADO:
-            valor_atual = preco_atual if preco_atual else p.custo_total
-        else:
-            valor_atual = p.qtd * preco_atual if preco_atual else p.custo_total
+        v = valorizar_posicao(p, tkr, ativos, precos_pub, precos_man, hoje)
+        preco_atual = v["preco_atual"]
+        valor_atual = v["valor_atual"]
 
         preco_atual = preco_atual if preco_atual else 0.0
 
@@ -1025,16 +1017,7 @@ def fn_analise_aderencia_setorial() -> dict:
         if p.qtd < 1e-9 and familia not in AGREGADO_PRIVADO:
             continue
 
-        preco_atual = None
-        if familia in COTIZADO_PUBLICO:
-            preco_atual = preco_em(precos_pub.get(tkr, {}), hoje)
-        if preco_atual is None:
-            preco_atual = preco_em(precos_man.get(tkr, {}), hoje, max_lookback_dias=60)
-
-        if familia in AGREGADO_PRIVADO:
-            valor_atual = preco_atual if preco_atual else p.custo_total
-        else:
-            valor_atual = p.qtd * preco_atual if preco_atual else p.custo_total
+        valor_atual = valorizar_posicao(p, tkr, ativos, precos_pub, precos_man, hoje)["valor_atual"]
 
         posicoes_raw.append({
             "composite":   info.get("composite", "Gerida"),
@@ -1223,13 +1206,7 @@ def fn_risco_carteira(tipo: str = "todos") -> dict:
         familia = info.get("familia", "")
         if pos.qtd < 1e-9 and familia not in AGREGADO_PRIVADO:
             continue
-        preco = preco_em(precos_pub.get(tkr, {}), hoje)
-        if preco is None:
-            preco = preco_em(precos_man.get(tkr, {}), hoje, max_lookback_dias=60)
-        if familia in AGREGADO_PRIVADO:
-            valores[tkr] = preco if preco else pos.custo_total
-        else:
-            valores[tkr] = pos.qtd * preco if preco else pos.custo_total
+        valores[tkr] = valorizar_posicao(pos, tkr, ativos, precos_pub, precos_man, hoje)["valor_atual"]
 
     patrimonio_gerida = sum(valores.values()) or 1.0
 
@@ -1420,13 +1397,9 @@ def fn_disciplina_caixa() -> dict:
         if info.get("setor", "").lower() not in ("caixa/conservador", "caixa"):
             continue
         familia = info.get("familia", "")
-        preco = preco_em(precos_pub.get(tkr, {}), hoje)
-        if preco is None:
-            preco = preco_em(precos_man.get(tkr, {}), hoje, max_lookback_dias=60)
-        if familia in AGREGADO_PRIVADO:
-            caixa_val += preco if preco else pos.custo_total
-        elif pos.qtd > 1e-9:
-            caixa_val += pos.qtd * preco if preco else pos.custo_total
+        if pos.qtd < 1e-9 and familia not in AGREGADO_PRIVADO:
+            continue
+        caixa_val += valorizar_posicao(pos, tkr, ativos, precos_pub, precos_man, hoje)["valor_atual"]
 
     caixa_pct = caixa_val / patrimonio_gerida * 100 if patrimonio_gerida > 0 else 0.0
     limiar_pct = 15.0
@@ -1648,13 +1621,7 @@ def fn_perfil_comportamental(
         familia = info.get("familia", "")
         if pos.qtd < 1e-9 and familia not in AGREGADO_PRIVADO:
             continue
-        preco = preco_em(precos_pub.get(tkr, {}), hoje)
-        if preco is None:
-            preco = preco_em(precos_man.get(tkr, {}), hoje, max_lookback_dias=60)
-        if familia in AGREGADO_PRIVADO:
-            val = preco if preco else pos.custo_total
-        else:
-            val = pos.qtd * preco if preco else pos.custo_total
+        val = valorizar_posicao(pos, tkr, ativos, precos_pub, precos_man, hoje)["valor_atual"]
         valor_por_ticker[tkr] = val
         composite_por_ticker[tkr] = info.get("composite", "Gerida")
 
@@ -1768,13 +1735,7 @@ def fn_divergencias_dito_feito(
             familia = info.get("familia", "")
             if pos.qtd < 1e-9 and familia not in AGREGADO_PRIVADO:
                 continue
-            preco = preco_em(precos_pub.get(tkr, {}), hoje)
-            if preco is None:
-                preco = preco_em(precos_man.get(tkr, {}), hoje, max_lookback_dias=60)
-            if familia in AGREGADO_PRIVADO:
-                val = preco if preco else pos.custo_total
-            else:
-                val = pos.qtd * preco if preco else pos.custo_total
+            val = valorizar_posicao(pos, tkr, ativos, precos_pub, precos_man, hoje)["valor_atual"]
             bloco = _BLOCO_MAP.get(tkr) or bloco_ips_db.get(tkr) or "FORA_IPS"
             posicoes_raw.append({
                 "composite": info.get("composite", "Gerida"),
@@ -1792,9 +1753,7 @@ def fn_divergencias_dito_feito(
         for tkr, pos in posicoes_dict.items():
             info = ativos.get(tkr, {})
             familia = info.get("familia", "")
-            p = preco_em(precos_pub.get(tkr, {}), hoje)
-            if p is None:
-                p = preco_em(precos_man.get(tkr, {}), hoje, max_lookback_dias=60)
+            p = determinar_preco_atual(tkr, familia, precos_pub, precos_man, hoje)
             if p:
                 preco_atual[tkr] = p
         divs = cruzar_conviccao_resultado(decisoes, preco_atual)

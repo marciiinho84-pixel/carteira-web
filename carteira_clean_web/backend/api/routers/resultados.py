@@ -32,6 +32,7 @@ from carteira_clean_web.backend.engine.utils import (
     preco_em, status_liquidacao, data_liquidacao,
     status_liquidacao_d1, data_liquidacao_d1,
 )
+from carteira_clean_web.backend.engine.valorizacao import valorizar_posicao
 
 router = APIRouter(tags=["Resultados"])
 
@@ -85,23 +86,14 @@ def posicoes(db: Session = Depends(get_db)):
         familia = info.get("familia", "")
         composite = info.get("composite", "Gerida")
 
-        # LCI/LCA detectado por padrão de ticker mesmo sem familia registrada
-        _is_lci_lca = tkr.upper().startswith(("LCI-", "LCA-"))
-        _is_agregado = familia in AGREGADO_PRIVADO or _is_lci_lca
+        v = valorizar_posicao(p, tkr, ativos, precos_pub, precos_man, hoje)
+        _is_agregado = v["is_agregado"]
 
         if p.qtd < 1e-9 and not _is_agregado:
             continue
 
-        preco_atual = None
-        if familia in COTIZADO_PUBLICO:
-            preco_atual = preco_em(precos_pub.get(tkr, {}), hoje)
-        if preco_atual is None:
-            preco_atual = preco_em(precos_man.get(tkr, {}), hoje, max_lookback_dias=60)
-
-        if _is_agregado:
-            valor_atual = preco_atual if preco_atual else p.custo_total
-        else:
-            valor_atual = p.qtd * preco_atual if preco_atual else p.custo_total
+        preco_atual = v["preco_atual"]
+        valor_atual = v["valor_atual"]
 
         pnl = valor_atual - p.custo_total
         pnl_pct = pnl / p.custo_total if p.custo_total > 0 else 0
@@ -143,7 +135,7 @@ def posicoes(db: Session = Depends(get_db)):
 
         # Badge de staleness para LCI/LCA
         alerta_reconciliacao = None
-        if familia == "Letra de Crédito" or _is_lci_lca:
+        if _is_agregado:
             ultima_rec = _rec_lci_map.get(tkr)
             if ultima_rec is not None:
                 from datetime import timedelta as _td
@@ -437,10 +429,7 @@ def carteira_rv():
         info = ativos.get(tkr, {})
         if info.get("familia") not in COTIZADO_PUBLICO or p.qtd < 1e-9:
             continue
-        preco = preco_em(precos_pub.get(tkr, {}), hoje)
-        if preco is None:
-            preco = preco_em(precos_man.get(tkr, {}), hoje, max_lookback_dias=60)
-        valor = p.qtd * preco if preco else p.custo_total
+        valor = valorizar_posicao(p, tkr, ativos, precos_pub, precos_man, hoje)["valor_atual"]
         setor = info.get("setor", "Outros")
         setor_valores[setor]["valor"] += valor
         setor_valores[setor]["n"] += 1
