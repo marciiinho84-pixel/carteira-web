@@ -195,6 +195,7 @@ class EvolucaoDiariaOut(BaseModel):
     patrimonio_funcef: float
     patrimonio_total: float
     patrimonio_rv: float
+    caixa: float = 0.0
     twr_gerida: float
     twr_total: float
     twr_rv: float

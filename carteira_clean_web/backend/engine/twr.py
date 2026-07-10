@@ -20,6 +20,7 @@ from .constantes import (
     VENDAS,
     FLUXOS_EXTERNOS,
 )
+from .caixa import delta_caixa_evento
 from .posicoes import Posicao
 from .precos import carregar_benchmarks_da_tabela
 from .utils import preco_em
@@ -33,6 +34,7 @@ def calc_evolucao_diaria(
     precos_publicos: dict,
     precos_manuais: dict,
     data_fim: date,
+    aportes_inferidos: list = None,
 ) -> pd.DataFrame:
     datas = [d.date() for d in pd.bdate_range(start=DATA_INICIO, end=data_fim)]
     if not datas:
@@ -53,7 +55,12 @@ def calc_evolucao_diaria(
                 proximo += timedelta(days=1)
         eventos_por_data[d_ev].append(ev)
 
+    aportes_por_data = defaultdict(float)
+    for ap in aportes_inferidos or []:
+        aportes_por_data[ap["data"]] += ap["valor"]
+
     posicoes = defaultdict(Posicao)
+    saldo_caixa = 0.0
     linhas = []
 
     for d in datas:
@@ -63,6 +70,7 @@ def calc_evolucao_diaria(
             p = posicoes[tkr]
             qtd = ev["qtd"] or 0
             valor = ev["valor"] or 0
+            saldo_caixa += delta_caixa_evento(ev, ativos)
             if tipo in COMPRAS or tipo == "CONTRIBUICAO":
                 p.qtd += qtd
                 p.custo_total += abs(valor)
@@ -81,6 +89,8 @@ def calc_evolucao_diaria(
                 if abs(p.qtd) < 1e-6:
                     p.qtd = 0.0
                     p.custo_total = 0.0
+
+        saldo_caixa += aportes_por_data.get(d, 0.0)
 
         valor_gerida = 0.0
         valor_funcef = 0.0
@@ -108,12 +118,15 @@ def calc_evolucao_diaria(
                 if familia in COTIZADO_PUBLICO:
                     valor_rv += valor_pos
 
+        valor_gerida += saldo_caixa
+
         linhas.append({
             "data": d,
             "patrimonio_gerida": valor_gerida,
             "patrimonio_funcef": valor_funcef,
             "patrimonio_total": valor_gerida + valor_funcef,
             "patrimonio_rv": valor_rv,
+            "caixa": saldo_caixa,
         })
 
     return pd.DataFrame(linhas)

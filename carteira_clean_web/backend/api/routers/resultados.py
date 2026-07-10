@@ -198,6 +198,7 @@ def evolucao(
             patrimonio_funcef=row.patrimonio_funcef,
             patrimonio_total=row.patrimonio_total,
             patrimonio_rv=row.patrimonio_rv,
+            caixa=getattr(row, "caixa", 0.0),
             twr_gerida=row.twr_gerida,
             twr_total=row.twr_total,
             twr_rv=row.twr_rv,

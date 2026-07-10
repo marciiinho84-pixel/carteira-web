@@ -9,7 +9,7 @@ import pandas as pd
 from datetime import date
 from collections import defaultdict
 
-from .constantes import COTIZADO_PUBLICO
+from .constantes import COTIZADO_PUBLICO, DATA_CAIXA_TRANSICAO
 
 
 SALDO_REAL_FIC_FUNC = 2450.48  # reportado pelo user em 16/05/2026
@@ -74,3 +74,30 @@ def validar_reconciliacao_caixa(saldo_residual: float) -> tuple:
                 f"(R$ {SALDO_REAL_FIC_FUNC:,.2f}) em R$ {desvio:,.2f}")
     return ("INFO", "CAIXA FIC FUNC",
             f"✓ Reconciliação caixa virtual ≈ saldo real (desvio R$ {desvio:,.2f})")
+
+
+def validar_saldo_caixa_negativo(
+    df_evo: pd.DataFrame, data_a_partir: date = DATA_CAIXA_TRANSICAO
+) -> list:
+    """Alerta (ERRO) se o caixa derivado ficar negativo em algum dia >= data_a_partir.
+
+    Nunca corrige/clampa o valor — só sinaliza. Pré-transição é contabilmente
+    incompleto por natureza (ver validar_reconciliacao_caixa) e fica de fora.
+    """
+    alertas = []
+    if df_evo.empty or "caixa" not in df_evo.columns:
+        return alertas
+
+    df_periodo = df_evo[df_evo["data"] >= data_a_partir]
+    negativos = df_periodo[df_periodo["caixa"] < -0.01]
+    if negativos.empty:
+        return alertas
+
+    pior = negativos.loc[negativos["caixa"].idxmin()]
+    alertas.append((
+        "ERRO", "CAIXA",
+        f"Saldo de caixa derivado negativo em {len(negativos)} dia(s) desde "
+        f"{data_a_partir} — pior caso: R$ {pior['caixa']:,.2f} em {pior['data']} "
+        f"(indica evento faltante no log, ex. APORTE_EXTERNO/RESGATE_EXTERNO)",
+    ))
+    return alertas

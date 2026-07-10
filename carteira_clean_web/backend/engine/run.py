@@ -30,7 +30,9 @@ from carteira_clean_web.backend.engine.inferencia import inferir_fluxos_externos
 from carteira_clean_web.backend.engine.twr import calc_evolucao_diaria, calc_twr_e_benchmarks
 from carteira_clean_web.backend.engine.atribuicao import calc_atribuicao_mensal
 from carteira_clean_web.backend.engine.brinson import calc_brinson_fachler
-from carteira_clean_web.backend.engine.validacao import validar, validar_reconciliacao_caixa
+from carteira_clean_web.backend.engine.validacao import (
+    validar, validar_reconciliacao_caixa, validar_saldo_caixa_negativo,
+)
 
 
 def setup_logging(verbose=False):
@@ -131,11 +133,14 @@ def run(
     log.info(f"  • R$ {sum(proventos.values()):,.2f} em proventos")
 
     log.info("\n[4/6] Reconstruindo evolução diária e TWR...")
-    df_evo = calc_evolucao_diaria(eventos, ativos, precos_publicos, precos_manuais, hoje)
     aportes_inferidos, saldo_residual = inferir_fluxos_externos_retroativos(eventos, ativos)
     log.info(f"  • {len(aportes_inferidos)} APORTEs externos inferidos")
     log.info(f"    Total inferido: R$ {sum(a['valor'] for a in aportes_inferidos):,.2f}")
     log.info(f"    Saldo residual: R$ {saldo_residual:,.2f}")
+    df_evo = calc_evolucao_diaria(
+        eventos, ativos, precos_publicos, precos_manuais, hoje,
+        aportes_inferidos=aportes_inferidos,
+    )
     df_evo = calc_twr_e_benchmarks(df_evo, eventos, aportes_inferidos, ativos)
     if not df_evo.empty:
         ult = df_evo.iloc[-1]
@@ -153,6 +158,7 @@ def run(
     log.info("\n[6/6] Validações ativas...")
     alertas = validar(posicoes, eventos, ativos, df_evo)
     alertas.append(validar_reconciliacao_caixa(saldo_residual))
+    alertas.extend(validar_saldo_caixa_negativo(df_evo))
     erros = sum(1 for a in alertas if a[0] == "ERRO")
     avisos = sum(1 for a in alertas if a[0] == "AVISO")
     infos = sum(1 for a in alertas if a[0] == "INFO")

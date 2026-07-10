@@ -87,6 +87,14 @@ def render():
         hovertemplate="Gerida: R$ %{y:,.0f}<extra></extra>",
     ), row=1, col=1, secondary_y=True)
 
+    # Caixa (derivado) — eixo Y direito, junto com a Gerida
+    if "caixa" in df_f.columns:
+        fig.add_trace(go.Scatter(
+            x=df_f["data"], y=df_f["caixa"],
+            name="Caixa ▶", line=dict(color="#95a5a6", width=1.5, dash="dot"),
+            hovertemplate="Caixa: R$ %{y:,.0f}<extra></extra>",
+        ), row=1, col=1, secondary_y=True)
+
     # TWR
     for col, nome, cor, dash_ in [
         ("twr_gerida", "TWR Gerida", "#4a9eff", "solid"),
@@ -164,6 +172,7 @@ def render():
                 "Gerida": fmt.moeda(r["patrimonio_gerida"]),
                 "FUNCEF": fmt.moeda(r["patrimonio_funcef"]),
                 "RV": fmt.moeda(r["patrimonio_rv"]),
+                "Caixa": fmt.moeda(r.get("caixa", 0.0)),
                 "TWR Gerida": fmt.pct(r["twr_gerida"]),
                 "TWR Total": fmt.pct(r["twr_total"]),
                 "CDI": fmt.pct(r["cdi_acum"]),
@@ -174,10 +183,12 @@ def render():
 
         st.caption("Exportar série histórica:")
         # Export com valores numéricos (não formatados)
+        if "caixa" not in df_f.columns:
+            df_f["caixa"] = 0.0
         df_evo_export = df_f[["data","patrimonio_total","patrimonio_gerida",
-                               "patrimonio_funcef","patrimonio_rv",
+                               "patrimonio_funcef","patrimonio_rv","caixa",
                                "twr_gerida","twr_total","cdi_acum","ibov_acum"]].copy()
         df_evo_export["data"] = df_evo_export["data"].dt.strftime("%d/%m/%Y")
-        df_evo_export.columns = ["Data","Patrim. Total","Gerida","FUNCEF","RV",
+        df_evo_export.columns = ["Data","Patrim. Total","Gerida","FUNCEF","RV","Caixa",
                                   "TWR Gerida","TWR Total","CDI","IBOV"]
         fmt.botoes_exportar(df_evo_export, "evolucao", key="evo")
