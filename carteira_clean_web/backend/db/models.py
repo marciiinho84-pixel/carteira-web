@@ -537,7 +537,8 @@ class EventoCorporativo(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "tipo IN ('EARNINGS_DATE','EX_DIVIDEND_DATE','DIVIDENDO','JCP','RESULTADO')",
+            "tipo IN ('EARNINGS_DATE','EX_DIVIDEND_DATE','DIVIDENDO','JCP','RESULTADO',"
+            "'BONIFICACAO','DESDOBRAMENTO','FATO_RELEVANTE','AVISO_ACIONISTAS','CALENDARIO_EVENTO')",
             name="ck_eventos_corp_tipo",
         ),
         Index("ix_eventos_corp_ticker_data", "ticker", "data_evento"),

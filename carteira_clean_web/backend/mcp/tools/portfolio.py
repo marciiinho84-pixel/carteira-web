@@ -1508,17 +1508,24 @@ def fn_consultar_macro(
 def fn_consultar_eventos_corporativos(
     ticker: str | None = None,
     janela_dias: int = 60,
+    janela_passado_dias: int = 90,
 ) -> dict:
     """
-    Retorna eventos corporativos futuros (earnings, ex-dividend) dos ativos em carteira.
+    Retorna eventos corporativos (earnings, ex-dividend, dividendo/JCP,
+    bonificação/desdobramento, fato relevante, aviso aos acionistas,
+    calendário) dos ativos em carteira — passado recente + futuro próximo.
 
     Args:
         ticker: filtrar por ativo específico (ex: "WEGE3"). None = todos.
-        janela_dias: horizonte em dias (default 60)
+        janela_dias: horizonte à frente em dias (default 60)
+        janela_passado_dias: horizonte atrás em dias (default 90) — proventos
+            já pagos são o caso mais comum, olhar só pra frente deixaria vazio.
     """
     try:
         from carteira_clean_web.backend.engine.macro_client import ler_eventos_corporativos
-        eventos = ler_eventos_corporativos(ticker=ticker, janela_dias=janela_dias)
+        eventos = ler_eventos_corporativos(
+            ticker=ticker, janela_dias=janela_dias, janela_passado_dias=janela_passado_dias,
+        )
     except Exception as e:
         return {"erro": str(e), "eventos": []}
 
@@ -1532,8 +1539,10 @@ def fn_consultar_eventos_corporativos(
         "por_ticker": por_ticker,
         "total": len(eventos),
         "janela_dias": janela_dias,
+        "janela_passado_dias": janela_passado_dias,
         "nota": (
-            "Fonte: yfinance (earnings_date, ex_dividend_date). "
+            "Fontes: yfinance (earnings/ex-dividend), brapi (dividendo/JCP/bonificação/"
+            "desdobramento), IPE CVM (fato relevante/aviso aos acionistas/calendário). "
             "Para coletar dados mais recentes: POST /api/v1/macro/coletar-eventos"
         ),
     }

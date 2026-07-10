@@ -414,12 +414,13 @@ TOOLS: list[dict] = [
     },
     {
         "name": "consultar_eventos_corporativos",
-        "description": "Retorna eventos corporativos futuros (earnings, ex-dividend) dos ativos em carteira.",
+        "description": "Retorna eventos corporativos (earnings, ex-dividend, dividendo/JCP, bonificação/desdobramento, fato relevante, aviso aos acionistas, calendário) dos ativos em carteira — passado recente + futuro próximo.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "ticker": {"type": "string", "description": "Filtrar por ativo específico. None = todos"},
-                "janela_dias": {"type": "integer", "description": "Horizonte em dias (default: 60)"},
+                "janela_dias": {"type": "integer", "description": "Horizonte à frente em dias (default: 60)"},
+                "janela_passado_dias": {"type": "integer", "description": "Horizonte atrás em dias (default: 90)"},
             },
             "required": [],
         },

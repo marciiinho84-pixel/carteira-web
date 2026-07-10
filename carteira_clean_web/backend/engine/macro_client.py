@@ -288,22 +288,31 @@ def ler_macro(indicadores: list[str] | None = None, ultimos_n: int = 30) -> dict
 def ler_eventos_corporativos(
     ticker: str | None = None,
     janela_dias: int = 60,
+    janela_passado_dias: int = 90,
 ) -> list[dict]:
     """
-    Retorna eventos corporativos nos próximos janela_dias dias.
+    Retorna eventos corporativos de janela_passado_dias atrás até
+    janela_dias à frente.
+
+    Proventos (dividendo/JCP) são majoritariamente passados — um filtro só
+    de futuro deixaria a tool vazia sempre que não houvesse anúncio novo
+    pendente. Fatos relevantes/earnings continuam relevantes olhando pra
+    frente também.
 
     Args:
         ticker: filtrar por ativo específico. None = todos.
         janela_dias: quantos dias à frente buscar (default 60).
+        janela_passado_dias: quantos dias atrás buscar (default 90).
     """
     hoje = date.today()
+    desde = hoje - timedelta(days=janela_passado_dias)
     ate = hoje + timedelta(days=janela_dias)
 
     with get_session() as db:
         q = (
             db.query(EventoCorporativo)
             .filter(
-                EventoCorporativo.data_evento >= hoje,
+                EventoCorporativo.data_evento >= desde,
                 EventoCorporativo.data_evento <= ate,
             )
             .order_by(EventoCorporativo.data_evento)

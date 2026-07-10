@@ -405,28 +405,31 @@ def consultar_macro(
 
 @mcp.tool(
     description="""
-    Retorna eventos corporativos futuros dos ativos da carteira.
+    Retorna eventos corporativos dos ativos da carteira — passado recente
+    + futuro próximo (proventos já pagos são o caso mais comum).
 
     Inclui:
-    - EARNINGS_DATE: próximas datas de divulgação de resultados
-    - EX_DIVIDEND_DATE: próximas datas ex-dividendo
+    - EARNINGS_DATE / EX_DIVIDEND_DATE: datas de resultado/ex-dividendo (yfinance)
+    - DIVIDENDO / JCP / BONIFICACAO / DESDOBRAMENTO: proventos e eventos societários (brapi)
+    - FATO_RELEVANTE / AVISO_ACIONISTAS / CALENDARIO_EVENTO: IPE CVM
 
     Parâmetros opcionais:
     - ticker: filtrar por ativo específico (ex: "WEGE3"). None = todos.
     - janela_dias: horizonte em dias à frente (default 60)
-
-    Fonte: yfinance.
+    - janela_passado_dias: horizonte em dias atrás (default 90)
 
     Use quando o usuário perguntar sobre:
     próximos resultados, divulgação de balanço, data ex-dividendo,
-    agenda corporativa, quando sai o resultado de X, calendário de proventos.
+    agenda corporativa, quando sai o resultado de X, calendário de proventos,
+    último dividendo pago, fato relevante recente.
     """
 )
 def consultar_eventos_corporativos(
     ticker: str = None,
     janela_dias: int = 60,
+    janela_passado_dias: int = 90,
 ) -> dict:
-    return fn_consultar_eventos_corporativos(ticker, janela_dias)
+    return fn_consultar_eventos_corporativos(ticker, janela_dias, janela_passado_dias)
 
 
 @mcp.tool(
