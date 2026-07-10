@@ -1882,10 +1882,9 @@ def fn_analise_fundamentalista(ticker: str) -> dict:
     """
     Análise fundamentalista em 4 dimensões para um ativo.
     Compara com peers do mesmo setor e com histórico próprio.
-    Fonte: tabela fundamentos (yfinance).
+    Fonte: tabela fundamentos (yfinance + brapi, peers via taxonomia_setorial).
     """
-    from carteira_clean_web.backend.db.models import Ativo as AtivoModel
-    from carteira_clean_web.backend.db.session import get_session
+    from carteira_clean_web.backend.engine import peers as peers_mod
     from carteira_clean_web.backend.engine.fundamentalista import analise_fundamentalista
 
     ticker = ticker.upper()
@@ -1894,20 +1893,10 @@ def fn_analise_fundamentalista(ticker: str) -> dict:
     if ticker not in fundamentos:
         return {"erro": f"Sem fundamentos para {ticker}. Execute a coleta: POST /api/v1/macro/coletar"}
 
-    session = get_session()
-    try:
-        ativo = session.query(AtivoModel).filter(AtivoModel.ticker == ticker).first()
-        setor = ativo.setor if ativo else None
-        peers = []
-        if setor:
-            peers = [a.ticker for a in session.query(AtivoModel).filter(
-                AtivoModel.setor == setor,
-                AtivoModel.ticker != ticker,
-            ).all()]
-    finally:
-        session.close()
-
-    fundamentos_setor = {p: fundamentos[p] for p in peers if p in fundamentos}
+    # Peers resolvidos via taxonomia_setorial (brapi) — não mais pelo campo
+    # livre ativos.setor, que só encontrava peers dentro da própria carteira.
+    candidatos = peers_mod.peers_do_mesmo_setor(ticker)
+    fundamentos_setor = {p: fundamentos[p] for p in candidatos if p in fundamentos}
     return analise_fundamentalista(ticker, fundamentos[ticker], fundamentos_setor)
 
 
@@ -1947,7 +1936,7 @@ def fn_screening_fundamentalista(
         "criterios_aplicados": criterios,
         "ativos_encontrados": len(resultado),
         "lista": resultado,
-        "nota": "Fonte: tabela fundamentos (yfinance). Apenas ativos com dados disponíveis.",
+        "nota": "Fonte: tabela fundamentos (yfinance + brapi). Apenas ativos com dados disponíveis.",
     }
 
 

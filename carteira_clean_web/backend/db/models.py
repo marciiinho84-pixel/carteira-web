@@ -485,7 +485,7 @@ class Fundamento(Base):
     __table_args__ = (
         CheckConstraint(
             "indicador IN ('PL','PVP','ROE','ROIC','DY',"
-            "'MARGEM_EBITDA','DIV_LIQ_EBITDA','MARGEM_LIQUIDA','LPA','VPA')",
+            "'MARGEM_EBITDA','DIV_LIQ_EBITDA','MARGEM_LIQUIDA','LPA','VPA','EV_EBITDA')",
             name="ck_fundamentos_indicador",
         ),
         Index("ix_fundamentos_ticker_indicador", "ticker", "indicador"),
@@ -700,4 +700,30 @@ class TaxonomiaSetorial(Base):
             "ticker": self.ticker,
             "setor_brapi": self.setor_brapi,
             "atualizado_em": self.atualizado_em.isoformat() if self.atualizado_em else None,
+        }
+
+
+class UniversoPeer(Base):
+    """Tickers a coletar fundamentos além dos 38 da carteira — os 38 da
+    carteira (motivo='carteira') + top 8 por volume de cada setor presente
+    na carteira (motivo='peer_setor:<setor_brapi>'), via brapi quote/list.
+    """
+    __tablename__ = "universo_peers"
+
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    ticker        = Column(Text, nullable=False)
+    setor         = Column(Text, nullable=True)
+    motivo        = Column(Text, nullable=False)
+    adicionado_em = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("ticker", name="uq_universo_peers_ticker"),
+    )
+
+    def to_dict(self):
+        return {
+            "ticker": self.ticker,
+            "setor": self.setor,
+            "motivo": self.motivo,
+            "adicionado_em": self.adicionado_em.isoformat() if self.adicionado_em else None,
         }

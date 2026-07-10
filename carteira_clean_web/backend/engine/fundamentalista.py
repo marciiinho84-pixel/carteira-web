@@ -125,7 +125,7 @@ def analise_fundamentalista(
         "nota": (
             "Fatos comparativos — não recomenda compra/venda. "
             f"Comparado com {n_peers} ativo(s) do mesmo setor. "
-            "Fonte: tabela fundamentos (yfinance)."
+            "Fonte: tabela fundamentos (yfinance + brapi)."
         ),
     }
 
@@ -186,5 +186,5 @@ def comparar_multiplos(
     return {
         "tickers": tickers,
         "tabela": tabela,
-        "nota": "Fonte: tabela fundamentos (yfinance). Coleta via POST /api/v1/macro/coletar se dados desatualizados.",
+        "nota": "Fonte: tabela fundamentos (yfinance + brapi). Coleta via POST /api/v1/macro/coletar se dados desatualizados.",
     }
