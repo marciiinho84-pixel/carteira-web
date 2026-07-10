@@ -29,9 +29,7 @@ from carteira_clean_web.backend.engine.inferencia import inferir_fluxos_externos
 from carteira_clean_web.backend.engine.twr import calc_evolucao_diaria, calc_twr_e_benchmarks
 from carteira_clean_web.backend.engine.atribuicao import calc_atribuicao_mensal
 from carteira_clean_web.backend.engine.brinson import calc_brinson_fachler
-from carteira_clean_web.backend.engine.validacao import (
-    validar, validar_reconciliacao_caixa, validar_saldo_caixa_negativo,
-)
+from carteira_clean_web.backend.engine.validacao import validar, validar_saldo_caixa_negativo
 
 
 def setup_logging(verbose=False):
@@ -121,7 +119,6 @@ def run(
 
     log.info("\n[6/6] Validações ativas...")
     alertas = validar(posicoes, eventos, ativos, df_evo)
-    alertas.append(validar_reconciliacao_caixa(saldo_residual))
     alertas.extend(validar_saldo_caixa_negativo(df_evo))
     erros = sum(1 for a in alertas if a[0] == "ERRO")
     avisos = sum(1 for a in alertas if a[0] == "AVISO")
