@@ -644,3 +644,34 @@ class MemoriaAssistente(Base):
             "criada_em": self.criada_em.isoformat() if self.criada_em else None,
             "ativa": self.ativa,
         }
+
+
+class JobRun(Base):
+    """Log de execução dos jobs de ingestão (coletores) — fatia ingestão de dados."""
+    __tablename__ = "job_runs"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    job             = Column(Text, nullable=False)
+    iniciado_em     = Column(DateTime, nullable=False, default=datetime.utcnow)
+    terminado_em    = Column(DateTime, nullable=True)
+    status          = Column(Text, nullable=False, default="rodando")
+    linhas_gravadas = Column(Integer, nullable=False, default=0)
+    linhas_invalidas = Column(Integer, nullable=False, default=0)
+    erro            = Column(Text, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("status IN ('rodando','sucesso','erro')", name="ck_job_runs_status"),
+        Index("ix_job_runs_job_iniciado", "job", "iniciado_em"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "job": self.job,
+            "iniciado_em": self.iniciado_em.isoformat() if self.iniciado_em else None,
+            "terminado_em": self.terminado_em.isoformat() if self.terminado_em else None,
+            "status": self.status,
+            "linhas_gravadas": self.linhas_gravadas,
+            "linhas_invalidas": self.linhas_invalidas,
+            "erro": self.erro,
+        }
