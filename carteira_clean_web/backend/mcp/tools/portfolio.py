@@ -1966,70 +1966,105 @@ def fn_comparar_multiplos(tickers: list[str]) -> dict:
 
 # ─── Fatia 11: Setorial / Regime de mercado ───────────────────────────────────
 
-_MACRO_POR_SETOR: dict[str, list[str]] = {
-    "Construção Civil":    ["SELIC_META", "IPCA"],
-    "Bancos Tradicionais": ["SELIC_META"],
-    "Serviços Financeiros":["SELIC_META"],
-    "Petróleo & Gás":      ["USD_BRL"],
-    "Agronegócio":         ["USD_BRL", "IPCA"],
-    "Energia Elétrica":    ["SELIC_META", "IPCA"],
-    "Saneamento":          ["SELIC_META", "IPCA"],
-    "Varejo":              ["IPCA", "SELIC_META"],
+# Macro relevante por índice setorial B3 (chave estável — não depende do
+# texto livre de ativos.setor). Ex.: bancos/financeiro reagem a juros;
+# energia/saneamento a juros+inflação (regulação por IPCA); materiais
+# básicos/petróleo ao câmbio (commodities dolarizadas).
+_MACRO_POR_INDICE: dict[str, list[str]] = {
+    "IDX_IFNC": ["SELIC_META"],
+    "IDX_IMOB": ["SELIC_META", "IPCA"],
+    "IDX_UTIL": ["SELIC_META", "IPCA"],
+    "IDX_IEE":  ["SELIC_META", "IPCA"],
+    "IDX_IMAT": ["USD_BRL"],
+    "IDX_INDX": ["IPCA"],
+    "IDX_ICON": ["IPCA", "SELIC_META"],
 }
 
 
 def fn_contexto_setorial(setor: str = "todos") -> dict:
     """
-    Contexto setorial: performance recente do índice + macro relevante + ativos da carteira.
+    Contexto setorial: performance recente do índice B3 + macro relevante +
+    ativos da carteira no setor.
+
+    Setor do ticker é resolvido via taxonomia_setorial (brapi), não mais
+    pelo campo livre `ativos.setor` — evita a fragilidade de string
+    hardcoded/curada manualmente (rótulo inconsistente = tool vazia).
 
     Args:
-        setor: nome do setor (ex: "Construção Civil") ou "todos"
+        setor: código do índice (ex.: "IFNC"), nome amigável (ex.: "Bancos")
+               ou "todos".
     """
     from carteira_clean_web.backend.engine.macro_client import ler_macro
-    from carteira_clean_web.backend.db.models import Ativo as AtivoModel
-    from carteira_clean_web.backend.db.session import get_session
+    from carteira_clean_web.backend.engine.precos import carregar_indices_setoriais_da_tabela
+    from carteira_clean_web.backend.engine import taxonomia
 
     if not engine_cache.esta_calculado():
         engine_cache.carregar_disco()
     if not engine_cache.esta_calculado():
-        return {"erro": "Cache vazio."}
+        return {"erro": "Cache vazio. Clique em Recalcular antes de usar o assistente."}
 
     estado = engine_cache.get_estado()
     posicoes_dict = estado["posicoes"]
     ativos = estado["ativos"]
 
-    # Ativos em carteira por setor
-    carteira_por_setor: dict[str, list[str]] = {}
+    taxonomia_map = taxonomia.carregar_taxonomia_completa()
+
+    # Ativos em carteira agrupados pelo índice setorial resolvido via brapi.
+    # Sem taxonomia (ainda não coletada, ou ativo não listado em bolsa) →
+    # bucket residual "outros", usando o campo livre só como rótulo (não
+    # como chave de busca/filtro).
+    carteira_por_indice: dict[str, list[str]] = {}
+    outros: list[dict] = []
     for tkr, pos in posicoes_dict.items():
         if pos.qtd < 1e-9:
             continue
-        s = ativos.get(tkr, {}).get("setor") or "—"
-        carteira_por_setor.setdefault(s, []).append(tkr)
+        setor_brapi = taxonomia_map.get(tkr)
+        idx = taxonomia.mapear_setor_para_indice(setor_brapi)
+        if idx:
+            carteira_por_indice.setdefault(idx, []).append(tkr)
+        else:
+            outros.append({"ticker": tkr, "setor_cadastro": ativos.get(tkr, {}).get("setor") or "—"})
 
-    setores_alvo = list(carteira_por_setor.keys()) if setor == "todos" else [setor]
+    # Resolve o(s) índice(s) alvo a partir do parâmetro `setor`.
+    if setor == "todos":
+        indices_alvo = list(carteira_por_indice.keys())
+    else:
+        s_lower = setor.strip().lower()
+        indices_alvo = []
+        for idx in carteira_por_indice.keys():
+            codigo = idx.replace("IDX_", "")
+            display = taxonomia.DISPLAY_POR_INDICE.get(idx, "")
+            if s_lower == codigo.lower() or s_lower in display.lower() or codigo.lower() in s_lower:
+                indices_alvo.append(idx)
 
-    # Macro recente
-    todos_inds = list({ind for s in setores_alvo for ind in _MACRO_POR_SETOR.get(s, [])})
+    todos_inds = list({ind for idx in indices_alvo for ind in _MACRO_POR_INDICE.get(idx, [])})
     macro = ler_macro(indicadores=todos_inds or None, ultimos_n=3) if todos_inds else {}
 
+    indices_tabela = carregar_indices_setoriais_da_tabela()
+
     resultado_setores = []
-    for s in setores_alvo:
-        inds_rel = _MACRO_POR_SETOR.get(s, [])
+    for idx in indices_alvo:
+        inds_rel = _MACRO_POR_INDICE.get(idx, [])
         macro_s = {ind: macro.get(ind, []) for ind in inds_rel}
-        ativos_s = carteira_por_setor.get(s, [])
+        serie = indices_tabela.get(idx, {})
         resultado_setores.append({
-            "setor":   s,
-            "ativos_carteira": ativos_s,
+            "indice": idx.replace("IDX_", ""),
+            "nome": taxonomia.DISPLAY_POR_INDICE.get(idx, idx),
+            "desempenho_recente": _retorno_recente_idx(serie),
+            "ativos_carteira": carteira_por_indice.get(idx, []),
             "macro_relevante": {
                 ind: pts[0] if pts else None
                 for ind, pts in macro_s.items()
             },
         })
 
-    return {
+    resposta = {
         "setores": resultado_setores,
         "nota": "Correlações históricas como contexto — não previsão.",
     }
+    if setor == "todos" and outros:
+        resposta["outros_sem_taxonomia"] = outros
+    return resposta
 
 
 def fn_regime_mercado() -> dict:

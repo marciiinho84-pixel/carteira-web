@@ -576,14 +576,16 @@ def comparar_multiplos(tickers: list[str]) -> dict:
 
 @mcp.tool(
     description="""
-    Contexto setorial: quais setores estão na carteira, quais indicadores macro
-    são relevantes para cada setor e o valor atual desses indicadores.
+    Contexto setorial: performance recente do índice B3 (via taxonomia
+    setorial brapi), quais indicadores macro são relevantes para cada
+    setor e quais ativos da carteira estão nele.
 
     Parâmetro:
-    - setor: nome do setor (ex: "Construção Civil") ou "todos" (default)
+    - setor: código do índice (ex: "IFNC"), nome amigável (ex: "Bancos",
+      "Imobiliário") ou "todos" (default)
 
     Use quando o usuário perguntar: contexto do setor, macro relevante para bancários,
-    quais indicadores impactam construtoras, análise setorial.
+    quais indicadores impactam construtoras, análise setorial, desempenho do setor X.
     """
 )
 def contexto_setorial(setor: str = "todos") -> dict:

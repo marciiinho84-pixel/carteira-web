@@ -519,13 +519,13 @@ TOOLS: list[dict] = [
     },
     {
         "name": "contexto_setorial",
-        "description": "Contexto setorial: performance recente do índice + macro relevante + ativos da carteira.",
+        "description": "Contexto setorial: performance recente do índice B3 + macro relevante + ativos da carteira.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "setor": {
                     "type": "string",
-                    "description": "Nome do setor (ex: 'Construção Civil') ou 'todos' (default: todos)",
+                    "description": "Código do índice (ex: 'IFNC'), nome amigável (ex: 'Bancos', 'Imobiliário') ou 'todos' (default: todos)",
                 },
             },
             "required": [],

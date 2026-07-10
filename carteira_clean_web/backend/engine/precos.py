@@ -660,8 +660,14 @@ def baixar_indices_setoriais(
             except Exception as e:
                 log.warning(f"  ✗ {nome}: retry falhou — {e}")
 
+    dias_uteis_esperados = len(pd.bdate_range(data_ini, data_fim))
     for nome, serie in out.items():
         _gravar_benchmarks(nome, serie, "yfinance")
+        if dias_uteis_esperados > 0 and len(serie) < dias_uteis_esperados * 0.5:
+            log.warning(
+                f"  ⚠ {nome}: série rasa ({len(serie)} pontos, esperado ~{dias_uteis_esperados} "
+                f"dias úteis) — yfinance pode ter retornado dado incompleto para este índice"
+            )
         log.debug(f"  ✓ {nome}: {len(serie)} dias")
     log.info(f"  → {len(out)}/{len(_SETORIAL_YF_MAP)} índices setoriais via yfinance")
 

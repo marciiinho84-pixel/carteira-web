@@ -675,3 +675,29 @@ class JobRun(Base):
             "linhas_invalidas": self.linhas_invalidas,
             "erro": self.erro,
         }
+
+
+class TaxonomiaSetorial(Base):
+    """Ticker → setor (classificação brapi) — usada por contexto_setorial e
+    comparar_multiplos/analise_fundamentalista para achar peers do mesmo setor.
+
+    Não é append-only: 1 linha por ticker, sobrescrita a cada coleta
+    (UPSERT via chave única `ticker`).
+    """
+    __tablename__ = "taxonomia_setorial"
+
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    ticker        = Column(Text, nullable=False)
+    setor_brapi   = Column(Text, nullable=True)
+    atualizado_em = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("ticker", name="uq_taxonomia_ticker"),
+    )
+
+    def to_dict(self):
+        return {
+            "ticker": self.ticker,
+            "setor_brapi": self.setor_brapi,
+            "atualizado_em": self.atualizado_em.isoformat() if self.atualizado_em else None,
+        }
