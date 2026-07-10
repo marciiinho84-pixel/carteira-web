@@ -87,14 +87,6 @@ def render():
         hovertemplate="Gerida: R$ %{y:,.0f}<extra></extra>",
     ), row=1, col=1, secondary_y=True)
 
-    # Caixa (derivado) — eixo Y direito, junto com a Gerida
-    if "caixa" in df_f.columns:
-        fig.add_trace(go.Scatter(
-            x=df_f["data"], y=df_f["caixa"],
-            name="Caixa ▶", line=dict(color="#95a5a6", width=1.5, dash="dot"),
-            hovertemplate="Caixa: R$ %{y:,.0f}<extra></extra>",
-        ), row=1, col=1, secondary_y=True)
-
     # TWR
     for col, nome, cor, dash_ in [
         ("twr_gerida", "TWR Gerida", "#4a9eff", "solid"),
@@ -129,6 +121,37 @@ def render():
     st.plotly_chart(fig, use_container_width=True, config={'responsive': True})
 
     st.divider()
+
+    # ─── Gráfico Caixa (derivado, Gerida) — eixo próprio ──────────
+    # Escala muito menor que a Gerida (milhares vs dezenas de milhares) —
+    # num eixo compartilhado a linha fica achatada e invisível, por isso
+    # ganha um gráfico só dela, mesmo padrão do Drawdown abaixo.
+    if "caixa" in df_f.columns and df_f["caixa"].notna().any():
+        st.subheader("Caixa (derivado, Gerida)")
+        st.caption(
+            "Saldo de caixa reconstruído do event log (aportes, compras, vendas, "
+            "proventos) — usado só para neutralizar movimentações internas no TWR. "
+            "Não é o mesmo valor de \"Caixa FIC FUNC\" da página Renda Variável, "
+            "que é o valor de mercado da posição naquele fundo especificamente."
+        )
+        fig_caixa = go.Figure(go.Scatter(
+            x=df_f["data"], y=df_f["caixa"],
+            line=dict(color="#95a5a6", width=1.5),
+            hovertemplate="Caixa: R$ %{y:,.0f}<extra></extra>",
+            name="Caixa",
+        ))
+        fig_caixa.add_hline(y=0, line_color="rgba(150,150,150,0.4)", line_width=1)
+        fig_caixa.update_layout(
+            height=180,
+            **fmt.plotly_theme(),
+            hovermode="x unified",
+            showlegend=False,
+            margin=dict(t=10, b=30, l=60, r=20),
+            xaxis=dict(gridcolor=_gc),
+            yaxis=dict(gridcolor=_gc, tickformat=",.0f", title="R$"),
+        )
+        st.plotly_chart(fig_caixa, use_container_width=True, config={'responsive': True})
+        st.divider()
 
     # ─── Gráfico Underwater (drawdown) ───────────────────────────
     if "drawdown" in df_f.columns and df_f["drawdown"].notna().any():
