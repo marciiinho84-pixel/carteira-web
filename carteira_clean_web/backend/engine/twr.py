@@ -28,6 +28,34 @@ from .utils import preco_em
 log = logging.getLogger("engine.twr")
 
 
+def _aplicar_evento_posicao(ev: dict, p: Posicao, ativos: dict, precos_manuais: dict, d: date) -> None:
+    """Aplica 1 evento numa Posicao (qtd/custo_total) — usado tanto no
+    estado de abertura (eventos pré-DATA_INICIO) quanto no replay diário,
+    pra não duplicar essa lógica uma terceira vez no arquivo."""
+    tkr = ev["ativo"]
+    tipo = ev["tipo"]
+    qtd = ev["qtd"] or 0
+    valor = ev["valor"] or 0
+    if tipo in COMPRAS or tipo == "CONTRIBUICAO":
+        p.qtd += qtd
+        p.custo_total += abs(valor)
+    elif tipo == "APORTE_EXTERNO":
+        familia = ativos.get(tkr, {}).get("familia", "")
+        if familia in COTIZADO_PRIVADO:
+            valor_abs = abs(valor)
+            cota = preco_em(precos_manuais.get(tkr, {}), d)
+            if cota and cota > 0 and valor_abs > 0:
+                p.qtd += valor_abs / cota
+                p.custo_total += valor_abs
+    elif tipo in VENDAS and p.qtd > 1e-9:
+        cm = p.custo_medio
+        p.custo_total -= cm * qtd
+        p.qtd -= qtd
+        if abs(p.qtd) < 1e-6:
+            p.qtd = 0.0
+            p.custo_total = 0.0
+
+
 def calc_evolucao_diaria(
     eventos: list,
     ativos: dict,
@@ -44,6 +72,8 @@ def calc_evolucao_diaria(
     eventos_por_data = defaultdict(list)
     for ev in eventos:
         d_ev = ev["data"]
+        if d_ev < DATA_INICIO:
+            continue  # processado no estado de abertura, nunca no dia-a-dia
         if d_ev not in datas_set:
             # Evento caiu em fim de semana/feriado — avança para o próximo dia útil
             from datetime import timedelta
@@ -63,32 +93,26 @@ def calc_evolucao_diaria(
     saldo_caixa = 0.0
     linhas = []
 
+    # Estado de abertura: replay de TODO o histórico anterior a DATA_INICIO
+    # pra construir a posição de cada ativo (qtd/custo_total) em DATA_INICIO.
+    # Afeta só o estado inicial das POSIÇÕES — nunca o caixa (GIPS: o
+    # período de mensuração começa em DATA_INICIO com o valor de mercado
+    # de abertura; fluxo de caixa só é rastreado dali em diante) e nunca
+    # aparece como retorno/fluxo visível (a série só começa em DATA_INICIO).
+    eventos_pre_janela = sorted(
+        (ev for ev in eventos if ev["data"] < DATA_INICIO),
+        key=lambda e: (e["data"], e.get("linha", 0)),
+    )
+    for ev in eventos_pre_janela:
+        p = posicoes[ev["ativo"]]
+        _aplicar_evento_posicao(ev, p, ativos, precos_manuais, ev["data"])
+
     for d in datas:
         for ev in eventos_por_data.get(d, []):
             tkr = ev["ativo"]
-            tipo = ev["tipo"]
             p = posicoes[tkr]
-            qtd = ev["qtd"] or 0
-            valor = ev["valor"] or 0
             saldo_caixa += delta_caixa_evento(ev, ativos, precos_manuais, d)
-            if tipo in COMPRAS or tipo == "CONTRIBUICAO":
-                p.qtd += qtd
-                p.custo_total += abs(valor)
-            elif tipo == "APORTE_EXTERNO":
-                familia = ativos.get(tkr, {}).get("familia", "")
-                if familia in COTIZADO_PRIVADO:
-                    valor_abs = abs(valor)
-                    cota = preco_em(precos_manuais.get(tkr, {}), d)
-                    if cota and cota > 0 and valor_abs > 0:
-                        p.qtd += valor_abs / cota
-                        p.custo_total += valor_abs
-            elif tipo in VENDAS and p.qtd > 1e-9:
-                cm = p.custo_medio
-                p.custo_total -= cm * qtd
-                p.qtd -= qtd
-                if abs(p.qtd) < 1e-6:
-                    p.qtd = 0.0
-                    p.custo_total = 0.0
+            _aplicar_evento_posicao(ev, p, ativos, precos_manuais, d)
 
         saldo_caixa += aportes_por_data.get(d, 0.0)
 
