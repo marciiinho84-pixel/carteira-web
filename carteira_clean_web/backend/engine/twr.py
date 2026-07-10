@@ -70,7 +70,7 @@ def calc_evolucao_diaria(
             p = posicoes[tkr]
             qtd = ev["qtd"] or 0
             valor = ev["valor"] or 0
-            saldo_caixa += delta_caixa_evento(ev, ativos)
+            saldo_caixa += delta_caixa_evento(ev, ativos, precos_manuais, d)
             if tipo in COMPRAS or tipo == "CONTRIBUICAO":
                 p.qtd += qtd
                 p.custo_total += abs(valor)

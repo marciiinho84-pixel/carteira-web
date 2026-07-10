@@ -229,27 +229,101 @@ def test_aporte_inferido_credita_caixa_pre_transicao():
     assert _tol(row_d1["caixa"], 0.0), "débito da COMPRA deve ser compensado pelo aporte inferido"
 
 
+# ── Teste 7: APORTE_EXTERNO em ativo com cota não dobra o patrimônio ──────
+# (hotfix — dupla-conta: perna de posição em twr.py + crédito de caixa)
+
+def test_aporte_externo_em_ativo_com_cota_nao_dobra_patrimonio():
+    eventos = [
+        {"data": D0, "ativo": "PETR4", "tipo": "SALDO_INICIAL",
+         "qtd": 100.0, "valor": 5000.0, "obs": ""},
+        {"data": D1, "ativo": "CAIXA FIC FUNC", "tipo": "APORTE_EXTERNO",
+         "qtd": None, "valor": 300.0, "obs": ""},
+    ]
+    precos_pub = {"PETR4": PRECO_FLAT}
+    precos_man = {"CAIXA FIC FUNC": {D0: 3.0, D1: 3.0, D2: 3.0, D3: 3.0, D_FIM: 3.0}}
+
+    df = calc_evolucao_diaria(eventos, ATIVOS, precos_pub, precos_man, D_FIM)
+    df = calc_twr_e_benchmarks(df, eventos, [], ATIVOS)
+
+    row_d0 = df[df["data"] == D0].iloc[0]
+    row_d1 = df[df["data"] == D1].iloc[0]
+
+    assert _tol(row_d1["caixa"], row_d0["caixa"]), (
+        "caixa não deve mudar — a perna de posição (compra de cotas) já absorveu o aporte"
+    )
+    delta_pat = row_d1["patrimonio_gerida"] - row_d0["patrimonio_gerida"]
+    assert _tol(delta_pat, 300.0), (
+        f"patrimônio deveria subir exatamente 300 (1x o aporte, não 2x), subiu {delta_pat}"
+    )
+    ret_d1 = row_d1["twr_gerida"] - row_d0["twr_gerida"]
+    assert _tol(ret_d1, 0.0, 1e-6), f"retorno do dia do aporte deveria ser 0, foi {ret_d1}"
+
+
+# ── Teste 8: RESGATE_EXTERNO simétrico — sem perna de posição, inalterado ──
+
+def test_resgate_externo_simetrico_sem_perna_de_posicao():
+    eventos = [
+        {"data": D0, "ativo": "PETR4", "tipo": "SALDO_INICIAL",
+         "qtd": 100.0, "valor": 5000.0, "obs": ""},
+        {"data": D0, "ativo": "CAIXA FIC FUNC", "tipo": "SALDO_INICIAL",
+         "qtd": 100.0, "valor": 300.0, "obs": ""},
+        {"data": D1, "ativo": "CAIXA FIC FUNC", "tipo": "RESGATE_EXTERNO",
+         "qtd": None, "valor": 300.0, "obs": ""},
+    ]
+    precos_pub = {"PETR4": PRECO_FLAT}
+    precos_man = {"CAIXA FIC FUNC": {D0: 3.0, D1: 3.0, D2: 3.0, D3: 3.0, D_FIM: 3.0}}
+
+    df = calc_evolucao_diaria(eventos, ATIVOS, precos_pub, precos_man, D_FIM)
+
+    row_d0 = df[df["data"] == D0].iloc[0]
+    row_d1 = df[df["data"] == D1].iloc[0]
+
+    # RESGATE_EXTERNO não tem perna de posição em lugar nenhum do engine hoje:
+    # caixa debita -valor normalmente (não há dupla-conta a evitar aqui).
+    assert _tol(row_d1["caixa"] - row_d0["caixa"], -300.0), (
+        "RESGATE_EXTERNO deve debitar caixa normalmente (sem perna de posição)"
+    )
+    # Soma das posições (patrimonio - caixa) não deve mudar.
+    soma_d0 = row_d0["patrimonio_gerida"] - row_d0["caixa"]
+    soma_d1 = row_d1["patrimonio_gerida"] - row_d1["caixa"]
+    assert _tol(soma_d0, soma_d1), "soma das posições não deve mudar com RESGATE_EXTERNO"
+
+
 # ── Teste unitário: delta_caixa_evento cobre cada branch de tipo ──────────
 
 def test_delta_caixa_evento_branches():
     ativos = {
         "PETR4": {"familia": "Ação BR", "composite": "Gerida"},
         "FUNCEF": {"familia": "Fundo de Pensão", "composite": "FUNCEF"},
+        "CAIXA FIC FUNC": {"familia": "Fundo CP", "composite": "Gerida"},
     }
 
     def ev(ativo, tipo, valor):
         return {"ativo": ativo, "tipo": tipo, "valor": valor}
 
-    assert delta_caixa_evento(ev("FUNCEF", "CONTRIBUICAO", 100.0), ativos) == 0.0
-    assert delta_caixa_evento(ev("PETR4", "SALDO_INICIAL", 100.0), ativos) == 0.0
-    assert delta_caixa_evento(ev("PETR4", "BONIFICACAO", 100.0), ativos) == 0.0
-    assert delta_caixa_evento(ev("PETR4", "APORTE_EXTERNO", 100.0), ativos) == 100.0
-    assert delta_caixa_evento(ev("PETR4", "RESGATE_EXTERNO", 100.0), ativos) == -100.0
-    assert delta_caixa_evento(ev("PETR4", "COMPRA", 100.0), ativos) == -100.0
-    assert delta_caixa_evento(ev("CAIXA FIC FUNC", "APORTE", 100.0), ativos) == -100.0
-    assert delta_caixa_evento(ev("PETR4", "VENDA", 100.0), ativos) == 100.0
-    assert delta_caixa_evento(ev("CAIXA FIC FUNC", "RESGATE", 100.0), ativos) == 100.0
-    assert delta_caixa_evento(ev("PETR4", "VENCIMENTO", 100.0), ativos) == 100.0
+    assert delta_caixa_evento(ev("FUNCEF", "CONTRIBUICAO", 100.0), ativos, {}, D0) == 0.0
+    assert delta_caixa_evento(ev("PETR4", "SALDO_INICIAL", 100.0), ativos, {}, D0) == 0.0
+    assert delta_caixa_evento(ev("PETR4", "BONIFICACAO", 100.0), ativos, {}, D0) == 0.0
+    # APORTE_EXTERNO em ticker sem cota disponível: caixa credita normalmente
+    assert delta_caixa_evento(ev("PETR4", "APORTE_EXTERNO", 100.0), ativos, {}, D0) == 100.0
+    # APORTE_EXTERNO em ticker COTIZADO_PRIVADO COM cota disponível: perna de
+    # posição em twr.py já absorve — caixa fica 0 (senão dobra a contagem)
+    assert delta_caixa_evento(
+        ev("CAIXA FIC FUNC", "APORTE_EXTERNO", 100.0), ativos,
+        {"CAIXA FIC FUNC": {D0: 3.0}}, D0,
+    ) == 0.0
+    assert delta_caixa_evento(ev("PETR4", "RESGATE_EXTERNO", 100.0), ativos, {}, D0) == -100.0
+    # RESGATE_EXTERNO não tem perna de posição em lugar nenhum — mesmo com
+    # cota disponível, continua debitando caixa normalmente
+    assert delta_caixa_evento(
+        ev("CAIXA FIC FUNC", "RESGATE_EXTERNO", 100.0), ativos,
+        {"CAIXA FIC FUNC": {D0: 3.0}}, D0,
+    ) == -100.0
+    assert delta_caixa_evento(ev("PETR4", "COMPRA", 100.0), ativos, {}, D0) == -100.0
+    assert delta_caixa_evento(ev("CAIXA FIC FUNC", "APORTE", 100.0), ativos, {}, D0) == -100.0
+    assert delta_caixa_evento(ev("PETR4", "VENDA", 100.0), ativos, {}, D0) == 100.0
+    assert delta_caixa_evento(ev("CAIXA FIC FUNC", "RESGATE", 100.0), ativos, {}, D0) == 100.0
+    assert delta_caixa_evento(ev("PETR4", "VENCIMENTO", 100.0), ativos, {}, D0) == 100.0
     for tipo in ("DIVIDENDO", "JCP", "RENDIMENTO", "AMORTIZACAO"):
-        assert delta_caixa_evento(ev("PETR4", tipo, 100.0), ativos) == 100.0
-    assert delta_caixa_evento(ev("PETR4", "TIPO_INEXISTENTE", 100.0), ativos) == 0.0
+        assert delta_caixa_evento(ev("PETR4", tipo, 100.0), ativos, {}, D0) == 100.0
+    assert delta_caixa_evento(ev("PETR4", "TIPO_INEXISTENTE", 100.0), ativos, {}, D0) == 0.0

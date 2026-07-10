@@ -10,14 +10,26 @@ CAIXA FIC FUNC participa da partida dobrada como qualquer outro ativo.
 from collections import defaultdict
 from datetime import date
 
-from .constantes import COMPRAS, VENDAS, PROVENTOS, FLUXOS_EXTERNOS
+from .constantes import COMPRAS, VENDAS, PROVENTOS, FLUXOS_EXTERNOS, COTIZADO_PRIVADO
+from .utils import preco_em
 
 
-def delta_caixa_evento(ev: dict, ativos: dict) -> float:
-    """Variação de caixa (perímetro Gerida) produzida por 1 evento; 0.0 se irrelevante."""
+def delta_caixa_evento(ev: dict, ativos: dict, precos_manuais: dict, data) -> float:
+    """Variação de caixa (perímetro Gerida) produzida por 1 evento; 0.0 se irrelevante.
+
+    APORTE_EXTERNO/RESGATE_EXTERNO cujo ticker é um ativo que o replay de
+    twr.py TAMBÉM processa como perna de posição não credita/debita caixa
+    aqui — a perna de posição já é o único efeito, senão dobra a contagem.
+    Hoje isso só se aplica a APORTE_EXTERNO em ticker COTIZADO_PRIVADO com
+    cota disponível na mesma data (mesma condição de twr.py:79-82) — é a
+    única situação em que o replay compra algo via APORTE_EXTERNO.
+    RESGATE_EXTERNO não tem nenhuma perna de posição em lugar nenhum do
+    engine hoje, então continua sempre debitando caixa.
+    """
     tipo = ev["tipo"]
     valor = abs(ev["valor"] or 0)
-    composite = ativos.get(ev["ativo"], {}).get("composite", "Gerida")
+    tkr = ev["ativo"]
+    composite = ativos.get(tkr, {}).get("composite", "Gerida")
 
     if composite == "FUNCEF":
         return 0.0
@@ -26,8 +38,14 @@ def delta_caixa_evento(ev: dict, ativos: dict) -> float:
     if tipo == "BONIFICACAO":
         return 0.0
     if tipo in FLUXOS_EXTERNOS:
-        sinal = 1 if tipo == "APORTE_EXTERNO" else -1
-        return sinal * valor
+        if tipo == "APORTE_EXTERNO":
+            familia = ativos.get(tkr, {}).get("familia", "")
+            if familia in COTIZADO_PRIVADO:
+                cota = preco_em(precos_manuais.get(tkr, {}), data)
+                if cota and cota > 0 and valor > 0:
+                    return 0.0
+            return valor
+        return -valor
     if tipo in COMPRAS:
         return -valor
     if tipo in VENDAS:
@@ -38,7 +56,8 @@ def delta_caixa_evento(ev: dict, ativos: dict) -> float:
 
 
 def calc_saldo_caixa_diario(
-    eventos: list, ativos: dict, datas: list, aportes_inferidos: list = None
+    eventos: list, ativos: dict, datas: list,
+    precos_manuais: dict = None, aportes_inferidos: list = None,
 ) -> dict:
     """Replay standalone {data: saldo_caixa_acumulado} — uso em testes/debug.
 
@@ -46,6 +65,7 @@ def calc_saldo_caixa_diario(
     de fim de semana/feriado — assume que as datas dos eventos já estão no
     conjunto `datas` (essa lógica vive só em twr.calc_evolucao_diaria).
     """
+    precos_manuais = precos_manuais or {}
     aportes_por_data = defaultdict(float)
     for ap in aportes_inferidos or []:
         aportes_por_data[ap["data"]] += ap["valor"]
@@ -58,7 +78,7 @@ def calc_saldo_caixa_diario(
     resultado = {}
     for d in datas:
         for ev in eventos_por_data.get(d, []):
-            saldo += delta_caixa_evento(ev, ativos)
+            saldo += delta_caixa_evento(ev, ativos, precos_manuais, d)
         saldo += aportes_por_data.get(d, 0.0)
         resultado[d] = saldo
     return resultado
