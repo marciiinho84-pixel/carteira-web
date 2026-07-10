@@ -228,6 +228,7 @@ class DashboardOut(BaseModel):
     patrimonio_gerida: float
     patrimonio_funcef: float
     patrimonio_rv: float
+    caixa_geral: float = 0.0
     twr_gerida_ytd: float
     twr_total_ytd: float
     twr_rv_ytd: float

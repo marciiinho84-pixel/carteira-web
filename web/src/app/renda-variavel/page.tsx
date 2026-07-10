@@ -191,7 +191,7 @@ export default function RendaVariavel() {
                 <h2 className="text-sm font-semibold mb-3" style={{ color: "var(--text-primary)" }}>Caixa e Liquidações (D+2)</h2>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                   {[
-                    { label: "Caixa atual (CAIXA FIC)", value: brl(rv.caixa_atual, 0), color: green },
+                    { label: "Caixa atual (Geral)", value: brl(rv.caixa_atual, 0), color: green },
                     { label: "Entrando (5 DU)", value: brl(rv.entrando_5d, 0), color: green },
                     { label: "Saindo (5 DU)", value: brl(rv.saindo_5d, 0), color: red },
                     { label: "Saldo projetado", value: brl(rv.saldo_projetado, 0), color: valColor(rv.saldo_projetado) },

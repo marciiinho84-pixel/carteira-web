@@ -16,6 +16,7 @@ interface DashboardData {
   patrimonio_gerida: number;
   patrimonio_funcef: number;
   patrimonio_rv: number;
+  caixa_geral: number;
   twr_gerida_ytd: number;
   twr_total_ytd: number;
   twr_rv_ytd: number;
@@ -141,10 +142,11 @@ export default function Dashboard() {
                 >
                   {brl(data.patrimonio_total)}
                 </p>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <KPI label="Carteira Gerida" value={brl(data.patrimonio_gerida)} color={green} />
                   <KPI label="FUNCEF" value={brl(data.patrimonio_funcef)} color={amber} sub="excluída do IPS" />
                   <KPI label="Renda Variável" value={brl(data.patrimonio_rv)} color={purple} />
+                  <KPI label="Caixa Geral" value={brl(data.caixa_geral)} />
                 </div>
                 {data.var_dia != null && (
                   <div className="mt-3 flex flex-wrap gap-4 text-xs border-t pt-3" style={{ borderColor: "var(--border-soft)" }}>

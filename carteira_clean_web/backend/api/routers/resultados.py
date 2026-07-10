@@ -279,6 +279,7 @@ def dashboard():
     renda_anual_est = sum(v * (12.0 / meses_periodo) for v in proventos_dict.values() if v > 0)
     pat_total = ult["patrimonio_total"]
     pat_gerida = ult["patrimonio_gerida"]
+    caixa_geral = float(ult["caixa"]) if "caixa" in df.columns else 0.0
     yield_12m = round(renda_anual_est / pat_total, 6) if pat_total > 0 else 0.0
     yield_12m_gerida = round(renda_anual_est / pat_gerida, 6) if pat_gerida > 0 else 0.0
     proventos_30d = round(renda_anual_est / 12, 2)
@@ -321,6 +322,7 @@ def dashboard():
         patrimonio_gerida=ult["patrimonio_gerida"],
         patrimonio_funcef=ult["patrimonio_funcef"],
         patrimonio_rv=ult["patrimonio_rv"],
+        caixa_geral=round(caixa_geral, 2),
         twr_gerida_ytd=twr_gerida,
         twr_total_ytd=twr_total,
         twr_rv_ytd=twr_rv,
@@ -364,13 +366,10 @@ def carteira_rv():
 
     import pandas as pd
 
-    # Caixa atual
-    caixa_atual = 0.0
-    p_fic = posicoes_dict.get("CAIXA FIC FUNC")
-    if p_fic and p_fic.qtd > 0:
-        cota = preco_em(precos_man.get("CAIXA FIC FUNC", {}), hoje, max_lookback_dias=60)
-        if cota:
-            caixa_atual = p_fic.qtd * cota
+    # Caixa atual — saldo de caixa geral derivado (mesmo de df_evo["caixa"]/Evolução),
+    # não o valor de mercado só do fundo CAIXA FIC FUNC (esse zera em resgates totais
+    # do fundo mesmo com caixa geral positivo).
+    caixa_atual = float(df_evo.iloc[-1]["caixa"]) if not df_evo.empty and "caixa" in df_evo.columns else 0.0
 
     # Liquidações próximas (D+2, 5 dias úteis)
     proximos_5_du = pd.bdate_range(start=hoje, periods=6).date
