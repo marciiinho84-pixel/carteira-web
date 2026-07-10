@@ -216,6 +216,198 @@ def carregar_precos_da_tabela(db_path: str = None) -> dict:
     return out
 
 
+def _gravar_cotacoes_derivadas(
+    ticker: str, serie: dict, source: str, tolerancia_relativa: float = 1e-5
+) -> None:
+    """Persiste série de preço derivado (LCI/CVM/Tesouro) na tabela cotacoes
+    (append-only, mesma tabela do yfinance — só muda o `source`).
+
+    Tolerância RELATIVA (mesmo padrão de _gravar_benchmarks): LCI (~28k),
+    CVM (~3.0) e Tesouro (~900) têm magnitudes muito diferentes para uma
+    tolerância absoluta única fazer sentido. Nunca UPDATE/DELETE.
+    """
+    if not serie:
+        return
+    session = None
+    try:
+        from sqlalchemy import text as _text
+        from carteira_clean_web.backend.db.session import get_session
+        from datetime import date as _date
+
+        session = get_session()
+        rows = session.execute(_text(
+            "SELECT date, preco FROM cotacoes c "
+            "WHERE ticker = :ticker AND source = :source "
+            "AND fetched_at = (SELECT MAX(fetched_at) FROM cotacoes "
+            "  WHERE ticker = c.ticker AND date = c.date AND source = c.source)"
+        ), {"ticker": ticker, "source": source}).fetchall()
+
+        ultimos: dict = {}
+        for r in rows:
+            dt = r[0] if isinstance(r[0], _date) else _date.fromisoformat(str(r[0]))
+            ultimos[dt] = float(r[1])
+
+        agora = datetime.now()
+        inserir: list = []
+        for dt, preco in serie.items():
+            ultimo = ultimos.get(dt)
+            novo = float(preco)
+            if ultimo is None or abs(ultimo) < 1e-12:
+                inserir.append({"ticker": ticker, "date": dt, "preco": novo,
+                                 "fetched_at": agora, "source": source})
+            elif abs(novo - ultimo) / abs(ultimo) > tolerancia_relativa:
+                inserir.append({"ticker": ticker, "date": dt, "preco": novo,
+                                 "fetched_at": agora, "source": source})
+
+        if inserir:
+            session.execute(_text(
+                "INSERT INTO cotacoes (ticker, date, preco, fetched_at, source) "
+                "VALUES (:ticker, :date, :preco, :fetched_at, :source)"
+            ), inserir)
+            session.commit()
+            log.info(f"cotacoes: {len(inserir)} linhas gravadas ({ticker}/{source})")
+        else:
+            log.debug(f"cotacoes: nenhum valor novo ou alterado para {ticker}/{source} — skip")
+    except Exception as e:
+        log.warning(f"cotacoes: gravação derivada falhou para {ticker}/{source} (não crítico) — {e}")
+    finally:
+        if session is not None:
+            session.close()
+
+
+def carregar_precos_derivados_da_tabela(
+    fontes: tuple = ("curva_lci", "cvm", "tesouro_direto"),
+    db_path: str = None,
+) -> dict:
+    """Carrega preços derivados (LCI/CVM/Tesouro) da tabela cotacoes como
+    {ticker: {date: preco}}, filtrado por source.
+
+    Desempate determinístico: entre linhas com o mesmo (ticker, date),
+    vence a de fetched_at mais recente; em caso de empate de fetched_at,
+    vence o maior id (inserção mais recente). Retorna {} em caso de falha
+    (não lança exceção).
+    """
+    from datetime import date as _date
+
+    session = None
+    rows = []
+    try:
+        from sqlalchemy import text as _text, bindparam as _bp
+        from carteira_clean_web.backend.db.session import get_session
+
+        session = get_session()
+        stmt = _text(
+            "SELECT ticker, date, preco FROM cotacoes c "
+            "WHERE source IN :fontes "
+            "AND id = (SELECT id FROM cotacoes c2 "
+            "  WHERE c2.ticker = c.ticker AND c2.date = c.date AND c2.source IN :fontes "
+            "  ORDER BY c2.fetched_at DESC, c2.id DESC LIMIT 1)"
+        ).bindparams(_bp("fontes", expanding=True))
+        rows = session.execute(stmt, {"fontes": list(fontes)}).fetchall()
+    except Exception as e:
+        log.warning(f"carregar_precos_derivados_da_tabela: falha — {e}")
+    finally:
+        if session is not None:
+            session.close()
+
+    out: dict = {}
+    for ticker, dt, preco in rows:
+        if ticker not in out:
+            out[ticker] = {}
+        if isinstance(dt, str):
+            dt = _date.fromisoformat(dt)
+        out[ticker][dt] = float(preco)
+    return out
+
+
+def atualizar_precos_derivados(
+    ativos: dict,
+    eventos: list,
+    precos_manuais: dict,
+    data_inicio: date,
+    data_fim: date,
+    no_api: bool = False,
+) -> dict:
+    """Fonte única de verdade para preços derivados (LCI/CVM/Tesouro):
+    SEMPRE carrega o que já está persistido no banco primeiro; só busca
+    dado NOVO na rede quando no_api=False, grava o que buscar (append-only)
+    e o valor fresco vence o persistido (fresco = mais atual que o cache).
+
+    A prioridade manual-vs-derivado por série é preservada exatamente como
+    era em run.py: Tesouro (derivado sobrescreve manual), CVM e LCI (manual
+    tem prioridade sobre o derivado).
+    """
+    from .constantes import AGREGADO_PRIVADO
+
+    try:
+        persistido = carregar_precos_derivados_da_tabela()
+    except Exception as e:
+        log.warning(f"atualizar_precos_derivados: falha ao ler persistido — {e}")
+        persistido = {}
+
+    working = {tkr: dict(serie) for tkr, serie in precos_manuais.items()}
+
+    # ── Tesouro Direto — derivado sobrescreve manual (.update) ──────────
+    td_ativos = {t: info for t, info in ativos.items() if info.get("familia") == "Tesouro Direto"}
+    fresco_td = {}
+    if td_ativos and not no_api:
+        try:
+            fresco_td = baixar_precos_tesouro(ativos, no_api) or {}
+            for tkr, serie in fresco_td.items():
+                _gravar_cotacoes_derivadas(tkr, serie, "tesouro_direto")
+        except Exception as e:
+            log.warning(f"atualizar_precos_derivados: Tesouro falhou — {e}")
+    for tkr in td_ativos:
+        combinado = {**persistido.get(tkr, {}), **fresco_td.get(tkr, {})}
+        if combinado:
+            working.setdefault(tkr, {}).update(combinado)
+
+    # ── CVM — manual tem prioridade (.setdefault) ───────────────────────
+    cnpj_map = {t: info["cnpj_cvm"] for t, info in ativos.items() if info.get("cnpj_cvm")}
+    fresco_cvm = {}
+    if cnpj_map and not no_api:
+        try:
+            fresco_cvm = baixar_precos_cvm(cnpj_map, data_inicio, data_fim, no_api) or {}
+            for tkr, serie in fresco_cvm.items():
+                _gravar_cotacoes_derivadas(tkr, serie, "cvm")
+        except Exception as e:
+            log.warning(f"atualizar_precos_derivados: CVM falhou — {e}")
+    for tkr in cnpj_map:
+        combinado = {**persistido.get(tkr, {}), **fresco_cvm.get(tkr, {})}
+        for dt, v in combinado.items():
+            working.setdefault(tkr, {}).setdefault(dt, v)
+
+    # ── LCI/LCA (curva CDI) — manual/extrato tem prioridade (.setdefault) ──
+    _CDI_RE = re.compile(r"CDI[:\s]+([\d]+)[,\.](\d+)")
+    lci_tickers = {
+        ev["ativo"]
+        for ev in eventos
+        if ev.get("tipo") == "COMPRA"
+        and (
+            str(ev.get("ativo", "")).upper().startswith(("LCI-", "LCA-"))
+            or ativos.get(ev["ativo"], {}).get("familia") in AGREGADO_PRIVADO
+        )
+        and _CDI_RE.search(str(ev.get("obs") or ""))
+    }
+    fresco_lci = {}
+    if lci_tickers and not no_api:
+        for tkr in lci_tickers:
+            try:
+                saldos = calcular_saldo_lci(tkr, eventos, data_fim, no_api)
+            except Exception as e:
+                log.warning(f"atualizar_precos_derivados: LCI {tkr} falhou — {e}")
+                saldos = {}
+            if saldos:
+                fresco_lci[tkr] = saldos
+                _gravar_cotacoes_derivadas(tkr, saldos, "curva_lci")
+    for tkr in lci_tickers:
+        combinado = {**persistido.get(tkr, {}), **fresco_lci.get(tkr, {})}
+        for dt, v in combinado.items():
+            working.setdefault(tkr, {}).setdefault(dt, v)
+
+    return working
+
+
 def carregar_benchmarks_da_tabela(db_path: str = None) -> dict:
     """Carrega benchmarks do banco como {nome: {date: valor}}.
 

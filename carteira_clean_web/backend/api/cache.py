@@ -7,8 +7,9 @@ Fluxo:
   - Dados mudam (novo evento, preço) → recalcular() automaticamente após cada mutação
 
 O pickle persiste o estado calculado (posições, performance, alertas)
-para boot rápido após restart. Cotações e benchmarks sobrevivem ao restart via
-tabelas cotacoes e benchmarks (Camada 3 — fonte única de verdade).
+para boot rápido após restart. Cotações, benchmarks e preços derivados
+(LCI/CVM/Tesouro) sobrevivem a qualquer recálculo (inclusive no_api=True)
+via a tabela cotacoes (Camada 3 — fonte única de verdade).
 """
 
 import logging
@@ -84,9 +85,6 @@ def recalcular(no_api: bool = False) -> dict:
     try:
         from carteira_clean_web.backend.engine.run import run
         resultado = run(no_api=no_api)
-        # saldos_lci exige API BCB — preservar do estado anterior quando no_api=True
-        if no_api and not resultado.get("saldos_lci") and _estado.get("saldos_lci"):
-            resultado["saldos_lci"] = _estado["saldos_lci"]
         _estado = resultado
         _calculado_em = datetime.now()
         _erro = None

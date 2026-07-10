@@ -22,8 +22,7 @@ from carteira_clean_web.backend.engine.io import carregar_dados
 from carteira_clean_web.backend.engine.constantes import COTIZADO_PUBLICO
 from carteira_clean_web.backend.engine.precos import (
     baixar_precos_publicos, baixar_benchmarks, baixar_indices_setoriais,
-    baixar_precos_tesouro, baixar_precos_cvm, calcular_saldo_lci,
-    carregar_precos_da_tabela,
+    carregar_precos_da_tabela, atualizar_precos_derivados,
 )
 from carteira_clean_web.backend.engine.posicoes import calc_posicoes_e_vendas
 from carteira_clean_web.backend.engine.inferencia import inferir_fluxos_externos_retroativos
@@ -83,46 +82,11 @@ def run(
     n_pts = sum(len(v) for v in precos_publicos.values())
     log.info(f"  • {n_pts} pontos de preço público (tabela cotacoes)")
 
-    # Injeta PUs do Tesouro Direto em precos_manuais (sem alterar o banco)
-    precos_td = baixar_precos_tesouro(ativos, no_api)
-    if precos_td:
-        for tkr, serie in precos_td.items():
-            if tkr not in precos_manuais:
-                precos_manuais[tkr] = {}
-            precos_manuais[tkr].update(serie)
-
-    # Injeta cotas CVM (fundos com cnpj_cvm preenchido) — CVM preenche, manual tem prioridade
-    cnpj_map = {t: info["cnpj_cvm"] for t, info in ativos.items() if info.get("cnpj_cvm")}
-    if cnpj_map and not no_api:
-        precos_cvm = baixar_precos_cvm(cnpj_map, DATA_INICIO, hoje, no_api)
-        for tkr, serie in precos_cvm.items():
-            if tkr not in precos_manuais:
-                precos_manuais[tkr] = {}
-            for dt, v in serie.items():
-                precos_manuais[tkr].setdefault(dt, v)  # manual tem prioridade
-
-    # Calcula saldo diário de LCIs/LCAs com taxa CDI em eventos COMPRA
-    import re as _re_lci
-    from carteira_clean_web.backend.engine.constantes import AGREGADO_PRIVADO
-    _CDI_RE = _re_lci.compile(r"CDI[:\s]+([\d]+)[,\.](\d+)")
-    lci_tickers = {
-        ev["ativo"]
-        for ev in eventos
-        if ev.get("tipo") == "COMPRA"
-        and (
-            str(ev.get("ativo", "")).upper().startswith(("LCI-", "LCA-"))
-            or ativos.get(ev["ativo"], {}).get("familia") in AGREGADO_PRIVADO
-        )
-        and _CDI_RE.search(str(ev.get("obs") or ""))
-    }
-    if lci_tickers and not no_api:
-        for tkr in lci_tickers:
-            saldos = calcular_saldo_lci(tkr, eventos, hoje, no_api)
-            if saldos:
-                if tkr not in precos_manuais:
-                    precos_manuais[tkr] = {}
-                for dt, v in saldos.items():
-                    precos_manuais[tkr].setdefault(dt, v)  # extrato DB tem prioridade
+    # Preços derivados (LCI/CVM/Tesouro) — banco é fonte de verdade; no_api só
+    # controla se busca dado NOVO, nunca se o já persistido está disponível.
+    precos_manuais = atualizar_precos_derivados(
+        ativos, eventos, precos_manuais, DATA_INICIO, hoje, no_api,
+    )
 
     log.info("\n[3/6] Calculando posições e vendas (PEPS)...")
     posicoes, vendas_rv, vendas_rf, proventos = calc_posicoes_e_vendas(eventos, ativos, precos_manuais)
