@@ -78,6 +78,63 @@ def test_buscar_ticker_usa_primeiro_resultado():
     assert out["PL"] == 10.0
 
 
+def _http_error_modulos_indisponiveis():
+    import requests
+    resp = requests.Response()
+    resp.status_code = 403
+    resp._content = b'{"error":true,"code":"MODULES_NOT_AVAILABLE","message":"..."}'
+    return requests.exceptions.HTTPError(response=resp)
+
+
+def test_buscar_ticker_cai_pro_quote_basico_quando_modulos_indisponiveis():
+    """Validado ao vivo: plano gratuito da brapi só libera defaultKeyStatistics/
+    financialData pra poucos tickers de demo — qualquer outro dá 403
+    MODULES_NOT_AVAILABLE. Nesse caso, cai pra chamada sem `modules`."""
+    chamadas = []
+
+    def _get(path, params=None):
+        chamadas.append(params)
+        if params and "modules" in params:
+            raise _http_error_modulos_indisponiveis()
+        return {"results": [{"priceEarnings": 8.5, "earningsPerShare": 2.1}]}
+
+    with patch("carteira_clean_web.backend.engine.fundamentos_brapi.brapi_client.get", side_effect=_get):
+        out = fb._buscar_ticker("DIRR3")
+
+    assert len(chamadas) == 2  # 1ª com modules (falhou), 2ª sem
+    assert out["PL"] == 8.5
+    assert out["LPA"] == 2.1
+    assert out["PVP"] is None  # não disponível no fallback básico
+
+
+def test_buscar_ticker_403_generico_nao_cai_no_fallback():
+    """Um 403 que NÃO seja MODULES_NOT_AVAILABLE (ex.: token inválido) deve
+    propagar normalmente — só o caso específico de módulo indisponível tem
+    fallback."""
+    resp = MagicMockResponse(403, b'{"error":true,"code":"INVALID_TOKEN"}')
+    import requests
+
+    def _get(path, params=None):
+        raise requests.exceptions.HTTPError(response=resp)
+
+    with patch("carteira_clean_web.backend.engine.fundamentos_brapi.brapi_client.get", side_effect=_get):
+        try:
+            fb._buscar_ticker("DIRR3")
+            assert False, "deveria ter propagado o HTTPError"
+        except requests.exceptions.HTTPError:
+            pass
+
+
+class MagicMockResponse:
+    def __init__(self, status_code, content):
+        self.status_code = status_code
+        self._content = content
+
+    def json(self):
+        import json
+        return json.loads(self._content)
+
+
 # ─── 3: coletar_fundamentos_peers ────────────────────────────────────────────
 
 @pytest.fixture

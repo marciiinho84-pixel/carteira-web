@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
+import requests
+
 from . import brapi_client
 from .ingestao_utils import get_logger, registrar_job_run
 from ..db.models import Fundamento
@@ -20,6 +22,13 @@ from ..db.session import get_session
 log = get_logger("fundamentos_brapi")
 
 _MODULOS = "defaultKeyStatistics,financialData"
+
+# No plano gratuito da brapi, defaultKeyStatistics/financialData só
+# funcionam pra um punhado de tickers de demonstração — qualquer outro
+# ticker recebe 403 MODULES_NOT_AVAILABLE (validado ao vivo). Nesse caso
+# caímos pra uma chamada sem `modules`, que funciona pra qualquer ticker e
+# ainda traz P/L e LPA nos campos de raiz (priceEarnings/earningsPerShare).
+_ERRO_MODULOS_INDISPONIVEIS = "MODULES_NOT_AVAILABLE"
 
 # Candidatos por indicador — brapi historicamente espelha os nomes de campo
 # do Yahoo Finance para esses módulos; múltiplos candidatos por robustez a
@@ -32,6 +41,7 @@ _CANDIDATOS: dict[str, list[str]] = {
     "MARGEM_EBITDA":  ["ebitdaMargins", "ebitdaMargin"],
     "MARGEM_LIQUIDA": ["profitMargins", "netMargin"],
     "EV_EBITDA":      ["enterpriseToEbitda", "evToEbitda"],
+    "LPA":            ["earningsPerShare", "trailingEps"],
 }
 # Indicadores que vêm como fração (0.15) e precisam virar percentual (15.0).
 _SAO_PERCENTUAL = {"ROE", "DY", "MARGEM_EBITDA", "MARGEM_LIQUIDA"}
@@ -75,7 +85,21 @@ def _extrair_brapi(resultado: dict) -> dict[str, float | None]:
 
 
 def _buscar_ticker(ticker: str) -> dict[str, float | None] | None:
-    resp = brapi_client.get(f"quote/{ticker}", {"modules": _MODULOS})
+    try:
+        resp = brapi_client.get(f"quote/{ticker}", {"modules": _MODULOS})
+    except requests.exceptions.HTTPError as e:
+        resp_http = e.response
+        corpo = {}
+        if resp_http is not None:
+            try:
+                corpo = resp_http.json()
+            except ValueError:
+                corpo = {}
+        if resp_http is not None and resp_http.status_code == 403 and corpo.get("code") == _ERRO_MODULOS_INDISPONIVEIS:
+            log.debug(f"fundamentos_brapi: {ticker} sem acesso a módulos pagos — usando quote básico")
+            resp = brapi_client.get(f"quote/{ticker}")
+        else:
+            raise
     resultados = resp.get("results", [])
     if not resultados:
         return None
