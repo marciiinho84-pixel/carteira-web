@@ -44,3 +44,4 @@ python-jose[cryptography]==3.3.0
 tenacity==9.1.4
 pandera==0.32.1
 feedparser==6.0.12
+apscheduler==3.11.3

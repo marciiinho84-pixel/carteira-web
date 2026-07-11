@@ -74,6 +74,21 @@ services:
       backend:
         condition: service_healthy
 
+  cron:
+    image: minha-carteira
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://carteira:${POSTGRES_PASSWORD}@postgres:5432/carteira
+      CACHE_DIR: /data/cache
+    volumes:
+      - ./data:/data
+    command: >
+      python3 -m carteira_clean_web.backend.scripts.cron_runner --serve
+    depends_on:
+      backend:
+        condition: service_healthy
+
   nextjs:
     build:
       context: ./web
