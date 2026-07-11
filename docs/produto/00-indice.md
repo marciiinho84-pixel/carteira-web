@@ -13,7 +13,7 @@
 | 07 | Novo Evento | (a criar) | — |
 | 08 | Risco | (a criar) | — |
 | 09 | Configurações | (a criar) | — |
-| 10 | Sala de Comando | (a criar) | — |
+| 10 | Sala de Comando | 10-sala-de-comando.md | 🟡 brief pronto |
 
 ## Frentes técnicas (não-página)
 

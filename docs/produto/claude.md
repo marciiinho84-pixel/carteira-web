@@ -9,7 +9,7 @@
 App Minha Carteira — sistema self-hosted de gestão de portfólio
 de investimentos pessoais. Economista brasileiro, investidor
 individual. Metáfora orquestral: usuário = maestro/compositor,
-~40 tools MCP = instrumentistas, IA orquestradora = maestro.
+~31 tools MCP = instrumentistas, IA orquestradora = maestro.
 
 Conceito central: duas lentes acopladas — "janela para fora"
 (contexto de mercado) + "espelho para dentro" (padrões
@@ -24,7 +24,7 @@ comportamentais do investidor). A decisão é sempre do usuário.
 | Backend | FastAPI, porta 8000 |
 | Frontend React | Next.js em Docker, porta 3000 |
 | Frontend legado | Streamlit, porta 8501 (paralelo em /streamlit/) |
-| MCP | FastMCP, porta 8001, ~40 tools, Bearer token |
+| MCP | FastMCP, porta 8001, ~31 tools, Bearer token |
 | Banco | **PostgreSQL** em Docker (NÃO SQLite) |
 | Proxy | Caddy (HTTPS, Let's Encrypt, basic auth) |
 | Auth | Google OAuth (NextAuth.js), whitelist marciiinho84@gmail.com, JWT 30 dias |
@@ -209,3 +209,18 @@ Tools de escrita do Maestro: L2 com confirmação (propõe, mostra, usuário apr
 - NÃO fabricar dados no Maestro — reportar quando falta dado
 - NÃO recomendar compra/venda — reportar fatos
 - NÃO tratar FUNCEF como parte da carteira gerida
+
+## 8. Polimento de páginas — regras transversais (2026-07-11)
+
+O redesign visual "Papel & Tinta" está concluído em todas as páginas. A partir
+daqui, o polimento página a página é sobre **usabilidade**, não visual —
+não reabrir decisão de paleta/tipografia/tokens sem pedido explícito.
+
+**Regra transversal, vale para toda página, presente e futura:** todo nome ou
+ticker de ativo que aparecer em qualquer lugar da interface deve ser um link
+clicável para `/ativos/[ticker]`. Se uma tela nova mostrar um ativo sem esse
+link, é bug de polimento.
+
+**Adiado para depois (não fazer agora, não é regressão se não estiver
+pronto):** melhorias em gráficos (Plotly/SVG). Fora do escopo do polimento de
+usabilidade atual — só entra se pedido explicitamente numa fatia própria.
