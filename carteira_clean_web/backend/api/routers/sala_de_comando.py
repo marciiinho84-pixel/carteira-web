@@ -2,20 +2,20 @@
 GET /api/v1/sala-de-comando — endpoint agregador para a home do app.
 
 Retorna em uma chamada: KPIs, teses ativas, espelho comportamental,
-observações recentes do maestro e progress-to-goal.
+feed de observações do motor de varredura e progress-to-goal.
 """
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from carteira_clean_web.backend.api import cache as engine_cache
 from carteira_clean_web.backend.api.deps import get_db
-from carteira_clean_web.backend.db.models import Tese, MetricaComportamento, Mensagem
+from carteira_clean_web.backend.db.models import Tese, MetricaComportamento, ObservacaoFeed
 
 router = APIRouter(tags=["Sala de Comando"])
 
@@ -226,29 +226,54 @@ def _calc_blocos_ips(pat_gerida: float) -> list[dict]:
         return []
 
 
-# ─── Observações do maestro ──────────────────────────────────────────────────
+# ─── Observações — feed do motor de varredura ───────────────────────────────
 
-def _build_observacoes(db: Session, limit: int = 8) -> list[dict]:
-    msgs = (
-        db.query(Mensagem)
-        .filter(Mensagem.role == "assistant")
-        .order_by(Mensagem.criada_em.desc())
+def _build_observacoes(db: Session, limit: int = 30) -> list[dict]:
+    """Feed de fatos novos e relevantes (engine/varredura_feed.py) ainda não
+    vistos. Cada item é rastreável a uma linha real (alerta, tese, banda IPS,
+    técnico, fundamentalista, notícia ou evento macro) — nunca texto livre.
+    Marcar como visto (POST .../observacoes/{id}/visualizar) remove
+    permanentemente (visualizado_em preenchido sai do filtro abaixo)."""
+    itens = (
+        db.query(ObservacaoFeed)
+        .filter(ObservacaoFeed.visualizado_em.is_(None))
+        .order_by(ObservacaoFeed.criado_em.desc())
         .limit(limit)
         .all()
     )
     result = []
-    for m in msgs:
-        content = (m.content or "").strip()
-        if not content or content.startswith("{"):   # skip pure JSON tool calls
-            continue
-        preview = content[:280] + "…" if len(content) > 280 else content
+    for o in itens:
+        ativos_relacionados: list[str] = []
+        if o.ativo:
+            ativos_relacionados.append(o.ativo)
+        if o.categoria == "MACRO" and o.fundamentos_json:
+            try:
+                extra = json.loads(o.fundamentos_json)
+                for a in extra.get("ativos_carteira_afetados", []):
+                    tkr = a.get("ticker")
+                    if tkr and tkr not in ativos_relacionados:
+                        ativos_relacionados.append(tkr)
+            except (json.JSONDecodeError, TypeError, AttributeError):
+                pass
         result.append({
-            "id":           m.id,
-            "content":      preview,
-            "criada_em":    m.criada_em.isoformat() if m.criada_em else None,
-            "conversa_id":  m.conversa_id,
+            "id":                  o.id,
+            "categoria":           o.categoria,
+            "ativo":               o.ativo,
+            "ativos_relacionados": ativos_relacionados,
+            "conteudo":            o.conteudo,
+            "criado_em":           o.criado_em.isoformat() if o.criado_em else None,
         })
-    return result[:6]   # max 6 na UI
+    return result
+
+
+@router.post("/sala-de-comando/observacoes/{obs_id}/visualizar")
+def marcar_observacao_visualizada(obs_id: int, db: Session = Depends(get_db)):
+    obs = db.get(ObservacaoFeed, obs_id)
+    if not obs:
+        raise HTTPException(status_code=404, detail="Observação não encontrada.")
+    obs.visualizado_em = datetime.utcnow()
+    db.commit()
+    return {"ok": True, "id": obs_id}
 
 
 # ─── Meta R$3M ───────────────────────────────────────────────────────────────

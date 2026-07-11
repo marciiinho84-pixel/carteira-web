@@ -17,6 +17,7 @@ Agenda (todos os horários em UTC):
     fundamentos_peers  domingo 10:00
     eventos_ipe        domingo 11:00
     noticias           12:00 e 22:30 diário
+    observacoes_feed   12:30 diário (pré-abertura B3, pregão abre 13:00 UTC)
 """
 import argparse
 
@@ -114,6 +115,17 @@ def job_noticias():
         coletar_noticias(tickers)
 
 
+def job_observacoes_feed():
+    """Motor de varredura da Sala de Comando (seção "Orquestra") — roda as 7
+    categorias de sinal e grava fatos novos em `observacoes_feed`. Pré-abertura
+    de mercado para o feed já estar pronto quando o usuário abre o app."""
+    from carteira_clean_web.backend.db.session import get_session
+    from carteira_clean_web.backend.engine.varredura_feed import rodar_varredura
+
+    with get_session() as db:
+        rodar_varredura(db)
+
+
 _JOBS = {
     "cotacoes": job_cotacoes,
     "taxonomia": job_taxonomia,
@@ -121,6 +133,7 @@ _JOBS = {
     "fundamentos_peers": job_fundamentos_peers,
     "eventos_ipe": job_eventos_ipe,
     "noticias": job_noticias,
+    "observacoes_feed": job_observacoes_feed,
 }
 
 
@@ -136,10 +149,11 @@ def serve():
     sched.add_job(job_eventos_ipe, CronTrigger(day_of_week="sun", hour=11), id="eventos_ipe_semanal", misfire_grace_time=3600)
     sched.add_job(job_noticias, CronTrigger(hour=12), id="noticias_meio_dia", misfire_grace_time=1800)
     sched.add_job(job_noticias, CronTrigger(hour=22, minute=30), id="noticias_noite", misfire_grace_time=1800)
+    sched.add_job(job_observacoes_feed, CronTrigger(hour=12, minute=30), id="observacoes_feed_diario", misfire_grace_time=1800)
     log.info(
         "cron_runner: agendado (UTC) — cotacoes 21:30 diário | taxonomia dom 9h | "
         "fundamentos_carteira dom 8h | fundamentos_peers dom 10h | eventos_ipe dom 11h | "
-        "noticias 12h e 22:30 diário"
+        "noticias 12h e 22:30 diário | observacoes_feed 12:30 diário"
     )
     sched.start()
 

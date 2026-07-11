@@ -6,11 +6,13 @@ import Link from "next/link";
 import { signOut } from "next-auth/react";
 import {
   salaDeComando,
+  marcarObservacaoVisualizada,
   clearToken,
   auth,
   type SalaDeComandoData,
   type BlocoIPS,
   type Vies,
+  type CategoriaObservacao,
 } from "@/lib/api";
 import { useAutomacao } from "@/lib/automacao";
 import Nav from "@/components/Nav";
@@ -165,16 +167,17 @@ function CoerenciaCircle({ score }: { score: number }) {
   );
 }
 
-// ─── Tag de instrumentista ────────────────────────────────────────────────────
+// ─── Badge de categoria do feed da Orquestra ────────────────────────────────
 
-function instrTag(content: string): string {
-  if (/fundament|múltiplo|P\/L|ROE|DY|EBITDA/i.test(content)) return "📊 Fundamentalista";
-  if (/técnic|RSI|MACD|média móvel|candlestick|bollinger/i.test(content)) return "📈 Técnico";
-  if (/macro|Selic|IPCA|câmbio|Focus|juros/i.test(content)) return "🌍 Macro";
-  if (/notícia|news|evento|corporativo/i.test(content)) return "📰 Notícias";
-  if (/comportament|viés|disposição|overtrading|coerência/i.test(content)) return "🪞 Comportamental";
-  return "🎼 Maestro";
-}
+const CATEGORIA_META: Record<CategoriaObservacao, { label: string; color: string; bg: string; border: string }> = {
+  ALERTA:          { label: "🔔 Alerta",          color: "var(--warning)",       bg: "rgba(201,134,43,0.12)",  border: "rgba(201,134,43,0.3)" },
+  TESE:            { label: "🔬 Tese invalidada", color: "var(--negative)",      bg: "rgba(180,68,44,0.12)",   border: "rgba(180,68,44,0.3)" },
+  IPS:             { label: "⚖️ Banda IPS",        color: "var(--warning)",       bg: "rgba(201,134,43,0.12)",  border: "rgba(201,134,43,0.3)" },
+  TECNICO:         { label: "📈 Técnico",         color: "var(--accent-strong)", bg: "rgba(193,95,60,0.12)",   border: "rgba(193,95,60,0.3)" },
+  FUNDAMENTALISTA: { label: "📊 Fundamentalista", color: "var(--accent-strong)", bg: "rgba(193,95,60,0.12)",   border: "rgba(193,95,60,0.3)" },
+  NOTICIA:         { label: "📰 Notícia",         color: "var(--purple-accent)", bg: "rgba(108,99,196,0.12)",  border: "rgba(108,99,196,0.3)" },
+  MACRO:           { label: "🌍 Macro",           color: "var(--accent-strong)", bg: "rgba(193,95,60,0.12)",   border: "rgba(193,95,60,0.3)" },
+};
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
@@ -219,6 +222,15 @@ export default function SalaDeComando() {
   function logout() {
     clearToken();
     signOut({ callbackUrl: "/login" });
+  }
+
+  async function dispensar(id: number) {
+    setData((prev) => (prev ? { ...prev, observacoes: prev.observacoes.filter((o) => o.id !== id) } : prev));
+    try {
+      await marcarObservacaoVisualizada(id);
+    } catch {
+      // silencioso — se falhar, o item volta a aparecer no próximo carregamento
+    }
   }
 
   // ── Skeleton ────────────────────────────────────────────────────────────────
@@ -350,15 +362,15 @@ export default function SalaDeComando() {
             className="md:col-span-2 rounded-xl border"
             style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
           >
-            <SectionHeader icon="🎼" title="Orquestra" sub="Últimas observações do maestro" />
+            <SectionHeader icon="🎼" title="Orquestra" sub="Fatos novos e relevantes que você ainda não viu" />
             <div className="px-5 pb-5 space-y-3">
               {!data?.observacoes?.length ? (
                 <p className="text-xs italic" style={{ color: "var(--text-faint)" }}>
-                  Nenhuma observação ainda. Converse com o maestro no Streamlit para alimentar esta seção.
+                  Nenhum fato novo desde a última varredura pré-abertura de mercado. Tudo tranquilo.
                 </p>
               ) : (
                 data.observacoes.map((obs) => {
-                  const tag = instrTag(obs.content);
+                  const meta = CATEGORIA_META[obs.categoria] ?? CATEGORIA_META.TECNICO;
                   const expanded = expandedObs === obs.id;
                   return (
                     <div
@@ -367,28 +379,59 @@ export default function SalaDeComando() {
                       style={{ borderColor: "var(--border-soft)", background: "var(--bg-app)" }}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span
-                          className="text-[10px] rounded px-1.5 py-0.5 font-medium border"
-                          style={{ whiteSpace: "nowrap", background: "rgba(193,95,60,0.10)", borderColor: "rgba(193,95,60,0.25)", color: "var(--accent-strong)" }}
-                        >
-                          {tag}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span
+                            className="text-[10px] rounded px-1.5 py-0.5 font-medium border"
+                            style={{ whiteSpace: "nowrap", background: meta.bg, borderColor: meta.border, color: meta.color }}
+                          >
+                            {meta.label}
+                          </span>
+                          <span
+                            className="text-[9px] rounded-full px-1.5 py-0.5 font-bold"
+                            style={{ background: "var(--accent-strong)", color: "#FFF8EE" }}
+                          >
+                            novo
+                          </span>
+                        </div>
                         <span className="text-[10px] shrink-0" style={{ color: "var(--text-faint)" }}>
-                          {relativeTime(obs.criada_em)}
+                          {relativeTime(obs.criado_em)}
                         </span>
                       </div>
                       <p className={`text-xs leading-relaxed ${expanded ? "" : "line-clamp-3"}`} style={{ color: "var(--text-body)" }}>
-                        {obs.content}
+                        {obs.conteudo}
                       </p>
-                      {obs.content.length > 120 && (
-                        <button
-                          onClick={() => setExpandedObs(expanded ? null : obs.id)}
-                          className="text-[10px] hover:underline"
-                          style={{ color: "var(--purple-accent)" }}
-                        >
-                          {expanded ? "▲ menos" : "▼ Por quê? ver mais"}
-                        </button>
+                      {obs.ativos_relacionados.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {obs.ativos_relacionados.map((tkr) => (
+                            <Link
+                              key={tkr}
+                              href={`/ativos/${tkr}`}
+                              className="text-[10px] font-bold rounded px-1.5 py-0.5 border hover:underline"
+                              style={{ fontFamily: "var(--font-plex-mono)", color: "var(--text-primary)", borderColor: "var(--border)" }}
+                            >
+                              {tkr}
+                            </Link>
+                          ))}
+                        </div>
                       )}
+                      <div className="flex items-center justify-between pt-0.5">
+                        {obs.conteudo.length > 120 ? (
+                          <button
+                            onClick={() => setExpandedObs(expanded ? null : obs.id)}
+                            className="text-[10px] hover:underline"
+                            style={{ color: "var(--purple-accent)" }}
+                          >
+                            {expanded ? "▲ menos" : "▼ ver mais"}
+                          </button>
+                        ) : <span />}
+                        <button
+                          onClick={() => dispensar(obs.id)}
+                          className="text-[10px] hover:underline"
+                          style={{ color: "var(--text-faint)" }}
+                        >
+                          dispensar ✕
+                        </button>
+                      </div>
                     </div>
                   );
                 })
@@ -417,7 +460,13 @@ export default function SalaDeComando() {
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <Semaforo nivel={t.nivel_invalidacao} />
-                        <span className="font-bold text-sm" style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>{t.ticker}</span>
+                        <Link
+                          href={`/ativos/${t.ticker}`}
+                          className="font-bold text-sm hover:underline"
+                          style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}
+                        >
+                          {t.ticker}
+                        </Link>
                         {t.bloco_ips && (
                           <span
                             className="text-[9px] rounded px-1 py-0.5 border"

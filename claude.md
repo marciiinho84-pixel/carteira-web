@@ -97,6 +97,7 @@ Implementação: `carteira_clean_web/backend/api/main.py` (rota `status_deploy`)
 | 22:15 | Coleta fundamentos (yfinance) |
 | 22:20 | Coleta macro (BCB SGS) |
 | Seg 12:00 | Focus BCB (Olinda) |
+| 12:30 | Varredura da Sala de Comando (`observacoes_feed`) — pré-abertura B3 (pregão 13:00 UTC) |
 
 ## IPS — Classificação de ativos
 
@@ -218,3 +219,18 @@ Tools de escrita do Maestro: L2 com confirmação (propõe, mostra, usuário apr
 - NÃO fabricar dados no Maestro — reportar quando falta dado
 - NÃO recomendar compra/venda — reportar fatos
 - NÃO tratar FUNCEF como parte da carteira gerida
+
+## 8. Polimento de páginas — regras transversais (2026-07-11)
+
+O redesign visual "Papel & Tinta" está concluído em todas as páginas. A partir
+daqui, o polimento página a página é sobre **usabilidade**, não visual —
+não reabrir decisão de paleta/tipografia/tokens sem pedido explícito.
+
+**Regra transversal, vale para toda página, presente e futura:** todo nome ou
+ticker de ativo que aparecer em qualquer lugar da interface deve ser um link
+clicável para `/ativos/[ticker]`. Se uma tela nova mostrar um ativo sem esse
+link, é bug de polimento.
+
+**Adiado para depois (não fazer agora, não é regressão se não estiver
+pronto):** melhorias em gráficos (Plotly/SVG). Fora do escopo do polimento de
+usabilidade atual — só entra se pedido explicitamente numa fatia própria.

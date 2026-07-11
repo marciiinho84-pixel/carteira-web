@@ -90,11 +90,22 @@ export type Comportamental = {
   blocos: BlocoIPS[];
 };
 
+export type CategoriaObservacao =
+  | "ALERTA"
+  | "TESE"
+  | "IPS"
+  | "TECNICO"
+  | "FUNDAMENTALISTA"
+  | "NOTICIA"
+  | "MACRO";
+
 export type Observacao = {
   id: number;
-  content: string;
-  criada_em?: string;
-  conversa_id?: number;
+  categoria: CategoriaObservacao;
+  ativo?: string | null;
+  ativos_relacionados: string[];
+  conteudo: string;
+  criado_em?: string;
 };
 
 export type Meta = {
@@ -119,3 +130,8 @@ export type SalaDeComandoData = {
 
 export const salaDeComando = () =>
   apiFetch<SalaDeComandoData>("/sala-de-comando");
+
+export const marcarObservacaoVisualizada = (id: number) =>
+  apiFetch<{ ok: boolean; id: number }>(`/sala-de-comando/observacoes/${id}/visualizar`, {
+    method: "POST",
+  });

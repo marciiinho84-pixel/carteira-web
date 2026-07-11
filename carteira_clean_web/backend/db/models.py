@@ -614,6 +614,68 @@ class MatrizSensibilidade(Base):
     )
 
 
+class ObservacaoFeed(Base):
+    """Feed de fatos novos e relevantes da Sala de Comando (seção "Orquestra").
+
+    Populado pelo motor de varredura (engine/varredura_feed.py), rodado 1x/dia
+    via cron pré-abertura de mercado. Cada item é rastreável a uma linha real
+    (alerta, tese, banda IPS, técnico, fundamentalista, notícia ou evento
+    macro) — nunca texto livre do modelo (regra anti-alucinação, Fatia 1).
+    `referencia_id` aponta pro id da linha de origem quando existe um FK
+    natural (alerta, tese, notícia); nulo quando o fato é derivado de um
+    cálculo (banda IPS, rating técnico/fundamentalista, regime macro), caso
+    em que `fundamentos_json` carrega o payload bruto para auditoria.
+    """
+    __tablename__ = "observacoes_feed"
+
+    id               = Column(Integer, primary_key=True, autoincrement=True)
+    categoria        = Column(Text, nullable=False)
+    ativo            = Column(Text, nullable=True)
+    referencia_id    = Column(Integer, nullable=True)
+    conteudo         = Column(Text, nullable=False)
+    fundamentos_json = Column(Text, nullable=True)
+    criado_em        = Column(DateTime, nullable=False, default=datetime.utcnow)
+    visualizado_em   = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "categoria IN ('ALERTA','TESE','IPS','TECNICO','FUNDAMENTALISTA','NOTICIA','MACRO')",
+            name="ck_observacoes_feed_categoria",
+        ),
+        Index("ix_observacoes_feed_visto", "visualizado_em"),
+        Index("ix_observacoes_feed_categoria_ativo", "categoria", "ativo"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "categoria": self.categoria,
+            "ativo": self.ativo,
+            "referencia_id": self.referencia_id,
+            "conteudo": self.conteudo,
+            "criado_em": self.criado_em.isoformat() if self.criado_em else None,
+            "visualizado_em": self.visualizado_em.isoformat() if self.visualizado_em else None,
+        }
+
+
+class VarreduraEstado(Base):
+    """Última classificação conhecida por (categoria, chave) — permite ao motor
+    de varredura (engine/varredura_feed.py) comparar a rodada de hoje com a de
+    ontem e emitir só nas transições (edge-triggered), não a cada rodada em
+    que a condição persiste."""
+    __tablename__ = "varredura_estado"
+
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    categoria     = Column(Text, nullable=False)
+    chave         = Column(Text, nullable=False)
+    valor         = Column(Text, nullable=False)
+    atualizado_em = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("categoria", "chave", name="uq_varredura_estado_categoria_chave"),
+    )
+
+
 class MemoriaAssistente(Base):
     """Memória de longo prazo extraída ou criada manualmente."""
     __tablename__ = "memorias_assistente"
