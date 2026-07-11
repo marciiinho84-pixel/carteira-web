@@ -136,3 +136,45 @@ def test_coletar_eventos_ipe_coluna_essencial_ausente(patch_ec_session):
         resultado = ec.coletar_eventos_ipe(ano=2026)
     assert resultado["linhas_invalidas"] == 1
     assert resultado["linhas_gravadas"] == 0
+
+
+# ─── popular_cnpj_ativos ──────────────────────────────────────────────────────
+
+def test_popular_cnpj_ativos_preenche_via_summary_profile(patch_ec_session):
+    Session = patch_ec_session
+    _seed_ativo(Session, "ITUB3", None)
+    resp = {"results": [{"summaryProfile": {"cnpj": "60872504000123"}}]}
+
+    with patch("carteira_clean_web.backend.engine.eventos_cvm.brapi_client.get", return_value=resp):
+        resultado = ec.popular_cnpj_ativos(["ITUB3"])
+
+    assert resultado == {"linhas_gravadas": 1, "linhas_invalidas": 0}
+    db = Session()
+    ativo = db.query(Ativo).filter(Ativo.ticker == "ITUB3").first()
+    db.close()
+    assert ativo.cnpj_cvm == "60872504000123"
+
+
+def test_popular_cnpj_ativos_nao_sobrescreve_cadastro_existente(patch_ec_session):
+    Session = patch_ec_session
+    _seed_ativo(Session, "ITUB3", "11.111.111/0001-11")
+
+    with patch("carteira_clean_web.backend.engine.eventos_cvm.brapi_client.get") as mock_get:
+        resultado = ec.popular_cnpj_ativos(["ITUB3"])
+
+    mock_get.assert_not_called()
+    assert resultado == {"linhas_gravadas": 0, "linhas_invalidas": 0}
+    db = Session()
+    ativo = db.query(Ativo).filter(Ativo.ticker == "ITUB3").first()
+    db.close()
+    assert ativo.cnpj_cvm == "11.111.111/0001-11"
+
+
+def test_popular_cnpj_ativos_sem_cnpj_no_payload_conta_invalido(patch_ec_session):
+    Session = patch_ec_session
+    _seed_ativo(Session, "XPTO11", None)
+
+    with patch("carteira_clean_web.backend.engine.eventos_cvm.brapi_client.get", return_value={"results": []}):
+        resultado = ec.popular_cnpj_ativos(["XPTO11"])
+
+    assert resultado == {"linhas_gravadas": 0, "linhas_invalidas": 1}

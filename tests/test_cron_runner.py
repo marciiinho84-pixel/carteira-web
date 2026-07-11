@@ -108,9 +108,21 @@ def test_job_taxonomia_delega():
     mock_col.assert_called_once()
 
 
-def test_job_eventos_ipe_delega():
-    with patch("carteira_clean_web.backend.engine.eventos_cvm.coletar_eventos_ipe") as mock_col:
+def test_job_eventos_ipe_popula_cnpj_antes_de_coletar():
+    with patch.object(cr, "_tickers_carteira", return_value=["ITUB3"]), \
+         patch("carteira_clean_web.backend.engine.eventos_cvm.popular_cnpj_ativos") as mock_cnpj, \
+         patch("carteira_clean_web.backend.engine.eventos_cvm.coletar_eventos_ipe") as mock_col:
         cr.job_eventos_ipe()
+    mock_cnpj.assert_called_once_with(["ITUB3"])
+    mock_col.assert_called_once()
+
+
+def test_job_eventos_ipe_sem_carteira_so_coleta():
+    with patch.object(cr, "_tickers_carteira", return_value=[]), \
+         patch("carteira_clean_web.backend.engine.eventos_cvm.popular_cnpj_ativos") as mock_cnpj, \
+         patch("carteira_clean_web.backend.engine.eventos_cvm.coletar_eventos_ipe") as mock_col:
+        cr.job_eventos_ipe()
+    mock_cnpj.assert_not_called()
     mock_col.assert_called_once()
 
 

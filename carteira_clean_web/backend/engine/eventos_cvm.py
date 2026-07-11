@@ -2,12 +2,12 @@
 engine/eventos_cvm.py — Fatos relevantes / avisos / calendário via IPE CVM
 (dados.cvm.gov.br, CSV anual em ZIP), casados por CNPJ com ativos.cnpj_cvm.
 
-Schema exato do CSV não foi validado ao vivo (sem acesso à rede neste
-ambiente de desenvolvimento) — nomes de coluna são resolvidos por busca
-tolerante (_achar_coluna) em vez de índice fixo, e qualquer coluna essencial
-ausente aborta a coleta (loga e conta como inválida) em vez de quebrar.
-Validar o schema real na Fase 6 (rodada de coleta manual) e ajustar
-_CANDIDATOS_COLUNA se os nomes vierem diferentes.
+Schema do CSV validado ao vivo na Fase 6 (nomes de coluna batem com
+_CANDIDATOS_COLUNA). Achado no mesmo backfill: só 2 dos 38 ativos da
+carteira tinham cnpj_cvm cadastrado (2 fundos internos — nenhuma ação),
+então o join nunca casava nada. popular_cnpj_ativos() resolve isso via
+brapi summaryProfile (módulo disponível no plano gratuito, confirmado
+pela própria mensagem de erro dos módulos pagos) antes da coleta.
 """
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from datetime import date, datetime
 import pandas as pd
 import requests
 
+from . import brapi_client
 from .ingestao_utils import get_logger, registrar_job_run, retry_padrao
 from ..db.models import Ativo, EventoCorporativo
 from ..db.session import get_session
@@ -77,6 +78,42 @@ def _mapear_cnpj_ticker() -> dict[str, str]:
     with get_session() as db:
         rows = db.query(Ativo.ticker, Ativo.cnpj_cvm).filter(Ativo.cnpj_cvm.isnot(None)).all()
     return {_normalizar_cnpj(cnpj): ticker for ticker, cnpj in rows if cnpj}
+
+
+def popular_cnpj_ativos(tickers: list[str]) -> dict:
+    """Preenche ativos.cnpj_cvm via brapi summaryProfile pros tickers dados
+    que ainda não têm — sem isso o join do IPE CVM nunca casa nada. Só
+    escreve quando cnpj_cvm está vazio (não sobrescreve cadastro manual)."""
+    with registrar_job_run("cnpj_ativos") as job:
+        with get_session() as db:
+            existentes = dict(
+                db.query(Ativo.ticker, Ativo.cnpj_cvm).filter(Ativo.ticker.in_(tickers)).all()
+            )
+
+        n, invalidos = 0, 0
+        for ticker in tickers:
+            if existentes.get(ticker):
+                continue
+            try:
+                resp = brapi_client.get(f"quote/{ticker}", {"modules": "summaryProfile"})
+            except Exception as e:
+                log.debug(f"cnpj_ativos: falha em {ticker} — {e}")
+                invalidos += 1
+                continue
+            resultados = resp.get("results", [])
+            cnpj = (resultados[0].get("summaryProfile") or {}).get("cnpj") if resultados else None
+            if not cnpj:
+                invalidos += 1
+                continue
+            with get_session() as db:
+                db.query(Ativo).filter(Ativo.ticker == ticker).update({"cnpj_cvm": cnpj})
+                db.commit()
+            n += 1
+
+        job.linhas_gravadas = n
+        job.linhas_invalidas = invalidos
+        log.info(f"cnpj_ativos: {n} tickers preenchidos, {invalidos} sem cnpj/erro")
+        return {"linhas_gravadas": n, "linhas_invalidas": invalidos}
 
 
 def coletar_eventos_ipe(ano: int | None = None) -> dict:

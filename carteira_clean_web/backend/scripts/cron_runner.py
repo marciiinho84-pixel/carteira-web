@@ -84,7 +84,13 @@ def job_fundamentos_peers():
 
 
 def job_eventos_ipe():
-    from carteira_clean_web.backend.engine.eventos_cvm import coletar_eventos_ipe
+    """Preenche ativos.cnpj_cvm (via brapi summaryProfile) antes de coletar
+    — sem CNPJ cadastrado o join do IPE CVM não casa nada com nenhum ticker."""
+    from carteira_clean_web.backend.engine.eventos_cvm import coletar_eventos_ipe, popular_cnpj_ativos
+
+    tickers = _tickers_carteira()
+    if tickers:
+        popular_cnpj_ativos(tickers)
     coletar_eventos_ipe()
 
 
