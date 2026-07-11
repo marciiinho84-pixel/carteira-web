@@ -88,13 +88,28 @@ def carregar_universo_peers() -> list[str]:
         return [r.ticker for r in db.query(UniversoPeer).all()]
 
 
+def carregar_apenas_peers() -> list[str]:
+    """Retorna só os tickers de peer (motivo='peer_setor:...'), excluindo a
+    carteira — usada pela coleta de fundamentos via brapi.
+
+    A carteira usa yfinance como fonte (fundamentals_client.py); nunca deve
+    colidir com brapi no mesmo ticker, senão os dois viram fontes concorrentes
+    do mesmo dado e "quem coletou por último" passa a decidir o valor exibido
+    — foi exatamente essa sobreposição que causou os fundamentos da carteira
+    sumirem/mudarem depois do backfill de peers.
+    """
+    with get_session() as db:
+        return [r.ticker for r in db.query(UniversoPeer).filter(UniversoPeer.motivo != "carteira").all()]
+
+
 def peers_do_mesmo_setor(ticker: str) -> list[str]:
-    """Tickers cujo setor_brapi mapeia para o mesmo índice B3 do ticker dado.
+    """Tickers cujo setor (com override manual aplicado) mapeia para o mesmo
+    índice B3 do ticker dado.
 
     Não restringe a universo_peers (que só direciona coleta) — usa toda a
     taxonomia_setorial; o caller intersecta com quem de fato tem fundamentos.
     """
-    mapa = taxonomia.carregar_taxonomia_completa()
+    mapa = taxonomia.carregar_setores_efetivos()
     idx_alvo = taxonomia.mapear_setor_para_indice(mapa.get(ticker.upper()))
     if not idx_alvo:
         return []

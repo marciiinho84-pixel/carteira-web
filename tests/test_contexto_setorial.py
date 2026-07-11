@@ -50,7 +50,7 @@ def mocks():
     with patch.object(portfolio.engine_cache, "esta_calculado", return_value=True), \
          patch.object(portfolio.engine_cache, "get_estado", return_value=_estado_fake()), \
          patch(
-             "carteira_clean_web.backend.engine.taxonomia.carregar_taxonomia_completa",
+             "carteira_clean_web.backend.engine.taxonomia.carregar_setores_efetivos",
              return_value={"ITUB3": "Financial Services", "PETR4": "Energy"},
          ), \
          patch(

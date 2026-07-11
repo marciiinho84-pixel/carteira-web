@@ -2005,10 +2005,11 @@ def fn_contexto_setorial(setor: str = "todos") -> dict:
     posicoes_dict = estado["posicoes"]
     ativos = estado["ativos"]
 
-    taxonomia_map = taxonomia.carregar_taxonomia_completa()
+    taxonomia_map = taxonomia.carregar_setores_efetivos()
 
-    # Ativos em carteira agrupados pelo índice setorial resolvido via brapi.
-    # Sem taxonomia (ainda não coletada, ou ativo não listado em bolsa) →
+    # Ativos em carteira agrupados pelo índice setorial resolvido via brapi
+    # (com override manual — taxonomia_override — tendo prioridade). Sem
+    # taxonomia (ainda não coletada, ou ativo não listado em bolsa) →
     # bucket residual "outros", usando o campo livre só como rótulo (não
     # como chave de busca/filtro).
     carteira_por_indice: dict[str, list[str]] = {}

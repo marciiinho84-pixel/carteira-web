@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from carteira_clean_web.backend.engine import taxonomia
-from carteira_clean_web.backend.db.models import TaxonomiaSetorial, JobRun
+from carteira_clean_web.backend.db.models import TaxonomiaSetorial, TaxonomiaOverride, JobRun
 
 
 # ─── 1: mapear_setor_para_indice ────────────────────────────────────────────
@@ -52,7 +52,9 @@ def test_mapear_setor_para_indice(setor_brapi, indice_esperado):
 @pytest.fixture
 def patch_taxonomia_session(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'tax.db'}", connect_args={"check_same_thread": False})
-    TaxonomiaSetorial.metadata.create_all(engine, tables=[TaxonomiaSetorial.__table__, JobRun.__table__])
+    TaxonomiaSetorial.metadata.create_all(
+        engine, tables=[TaxonomiaSetorial.__table__, JobRun.__table__, TaxonomiaOverride.__table__]
+    )
     Session = sessionmaker(bind=engine)
     with patch(
         "carteira_clean_web.backend.engine.taxonomia.get_session",
@@ -125,3 +127,54 @@ def test_resolver_setor_e_carregar_completa(patch_taxonomia_session):
     assert taxonomia.resolver_setor("itub3") == "Finance"  # case-insensitive
     assert taxonomia.resolver_setor("NAO_EXISTE") is None
     assert taxonomia.carregar_taxonomia_completa() == {"ITUB3": "Finance"}
+
+
+# ─── 4: override manual de setor ────────────────────────────────────────────
+
+def test_adicionar_override_e_carregar(patch_taxonomia_session):
+    taxonomia.adicionar_override("ALOS3", "Shopping Centers / Imobiliário", "brapi classificou como Finance")
+    assert taxonomia.carregar_overrides() == {"ALOS3": "Shopping Centers / Imobiliário"}
+
+
+def test_adicionar_override_atualiza_existente(patch_taxonomia_session):
+    taxonomia.adicionar_override("ALOS3", "Setor errado", "primeira tentativa")
+    taxonomia.adicionar_override("ALOS3", "Shopping Centers / Imobiliário", "correção")
+    overrides = taxonomia.carregar_overrides()
+    assert overrides == {"ALOS3": "Shopping Centers / Imobiliário"}  # não duplicou
+
+
+def test_carregar_setores_efetivos_override_tem_prioridade(patch_taxonomia_session):
+    with patch(
+        "carteira_clean_web.backend.engine.taxonomia.brapi_client.get",
+        return_value=_pagina([{"stock": "ALOS3", "sector": "Finance"}, {"stock": "BBDC4", "sector": "Finance"}], False),
+    ):
+        taxonomia.coletar_taxonomia_setorial()
+
+    taxonomia.adicionar_override("ALOS3", "Shopping Centers / Imobiliário")
+
+    efetivos = taxonomia.carregar_setores_efetivos()
+    assert efetivos["ALOS3"] == "Shopping Centers / Imobiliário"  # override venceu
+    assert efetivos["BBDC4"] == "Finance"  # sem override, mantém o setor_brapi
+
+
+def test_carregar_taxonomia_completa_nao_e_afetada_por_override(patch_taxonomia_session):
+    """carregar_taxonomia_completa() precisa continuar retornando o setor
+    bruto da brapi (usado por definir_universo_peers pra montar a query de
+    descoberta de peers, que precisa do vocabulário original da brapi)."""
+    with patch(
+        "carteira_clean_web.backend.engine.taxonomia.brapi_client.get",
+        return_value=_pagina([{"stock": "ALOS3", "sector": "Finance"}], False),
+    ):
+        taxonomia.coletar_taxonomia_setorial()
+
+    taxonomia.adicionar_override("ALOS3", "Shopping Centers / Imobiliário")
+
+    assert taxonomia.carregar_taxonomia_completa() == {"ALOS3": "Finance"}
+
+
+@pytest.mark.parametrize("setor_correto,indice_esperado", [
+    ("Shopping Centers / Imobiliário", "IDX_IMOB"),
+    ("Construção Civil", "IDX_IMOB"),
+])
+def test_override_em_portugues_mapeia_para_indice(setor_correto, indice_esperado):
+    assert taxonomia.mapear_setor_para_indice(setor_correto) == indice_esperado

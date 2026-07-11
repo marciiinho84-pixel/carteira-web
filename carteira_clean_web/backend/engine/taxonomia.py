@@ -18,7 +18,7 @@ import pandas as pd
 
 from . import brapi_client
 from .ingestao_utils import get_logger, registrar_job_run, upsert_df
-from ..db.models import TaxonomiaSetorial
+from ..db.models import TaxonomiaOverride, TaxonomiaSetorial
 from ..db.session import get_session
 
 log = get_logger("taxonomia")
@@ -26,17 +26,38 @@ log = get_logger("taxonomia")
 _PAGE_SIZE = 100
 _MAX_PAGINAS = 200  # trava de segurança contra loop infinito de paginação
 
-# Ordem importa: "electric" é checado antes de "utilit" para que
-# "Electric Utilities" caia em IEE (elétricas), não em UTIL (genérico).
+# Ordem importa: termos mais específicos primeiro (ex.: "electric" antes de
+# "utilit", pra "Electric Utilities" cair em IEE, não em UTIL genérico).
+# Inclui EN (vocabulário da brapi) e PT-BR (vocabulário usado em
+# taxonomia_override, escrito por humano — ver adicionar_override()).
 _MAPA_SETOR_INDICE: list[tuple[str, str]] = [
     ("electric", "IDX_IEE"),
+    ("elétrica", "IDX_IEE"),
+    ("eletrica", "IDX_IEE"),
     ("utilit", "IDX_UTIL"),
+    ("saneamento", "IDX_UTIL"),
     ("real estate", "IDX_IMOB"),
+    ("imobiliário", "IDX_IMOB"),
+    ("imobiliaria", "IDX_IMOB"),
+    ("shopping", "IDX_IMOB"),
+    ("construção civil", "IDX_IMOB"),
+    ("construcao civil", "IDX_IMOB"),
     ("financ", "IDX_IFNC"),
+    ("banco", "IDX_IFNC"),
     ("energy", "IDX_IMAT"),
     ("materials", "IDX_IMAT"),
+    ("materiais básicos", "IDX_IMAT"),
+    ("materiais basicos", "IDX_IMAT"),
+    ("petróleo", "IDX_IMAT"),
+    ("petroleo", "IDX_IMAT"),
+    ("mineração", "IDX_IMAT"),
+    ("mineracao", "IDX_IMAT"),
     ("industrial", "IDX_INDX"),
+    ("indústria", "IDX_INDX"),
+    ("industria", "IDX_INDX"),
     ("consumer", "IDX_ICON"),
+    ("consumo", "IDX_ICON"),
+    ("varejo", "IDX_ICON"),
 ]
 
 # Aliases PT-BR para permitir que o parâmetro `setor` das tools aceite termos
@@ -130,7 +151,44 @@ def nome_empresa(ticker: str) -> str | None:
 
 
 def carregar_taxonomia_completa() -> dict[str, str | None]:
-    """Retorna {ticker: setor_brapi} para todos os tickers coletados."""
+    """Retorna {ticker: setor_brapi} para todos os tickers coletados — setor
+    bruto da brapi, sem override. Usado por definir_universo_peers() pra
+    montar a query de descoberta de peers (/quote/list?sector=X), que
+    precisa do vocabulário original da brapi pra casar de verdade."""
     with get_session() as db:
         rows = db.query(TaxonomiaSetorial).all()
         return {r.ticker: r.setor_brapi for r in rows}
+
+
+def carregar_overrides() -> dict[str, str]:
+    """Retorna {ticker: setor_correto} de todos os overrides cadastrados."""
+    with get_session() as db:
+        rows = db.query(TaxonomiaOverride).all()
+        return {r.ticker: r.setor_correto for r in rows}
+
+
+def carregar_setores_efetivos() -> dict[str, str | None]:
+    """Retorna {ticker: setor}, com override manual (taxonomia_override)
+    tendo prioridade sobre o setor_brapi coletado. Usado por
+    contexto_setorial/peers_do_mesmo_setor (mapeamento pro índice B3) —
+    diferente de carregar_taxonomia_completa(), que fica com o setor bruto
+    da brapi pra não quebrar a query de descoberta de peers."""
+    efetivos = carregar_taxonomia_completa()
+    efetivos.update(carregar_overrides())
+    return efetivos
+
+
+def adicionar_override(ticker: str, setor_correto: str, motivo: str | None = None) -> None:
+    """Cadastra ou atualiza a correção manual de setor de um ticker."""
+    ticker = ticker.upper()
+    with get_session() as db:
+        existente = db.query(TaxonomiaOverride).filter(TaxonomiaOverride.ticker == ticker).first()
+        if existente:
+            existente.setor_correto = setor_correto
+            existente.motivo = motivo
+        else:
+            db.add(TaxonomiaOverride(
+                ticker=ticker, setor_correto=setor_correto, motivo=motivo,
+                criado_em=datetime.utcnow(),
+            ))
+        db.commit()

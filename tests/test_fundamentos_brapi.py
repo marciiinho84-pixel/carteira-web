@@ -157,11 +157,32 @@ def test_coletar_fundamentos_peers_grava_fonte_brapi(patch_fb_session):
     with patch.object(fb, "_buscar_ticker", return_value={"PL": 8.5, "PVP": None}):
         resultado = fb.coletar_fundamentos_peers(["ITUB3"])
 
-    assert resultado["linhas_gravadas"] == 2  # PL + PVP (mesmo com valor None)
+    # Regra geral: indicador com valor None não vira linha — só PL grava.
+    assert resultado["linhas_gravadas"] == 1
     db = Session()
     rows = db.query(Fundamento).filter(Fundamento.ticker == "ITUB3").all()
+    assert len(rows) == 1
+    assert rows[0].indicador == "PL"
     assert all(r.fonte == "brapi" for r in rows)
     db.close()
+
+
+def test_coletar_fundamentos_peers_nao_apaga_valor_antigo_com_none_novo(patch_fb_session):
+    Session = patch_fb_session
+    with patch.object(fb, "_buscar_ticker", return_value={"PL": 8.5}):
+        fb.coletar_fundamentos_peers(["ITUB3"])
+
+    # 2ª coleta: PL virou None (ex.: brapi perdeu acesso ao módulo) — não
+    # deve mascarar o PL válido gravado antes.
+    with patch.object(fb, "_buscar_ticker", return_value={"PL": None}):
+        resultado = fb.coletar_fundamentos_peers(["ITUB3"])
+
+    assert resultado["linhas_gravadas"] == 0
+    db = Session()
+    rows = db.query(Fundamento).filter(Fundamento.ticker == "ITUB3").all()
+    db.close()
+    assert len(rows) == 1  # a linha antiga com PL=8.5 continua lá, intacta
+    assert rows[0].valor == 8.5
 
 
 def test_coletar_fundamentos_peers_e_append_only(patch_fb_session):

@@ -63,7 +63,7 @@ def test_job_cotacoes_propaga_erro_http_sem_coletar_proventos():
     mock_prov.assert_not_called()
 
 
-# ─── 2: job_fundamentos_peers ────────────────────────────────────────────────
+# ─── 2: job_fundamentos_peers / job_fundamentos_carteira ────────────────────
 
 def test_job_fundamentos_peers_sem_carteira_nao_faz_nada():
     with patch.object(cr, "_tickers_carteira", return_value=[]), \
@@ -74,14 +74,31 @@ def test_job_fundamentos_peers_sem_carteira_nao_faz_nada():
     mock_col.assert_not_called()
 
 
-def test_job_fundamentos_peers_usa_universo_completo():
+def test_job_fundamentos_peers_usa_so_peers_nao_carteira():
+    """Regressão: fundamentos da carteira (yfinance) sumiram porque esse job
+    rodava brapi também sobre os tickers da própria carteira — agora usa
+    carregar_apenas_peers(), não carregar_universo_peers()."""
     with patch.object(cr, "_tickers_carteira", return_value=["ITUB3"]), \
          patch("carteira_clean_web.backend.engine.peers.definir_universo_peers") as mock_def, \
-         patch("carteira_clean_web.backend.engine.peers.carregar_universo_peers", return_value=["ITUB3", "BBDC4"]), \
+         patch("carteira_clean_web.backend.engine.peers.carregar_apenas_peers", return_value=["BBDC4"]), \
          patch("carteira_clean_web.backend.engine.fundamentos_brapi.coletar_fundamentos_peers") as mock_col:
         cr.job_fundamentos_peers()
     mock_def.assert_called_once_with(["ITUB3"])
-    mock_col.assert_called_once_with(["ITUB3", "BBDC4"])  # universo, não só carteira
+    mock_col.assert_called_once_with(["BBDC4"])  # só peer, ITUB3 (carteira) fora
+
+
+def test_job_fundamentos_carteira_sem_carteira_nao_coleta():
+    with patch.object(cr, "_tickers_carteira", return_value=[]), \
+         patch("carteira_clean_web.backend.engine.fundamentals_client.salvar_fundamentos_db") as mock_col:
+        cr.job_fundamentos_carteira()
+    mock_col.assert_not_called()
+
+
+def test_job_fundamentos_carteira_usa_yfinance():
+    with patch.object(cr, "_tickers_carteira", return_value=["ITUB3", "WEGE3"]), \
+         patch("carteira_clean_web.backend.engine.fundamentals_client.salvar_fundamentos_db") as mock_col:
+        cr.job_fundamentos_carteira()
+    mock_col.assert_called_once_with(["ITUB3", "WEGE3"])
 
 
 # ─── 3: job_noticias ──────────────────────────────────────────────────────────

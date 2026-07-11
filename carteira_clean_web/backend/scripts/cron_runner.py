@@ -67,10 +67,22 @@ def job_taxonomia():
     coletar_taxonomia_setorial()
 
 
+def job_fundamentos_carteira():
+    """Fundamentos dos 38 ativos da carteira via yfinance — fonte primária
+    (fatia original). Nunca deve tocar tickers de peer: se colidisse com
+    brapi no mesmo ticker, os dois virariam fontes concorrentes do mesmo
+    dado e "quem coletou por último" passaria a decidir o valor exibido."""
+    from carteira_clean_web.backend.engine.fundamentals_client import salvar_fundamentos_db
+
+    tickers = _tickers_carteira()
+    if tickers:
+        salvar_fundamentos_db(tickers)
+
+
 def job_fundamentos_peers():
-    """Depende de job_taxonomia já ter rodado (domingo 9h, antes das 10h) —
-    definir_universo_peers usa taxonomia_setorial pra achar o setor de cada
-    ticker da carteira."""
+    """Fundamentos só dos PEERS (não da carteira) via brapi — depende de
+    job_taxonomia já ter rodado (domingo 9h, antes das 10h): definir_universo_peers
+    usa taxonomia_setorial pra achar o setor de cada ticker da carteira."""
     from carteira_clean_web.backend.engine import peers as peers_mod
     from carteira_clean_web.backend.engine.fundamentos_brapi import coletar_fundamentos_peers
 
@@ -79,8 +91,8 @@ def job_fundamentos_peers():
         log.warning("job_fundamentos_peers: sem tickers da carteira — pulando")
         return
     peers_mod.definir_universo_peers(tickers_carteira)
-    universo = peers_mod.carregar_universo_peers()
-    coletar_fundamentos_peers(universo)
+    apenas_peers = peers_mod.carregar_apenas_peers()
+    coletar_fundamentos_peers(apenas_peers)
 
 
 def job_eventos_ipe():
@@ -105,6 +117,7 @@ def job_noticias():
 _JOBS = {
     "cotacoes": job_cotacoes,
     "taxonomia": job_taxonomia,
+    "fundamentos_carteira": job_fundamentos_carteira,
     "fundamentos_peers": job_fundamentos_peers,
     "eventos_ipe": job_eventos_ipe,
     "noticias": job_noticias,
@@ -118,13 +131,15 @@ def serve():
     sched = BlockingScheduler(timezone="UTC")
     sched.add_job(job_cotacoes, CronTrigger(hour=21, minute=30), id="cotacoes_diario", misfire_grace_time=3600)
     sched.add_job(job_taxonomia, CronTrigger(day_of_week="sun", hour=9), id="taxonomia_semanal", misfire_grace_time=3600)
+    sched.add_job(job_fundamentos_carteira, CronTrigger(day_of_week="sun", hour=8), id="fundamentos_carteira_semanal", misfire_grace_time=3600)
     sched.add_job(job_fundamentos_peers, CronTrigger(day_of_week="sun", hour=10), id="fundamentos_peers_semanal", misfire_grace_time=3600)
     sched.add_job(job_eventos_ipe, CronTrigger(day_of_week="sun", hour=11), id="eventos_ipe_semanal", misfire_grace_time=3600)
     sched.add_job(job_noticias, CronTrigger(hour=12), id="noticias_meio_dia", misfire_grace_time=1800)
     sched.add_job(job_noticias, CronTrigger(hour=22, minute=30), id="noticias_noite", misfire_grace_time=1800)
     log.info(
         "cron_runner: agendado (UTC) — cotacoes 21:30 diário | taxonomia dom 9h | "
-        "fundamentos_peers dom 10h | eventos_ipe dom 11h | noticias 12h e 22:30 diário"
+        "fundamentos_carteira dom 8h | fundamentos_peers dom 10h | eventos_ipe dom 11h | "
+        "noticias 12h e 22:30 diário"
     )
     sched.start()
 

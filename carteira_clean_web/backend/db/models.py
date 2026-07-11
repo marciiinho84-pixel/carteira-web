@@ -706,6 +706,32 @@ class TaxonomiaSetorial(Base):
         }
 
 
+class TaxonomiaOverride(Base):
+    """Correção manual do setor de um ticker — a classificação da brapi
+    (setor_brapi) tem prioridade só na ausência de override. Ex.: ALOS3
+    (shopping centers) e MDNE3 (construção civil) vieram como "Finance" da
+    brapi, o que não faz sentido pro usuário."""
+    __tablename__ = "taxonomia_override"
+
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    ticker        = Column(Text, nullable=False)
+    setor_correto = Column(Text, nullable=False)
+    motivo        = Column(Text, nullable=True)
+    criado_em     = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("ticker", name="uq_taxonomia_override_ticker"),
+    )
+
+    def to_dict(self):
+        return {
+            "ticker": self.ticker,
+            "setor_correto": self.setor_correto,
+            "motivo": self.motivo,
+            "criado_em": self.criado_em.isoformat() if self.criado_em else None,
+        }
+
+
 class UniversoPeer(Base):
     """Tickers a coletar fundamentos além dos 38 da carteira — os 38 da
     carteira (motivo='carteira') + top 8 por volume de cada setor presente

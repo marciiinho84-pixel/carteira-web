@@ -127,7 +127,12 @@ def coletar_fundamentos_peers(tickers: list[str]) -> dict:
             if indicadores is None:
                 invalidos += 1
                 continue
+            # Regra geral (todos os coletores de fundamentos): nunca grava
+            # indicador sem valor — um valor novo NULL não pode mascarar um
+            # valor antigo válido na leitura por MAX(fetched_at).
             for indicador, valor in indicadores.items():
+                if valor is None:
+                    continue
                 linhas.append(Fundamento(
                     ticker=ticker.upper(),
                     data_referencia=hoje,

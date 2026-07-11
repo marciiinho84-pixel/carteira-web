@@ -349,7 +349,9 @@ def salvar_fundamentos_db(tickers: list[str] | None = None) -> dict:
     """Coleta os 10 indicadores e persiste na tabela `fundamentos`.
 
     Se tickers=None, usa todos os ativos RV da carteira.
-    ETFs/fundos sem dados: registra valor=NULL (não falha).
+    ETFs/fundos sem dados: não grava linha nenhuma pro indicador em questão
+    (não falha, só omite) — um valor novo NULL não pode mascarar um valor
+    antigo válido na leitura por MAX(fetched_at).
     Retorna sumário da operação.
     """
     from datetime import date
@@ -388,12 +390,18 @@ def salvar_fundamentos_db(tickers: list[str] | None = None) -> dict:
             if dados.get("erro"):
                 com_erro[ticker] = dados["erro"]
             for indicador in _INDICADORES_COMPLETOS:
+                valor = dados.get(indicador)
+                # Regra geral (todos os coletores de fundamentos): nunca
+                # grava indicador sem valor — um valor novo NULL não pode
+                # mascarar um valor antigo válido na leitura por MAX(fetched_at).
+                if valor is None:
+                    continue
                 linhas.append(
                     Fundamento(
                         ticker=ticker,
                         data_referencia=hoje,
                         indicador=indicador,
-                        valor=dados.get(indicador),
+                        valor=valor,
                         fonte="yfinance",
                         fetched_at=agora,
                     )
