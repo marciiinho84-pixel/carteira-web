@@ -2215,14 +2215,15 @@ def fn_noticias_ativos(
     dias: int = 7,
 ) -> dict:
     """
-    Retorna notícias recentes dos ativos via yfinance.
+    Retorna notícias recentes dos ativos via Google News RSS (persistidas
+    2x/dia — yfinance .news foi descontinuado como fonte, instável/vazio).
 
     Args:
         ticker: código do ativo (ex: "PETR4"), "carteira" (top-10 por patrimônio)
                 ou "watchlist"
         dias:   janela em dias (default 7)
     """
-    from carteira_clean_web.backend.engine.noticias import buscar_noticias_ticker
+    from carteira_clean_web.backend.engine.noticias_rss import ler_noticias
 
     if not engine_cache.esta_calculado():
         engine_cache.carregar_disco()
@@ -2256,9 +2257,7 @@ def fn_noticias_ativos(
     else:
         tickers = [ticker.upper()]
 
-    todas_noticias = []
-    for t in tickers:
-        todas_noticias.extend(buscar_noticias_ticker(t, dias))
+    todas_noticias = ler_noticias(tickers, dias)
 
     por_ticker: dict[str, list] = {}
     for n in todas_noticias:
@@ -2270,7 +2269,7 @@ def fn_noticias_ativos(
         "total": len(todas_noticias),
         "tickers_consultados": tickers,
         "janela_dias": dias,
-        "nota": "Fonte: yfinance .news. O maestro contextualiza o impacto potencial.",
+        "nota": "Fonte: Google News RSS (coletado 2x/dia). O maestro contextualiza o impacto potencial.",
     }
 
 

@@ -658,7 +658,8 @@ def grafico_tecnico(ticker: str, periodo: str = "6mo") -> dict:
 
 @mcp.tool(
     description="""
-    Retorna notícias recentes dos ativos via yfinance.
+    Retorna notícias recentes dos ativos via Google News RSS (coletado 2x/dia
+    e persistido — yfinance .news foi descontinuado como fonte).
 
     Parâmetros:
     - ticker: código do ativo (ex: "PETR4"), "carteira" (top-10 por patrimônio),

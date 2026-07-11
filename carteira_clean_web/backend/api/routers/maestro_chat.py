@@ -571,7 +571,7 @@ TOOLS: list[dict] = [
     },
     {
         "name": "noticias_ativos",
-        "description": "Retorna notícias recentes dos ativos via yfinance.",
+        "description": "Retorna notícias recentes dos ativos via Google News RSS (coletado 2x/dia).",
         "input_schema": {
             "type": "object",
             "properties": {

@@ -1,52 +1,11 @@
 """
-engine/noticias.py — Notícias e impacto macro (Fatia 13).
+engine/noticias.py — Impacto macro (Fatia 13).
 
-Fonte de notícias: yfinance .news (gratuito, MVP).
+Notícias por ativo: ver engine/noticias_rss.py (Google News RSS, substituiu
+yfinance .news — descontinuado como fonte, instável/vazio).
 Impacto macro: lookup na tabela matriz_sensibilidade.
 """
 from __future__ import annotations
-
-import logging
-from datetime import datetime, timezone
-
-log = logging.getLogger(__name__)
-
-
-def buscar_noticias_ticker(ticker: str, dias: int = 7) -> list[dict]:
-    """Retorna notícias recentes de um ticker via yfinance."""
-    try:
-        import yfinance as yf
-        t = yf.Ticker(ticker + ".SA" if _e_br(ticker) else ticker)
-        noticias = t.news or []
-    except Exception as e:
-        log.warning(f"noticias_ativos {ticker}: {e}")
-        return []
-
-    corte = datetime.now(timezone.utc).timestamp() - dias * 86400
-    resultado = []
-    for n in noticias:
-        ts = n.get("providerPublishTime") or n.get("publishedAt") or 0
-        if isinstance(ts, str):
-            try:
-                ts = datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
-            except Exception:
-                ts = 0
-        if ts < corte:
-            continue
-        resultado.append({
-            "ticker":  ticker,
-            "titulo":  n.get("title") or n.get("headline", ""),
-            "fonte":   n.get("publisher") or n.get("source", {}).get("name", ""),
-            "data":    datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d") if ts else "",
-            "link":    n.get("link") or n.get("url", ""),
-        })
-    return resultado
-
-
-def _e_br(ticker: str) -> bool:
-    import re
-    return bool(re.match(r"^[A-Z]{3,5}\d{1,2}$", ticker.upper()))
-
 
 # ── Seed data para matriz_sensibilidade ──────────────────────────────────────
 SEED_MATRIZ: list[dict] = [

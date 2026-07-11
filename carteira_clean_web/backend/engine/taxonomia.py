@@ -77,7 +77,8 @@ def _coletar_paginas() -> list[dict]:
             ticker = item.get("stock") or item.get("ticker")
             if not ticker:
                 continue
-            linhas.append({"ticker": ticker.upper(), "setor_brapi": item.get("sector")})
+            nome = item.get("name") or item.get("shortName") or item.get("longName")
+            linhas.append({"ticker": ticker.upper(), "setor_brapi": item.get("sector"), "nome": nome})
         if not resp.get("hasNextPage", False):
             break
         pagina += 1
@@ -115,6 +116,17 @@ def resolver_setor(ticker: str) -> str | None:
             .first()
         )
         return row.setor_brapi if row else None
+
+
+def nome_empresa(ticker: str) -> str | None:
+    """Lê o nome da empresa mais recente para um ticker. None se não encontrado."""
+    with get_session() as db:
+        row = (
+            db.query(TaxonomiaSetorial)
+            .filter(TaxonomiaSetorial.ticker == ticker.upper())
+            .first()
+        )
+        return row.nome if row else None
 
 
 def carregar_taxonomia_completa() -> dict[str, str | None]:

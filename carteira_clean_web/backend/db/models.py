@@ -690,6 +690,7 @@ class TaxonomiaSetorial(Base):
     id            = Column(Integer, primary_key=True, autoincrement=True)
     ticker        = Column(Text, nullable=False)
     setor_brapi   = Column(Text, nullable=True)
+    nome          = Column(Text, nullable=True)
     atualizado_em = Column(DateTime, nullable=False)
 
     __table_args__ = (
@@ -700,6 +701,7 @@ class TaxonomiaSetorial(Base):
         return {
             "ticker": self.ticker,
             "setor_brapi": self.setor_brapi,
+            "nome": self.nome,
             "atualizado_em": self.atualizado_em.isoformat() if self.atualizado_em else None,
         }
 
@@ -727,4 +729,33 @@ class UniversoPeer(Base):
             "setor": self.setor,
             "motivo": self.motivo,
             "adicionado_em": self.adicionado_em.isoformat() if self.adicionado_em else None,
+        }
+
+
+class Noticia(Base):
+    """Notícias por ativo (Google News RSS) — UPSERT por (ticker, titulo)
+    (dedupe pedido na Fase 5: mesma notícia buscada 2x/dia não duplica)."""
+    __tablename__ = "noticias"
+
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    ticker        = Column(Text, nullable=False)
+    titulo        = Column(Text, nullable=False)
+    fonte         = Column(Text, nullable=True)
+    url           = Column(Text, nullable=True)
+    publicado_em  = Column(DateTime, nullable=True)
+    coletado_em   = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("ticker", "titulo", name="uq_noticias_ticker_titulo"),
+        Index("ix_noticias_ticker_publicado", "ticker", "publicado_em"),
+    )
+
+    def to_dict(self):
+        return {
+            "ticker": self.ticker,
+            "titulo": self.titulo,
+            "fonte": self.fonte,
+            "url": self.url,
+            "publicado_em": self.publicado_em.isoformat() if self.publicado_em else None,
+            "coletado_em": self.coletado_em.isoformat() if self.coletado_em else None,
         }
