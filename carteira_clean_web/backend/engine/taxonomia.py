@@ -9,6 +9,14 @@ prefixo IDX_ — ver engine/precos.py::_SETORIAL_YF_MAP) é o mais próximo.
 O mapeamento é por substring (case-insensitive) porque a nomenclatura de
 setor da brapi pode variar (ex.: "Financial Services" vs "Finance") — mais
 robusto que exigir string exata.
+
+Achado em produção (2026-07): a brapi classifica sistematicamente o setor
+imobiliário brasileiro (construtoras, incorporadoras, shopping centers)
+sob "Finance" — padrão de classificação FactSet, que trata estruturas de
+propriedade/financiamento imobiliário como subsetor financeiro. Exemplos
+confirmados: ALOS3 (shopping centers), MDNE3 e PLPL3 (incorporadoras).
+Ativo novo desse setor que aparecer com setor_brapi="Finance" deve receber
+o mesmo override (setor_correto="Imobiliário") via adicionar_override().
 """
 from __future__ import annotations
 
