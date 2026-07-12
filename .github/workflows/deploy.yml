@@ -47,6 +47,7 @@ jobs:
 
       - name: Deploy na VM via IAP tunnel
         run: |
+          set -o pipefail
           gcloud compute ssh carteira-clean \
             --zone=us-central1-a \
             --tunnel-through-iap \
@@ -56,4 +57,15 @@ jobs:
               sudo docker compose -f /home/marciiinho84/carteira-web/docker-compose.yml build && \
               sudo docker container prune -f && \
               sudo docker compose -f /home/marciiinho84/carteira-web/docker-compose.yml up -d --remove-orphans && \
-              echo DEPLOY_OK"
+              echo DEPLOY_OK" | tee /tmp/deploy_ssh_output.log
+
+          # gcloud compute ssh --command já teve casos conhecidos de devolver exit
+          # code 0 mesmo com falha do comando remoto (bug de alocação de pty/proxy
+          # do IAP tunnel) — não confiar só no exit code do step. DEPLOY_OK só é
+          # impresso depois que git pull + build + up -d encadeados com `&&`
+          # terminam com sucesso, então a ausência dele no stdout é o sinal
+          # confiável de que o deploy remoto falhou, mesmo com o step "verde".
+          if ! grep -qx "DEPLOY_OK" /tmp/deploy_ssh_output.log; then
+            echo "::error::DEPLOY_OK não apareceu na saída do gcloud compute ssh — o deploy remoto pode ter falhado apesar do exit code do step. Veja o log acima."
+            exit 1
+          fi
