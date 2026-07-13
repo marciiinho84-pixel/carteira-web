@@ -7,6 +7,8 @@ ticker+titulo, dedupe pedido na Fase 5) e lido de lá por noticias_ativos.
 """
 from __future__ import annotations
 
+import re
+import unicodedata
 from datetime import date, datetime, timedelta
 from urllib.parse import quote
 
@@ -23,6 +25,44 @@ log = get_logger("noticias_rss")
 
 _RSS_BASE = "https://news.google.com/rss/search"
 _TIMEOUT = 20
+
+# Google News RSS "alarga" a busca silenciosamente quando a query exata tem
+# poucos resultados — devolve manchetes populares sem relação alguma com o
+# ticker (ex.: previsão do tempo). Filtramos aqui, do lado do coletor, em vez
+# de confiar cegamente no que o Google retornou.
+_STOPWORDS_NOME_EMPRESA = {
+    "sa", "s.a", "ltda", "on", "pn", "pnb", "pna", "unit", "units",
+    "de", "da", "do", "das", "dos", "e", "cia", "companhia", "participacoes",
+    "holding", "brasil", "brasileira", "brasileiro",
+}
+
+
+def _normalizar(txt: str) -> str:
+    sem_acento = unicodedata.normalize("NFKD", txt).encode("ascii", "ignore").decode("ascii")
+    return sem_acento.lower()
+
+
+def _palavras_significativas(nome: str) -> list[str]:
+    """Palavras do nome da empresa úteis pra checar relevância — descarta
+    conectivos/sufixos societários e palavras curtas demais (ruído)."""
+    normalizado = _normalizar(nome)
+    palavras = re.findall(r"[a-z0-9]+", normalizado)
+    return [p for p in palavras if len(p) >= 4 and p not in _STOPWORDS_NOME_EMPRESA]
+
+
+def _ticker_base(ticker: str) -> str:
+    """PETR4 -> PETR, WEGE3 -> WEGE (remove o dígito de classe da ação)."""
+    return re.sub(r"\d+$", "", ticker.upper())
+
+
+def _titulo_relevante(titulo: str, ticker: str, palavras_nome: list[str]) -> bool:
+    titulo_norm = _normalizar(titulo)
+    if ticker.lower() in titulo_norm:
+        return True
+    base = _ticker_base(ticker).lower()
+    if base and base in titulo_norm:
+        return True
+    return any(p in titulo_norm for p in palavras_nome)
 
 
 def _montar_query(ticker: str, nome: str | None) -> str:
@@ -65,26 +105,45 @@ def _extrair_fonte(entry) -> str | None:
 
 def coletar_noticias_ticker(ticker: str) -> list[dict]:
     """Busca notícias recentes (últimos 2 dias) de 1 ticker no Google News RSS.
-    Dedupe por título dentro do próprio resultado."""
+    Dedupe por título dentro do próprio resultado. Descarta manchetes sem
+    relação com o ticker/empresa (Google News RSS às vezes "alarga" a busca e
+    devolve conteúdo popular não relacionado, ex.: previsão do tempo) — a
+    menos que isso descartaria tudo, caso em que mantém sem filtrar (nome de
+    empresa provavelmente genérico/curto demais pro filtro) e loga aviso."""
     nome = taxonomia.nome_empresa(ticker)
     url = _url_rss(_montar_query(ticker, nome))
     feed = _buscar_feed(url)
 
     vistos: set[str] = set()
-    out = []
+    candidatos = []
     for entry in feed.entries:
         titulo = entry.get("title", "").strip()
         if not titulo or titulo in vistos:
             continue
         vistos.add(titulo)
-        out.append({
+        candidatos.append({
             "ticker": ticker.upper(),
             "titulo": titulo,
             "fonte": _extrair_fonte(entry),
             "url": entry.get("link"),
             "publicado_em": _extrair_publicado_em(entry),
         })
-    return out
+
+    palavras_nome = _palavras_significativas(nome) if nome else []
+    relevantes = [c for c in candidatos if _titulo_relevante(c["titulo"], ticker, palavras_nome)]
+
+    if candidatos and not relevantes:
+        log.warning(
+            f"noticias_rss: filtro de relevância descartaria todas as {len(candidatos)} "
+            f"notícia(s) de {ticker} (nome='{nome}') — mantendo sem filtro."
+        )
+        return candidatos
+
+    descartados = len(candidatos) - len(relevantes)
+    if descartados:
+        log.info(f"noticias_rss: {ticker} — {descartados} notícia(s) descartada(s) por irrelevância.")
+
+    return relevantes
 
 
 def coletar_noticias(tickers: list[str]) -> dict:

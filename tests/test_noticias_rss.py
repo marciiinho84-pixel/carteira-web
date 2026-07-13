@@ -77,6 +77,51 @@ def test_coletar_noticias_ticker_dedupe_por_titulo():
     assert {o["titulo"] for o in out} == {"Mesma manchete", "Outra manchete"}
 
 
+def test_coletar_noticias_ticker_filtra_titulo_irrelevante():
+    """Google News RSS 'alarga' a busca e devolve manchete popular sem relação
+    com o ticker (ex.: previsão do tempo) — deve ser descartada."""
+    parsed = time.strptime("2026-07-10", "%Y-%m-%d")
+    entries = [
+        {"title": "PETR4: Petrobras anuncia novo projeto no pré-sal", "link": "http://a", "published_parsed": parsed},
+        {"title": "Aracaju experimenta temperaturas agradáveis com máxima de 27°C - Portal O Dia", "link": "http://b", "published_parsed": parsed},
+    ]
+    with patch.object(nr.taxonomia, "nome_empresa", return_value="Petrobras"), \
+         patch.object(nr, "_buscar_feed", return_value=_FakeFeed(entries)):
+        out = nr.coletar_noticias_ticker("PETR4")
+    assert len(out) == 1
+    assert out[0]["titulo"] == "PETR4: Petrobras anuncia novo projeto no pré-sal"
+
+
+def test_coletar_noticias_ticker_relevante_por_ticker_sem_nome_empresa():
+    """Menção direta ao ticker no título basta, mesmo sem nome de empresa cadastrado."""
+    parsed = time.strptime("2026-07-10", "%Y-%m-%d")
+    entries = [
+        {"title": "WEGE3 dispara após resultado trimestral", "link": "http://a", "published_parsed": parsed},
+        {"title": "Previsão do tempo para o fim de semana", "link": "http://b", "published_parsed": parsed},
+    ]
+    with patch.object(nr.taxonomia, "nome_empresa", return_value=None), \
+         patch.object(nr, "_buscar_feed", return_value=_FakeFeed(entries)):
+        out = nr.coletar_noticias_ticker("WEGE3")
+    assert len(out) == 1
+    assert out[0]["titulo"] == "WEGE3 dispara após resultado trimestral"
+
+
+def test_coletar_noticias_ticker_nome_generico_nao_descarta_tudo():
+    """Se o filtro descartaria 100% das notícias (nome de empresa genérico
+    demais / não bate com nada), mantém sem filtrar e loga aviso — ausência
+    de sinal não deve virar ausência de notícia por engano do filtro."""
+    parsed = time.strptime("2026-07-10", "%Y-%m-%d")
+    entries = [
+        {"title": "Manchete qualquer sem relação aparente", "link": "http://a", "published_parsed": parsed},
+    ]
+    with patch.object(nr.taxonomia, "nome_empresa", return_value="Zeta Participações"), \
+         patch.object(nr, "_buscar_feed", return_value=_FakeFeed(entries)), \
+         patch.object(nr, "log") as mock_log:
+        out = nr.coletar_noticias_ticker("ZETA3")
+    assert len(out) == 1  # mantido, não descartado
+    assert mock_log.warning.called
+
+
 # ─── 4-5: coletar_noticias + ler_noticias ────────────────────────────────────
 
 @pytest.fixture

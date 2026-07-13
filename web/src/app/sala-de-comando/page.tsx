@@ -415,15 +415,28 @@ export default function SalaDeComando() {
                         </div>
                       )}
                       <div className="flex items-center justify-between pt-0.5">
-                        {obs.conteudo.length > 120 ? (
-                          <button
-                            onClick={() => setExpandedObs(expanded ? null : obs.id)}
-                            className="text-[10px] hover:underline"
-                            style={{ color: "var(--purple-accent)" }}
-                          >
-                            {expanded ? "▲ menos" : "▼ ver mais"}
-                          </button>
-                        ) : <span />}
+                        <div className="flex items-center gap-3">
+                          {obs.conteudo.length > 120 && (
+                            <button
+                              onClick={() => setExpandedObs(expanded ? null : obs.id)}
+                              className="text-[10px] hover:underline"
+                              style={{ color: "var(--purple-accent)" }}
+                            >
+                              {expanded ? "▲ menos" : "▼ ver mais"}
+                            </button>
+                          )}
+                          {obs.url && (
+                            <a
+                              href={obs.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[10px] hover:underline"
+                              style={{ color: "var(--purple-accent)" }}
+                            >
+                              Ler notícia ↗
+                            </a>
+                          )}
+                        </div>
                         <button
                           onClick={() => dispensar(obs.id)}
                           className="text-[10px] hover:underline"

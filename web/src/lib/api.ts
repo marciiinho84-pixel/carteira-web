@@ -105,6 +105,7 @@ export type Observacao = {
   ativo?: string | null;
   ativos_relacionados: string[];
   conteudo: string;
+  url?: string | null;
   criado_em?: string;
 };
 

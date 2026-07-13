@@ -246,13 +246,17 @@ def _build_observacoes(db: Session, limit: int = 30) -> list[dict]:
         ativos_relacionados: list[str] = []
         if o.ativo:
             ativos_relacionados.append(o.ativo)
-        if o.categoria == "MACRO" and o.fundamentos_json:
+        url = None
+        if o.fundamentos_json:
             try:
                 extra = json.loads(o.fundamentos_json)
-                for a in extra.get("ativos_carteira_afetados", []):
-                    tkr = a.get("ticker")
-                    if tkr and tkr not in ativos_relacionados:
-                        ativos_relacionados.append(tkr)
+                if o.categoria == "MACRO":
+                    for a in extra.get("ativos_carteira_afetados", []):
+                        tkr = a.get("ticker")
+                        if tkr and tkr not in ativos_relacionados:
+                            ativos_relacionados.append(tkr)
+                elif o.categoria == "NOTICIA":
+                    url = extra.get("url")
             except (json.JSONDecodeError, TypeError, AttributeError):
                 pass
         result.append({
@@ -261,6 +265,7 @@ def _build_observacoes(db: Session, limit: int = 30) -> list[dict]:
             "ativo":               o.ativo,
             "ativos_relacionados": ativos_relacionados,
             "conteudo":            o.conteudo,
+            "url":                 url,
             "criado_em":           o.criado_em.isoformat() if o.criado_em else None,
         })
     return result
