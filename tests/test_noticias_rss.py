@@ -122,6 +122,33 @@ def test_coletar_noticias_ticker_nome_generico_nao_descarta_tudo():
     assert mock_log.warning.called
 
 
+def test_coletar_noticias_ticker_descarta_resultado_de_loteria():
+    """Mesma causa raiz do bug de clima: Google News RSS 'alargou' a busca de
+    EMBJ3 (Embraer) e devolveu resultado de Quina/Lotofácil, sem relação
+    alguma com o ticker — confirmado em produção."""
+    parsed = time.strptime("2026-07-10", "%Y-%m-%d")
+    entries = [
+        {"title": "Resultado da Quina 7064: veja as dezenas sorteadas e o valor do próximo concurso",
+         "link": "http://a", "published_parsed": parsed},
+        {"title": "Lotofácil 3733: apostas de Rondônia e São Paulo acertam as 15 dezenas",
+         "link": "http://b", "published_parsed": parsed},
+        {"title": "EMBJ3: Embraer anuncia nova encomenda de aeronaves",
+         "link": "http://c", "published_parsed": parsed},
+    ]
+    with patch.object(nr.taxonomia, "nome_empresa", return_value="Embraer"), \
+         patch.object(nr, "_buscar_feed", return_value=_FakeFeed(entries)):
+        out = nr.coletar_noticias_ticker("EMBJ3")
+    assert len(out) == 1
+    assert out[0]["titulo"] == "EMBJ3: Embraer anuncia nova encomenda de aeronaves"
+
+
+def test_titulo_e_loteria_nao_e_enganado_por_mencao_ao_ticker():
+    """Denylist de loteria tem prioridade sobre o match de ticker/empresa —
+    uma manchete de loteria não vira relevante só por coincidência textual."""
+    titulo = "EMBJ3 aposta na sorte: resultado da Mega-Sena 2700"
+    assert nr._titulo_relevante(titulo, "EMBJ3", ["embraer"]) is False
+
+
 # ─── 4-5: coletar_noticias + ler_noticias ────────────────────────────────────
 
 @pytest.fixture

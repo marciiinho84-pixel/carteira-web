@@ -36,6 +36,24 @@ _STOPWORDS_NOME_EMPRESA = {
     "holding", "brasil", "brasileira", "brasileiro",
 }
 
+# Padrões de resultado de loteria — confirmado em produção "alargando" pra
+# tickers sem relação alguma (ex.: EMBJ3 recebendo resultado da Quina/Lotofácil).
+# Denylist explícita, checada ANTES do match de ticker/empresa: coincidência de
+# ticker com uma manchete de loteria é praticamente impossível de ser legítima.
+_PADROES_LOTERIA = [
+    re.compile(r"\bquina\b", re.IGNORECASE),
+    re.compile(r"\blotof[aá]cil\b", re.IGNORECASE),
+    re.compile(r"\bmega-?sena\b", re.IGNORECASE),
+    re.compile(r"\blotomania\b", re.IGNORECASE),
+    re.compile(r"\bdezenas sorteadas\b", re.IGNORECASE),
+    re.compile(r"\bn[uú]meros sorteados\b", re.IGNORECASE),
+    re.compile(r"\bpr[oó]ximo concurso\b", re.IGNORECASE),
+]
+
+
+def _titulo_e_loteria(titulo: str) -> bool:
+    return any(p.search(titulo) for p in _PADROES_LOTERIA)
+
 
 def _normalizar(txt: str) -> str:
     sem_acento = unicodedata.normalize("NFKD", txt).encode("ascii", "ignore").decode("ascii")
@@ -56,6 +74,8 @@ def _ticker_base(ticker: str) -> str:
 
 
 def _titulo_relevante(titulo: str, ticker: str, palavras_nome: list[str]) -> bool:
+    if _titulo_e_loteria(titulo):
+        return False
     titulo_norm = _normalizar(titulo)
     if ticker.lower() in titulo_norm:
         return True
