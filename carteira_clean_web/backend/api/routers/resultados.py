@@ -372,10 +372,25 @@ def carteira_rv():
     caixa_atual = float(df_evo.iloc[-1]["caixa"]) if not df_evo.empty and "caixa" in df_evo.columns else 0.0
 
     # Liquidações próximas (D+2, 5 dias úteis)
+    #
+    # O caixa derivado (caixa_atual) credita/debita no dia do TRADE, não no
+    # dia da liquidação — D+2/D+1 é só o aspecto legal/custodial (o dinheiro
+    # já é seu economicamente, só não pode ser sacado até liquidar). Por
+    # isso "entrando"/"saindo" abaixo NÃO são fluxo de caixa futuro: já
+    # estão dentro de caixa_atual. Somar de novo pra achar um "saldo
+    # projetado" duplicava o valor de qualquer venda/compra ainda em
+    # liquidação (achado em auditoria — ex. venda D1EL34 09/07: os
+    # R$2.300 apareciam ao mesmo tempo em "Caixa atual" e em "Entrando").
+    #
+    # O número útil e não-duplicado é o caixa DISPONÍVEL agora, sem
+    # depender de nenhuma liquidação: caixa_atual menos as vendas ainda não
+    # liquidadas (esse valor específico não pode ser sacado/realocado até o
+    # D+2 vencer). Compras ainda não liquidadas não entram nessa conta — o
+    # dinheiro já saiu de verdade no trade, não tem "pendência de caixa",
+    # só falta o ativo entrar na custódia.
     proximos_5_du = pd.bdate_range(start=hoje, periods=6).date
     pendentes = []
     entrando_5d = saindo_5d = 0.0
-    saldo_running = caixa_atual
 
     evs_pendentes = []
     for ev in eventos:
@@ -403,12 +418,16 @@ def carteira_rv():
         evs_pendentes.append((d_liq, ev, impacto, prazo))
 
     evs_pendentes.sort(key=lambda x: (x[0], x[1]["data"]))
-    for d_liq, ev, impacto, prazo in evs_pendentes:
+    for _, _, impacto, _ in evs_pendentes:
         if impacto > 0:
             entrando_5d += impacto
         else:
             saindo_5d += abs(impacto)
-        saldo_running += impacto
+
+    saldo_running = caixa_atual - entrando_5d  # disponível hoje, sem pendência
+    for d_liq, ev, impacto, prazo in evs_pendentes:
+        if impacto > 0:
+            saldo_running += impacto  # essa venda liquidou — libera o caixa
         pendentes.append({
             "liquidacao": str(d_liq),
             "trade": str(ev["data"]),
@@ -457,7 +476,10 @@ def carteira_rv():
         caixa_atual=round(caixa_atual, 2),
         entrando_5d=round(entrando_5d, 2),
         saindo_5d=round(saindo_5d, 2),
-        saldo_projetado=round(caixa_atual + entrando_5d - saindo_5d, 2),
+        # Disponível sem pendência — não soma entrando/saindo de novo (já
+        # estão dentro de caixa_atual); só desconta o que ainda não pode
+        # ser sacado/realocado por estar aguardando liquidação D+2/D+1.
+        saldo_projetado=round(caixa_atual - entrando_5d, 2),
         pendentes=pendentes,
         setores=setores,
         twr_rv=twr_rv,

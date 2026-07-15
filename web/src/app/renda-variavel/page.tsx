@@ -192,9 +192,9 @@ export default function RendaVariavel() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                   {[
                     { label: "Caixa atual (Geral)", value: brl(rv.caixa_atual, 0), color: green },
-                    { label: "Entrando (5 DU)", value: brl(rv.entrando_5d, 0), color: green },
-                    { label: "Saindo (5 DU)", value: brl(rv.saindo_5d, 0), color: red },
-                    { label: "Saldo projetado", value: brl(rv.saldo_projetado, 0), color: valColor(rv.saldo_projetado) },
+                    { label: "Vendas aguardando D+2 (já no caixa atual)", value: brl(rv.entrando_5d, 0), color: green },
+                    { label: "Compras aguardando D+2 (já saiu do caixa)", value: brl(rv.saindo_5d, 0), color: red },
+                    { label: "Disponível sem pendência", value: brl(rv.saldo_projetado, 0), color: valColor(rv.saldo_projetado) },
                   ].map((k) => (
                     <div key={k.label}>
                       <p className="text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{k.label}</p>
@@ -212,7 +212,7 @@ export default function RendaVariavel() {
                           <th className="px-3 py-1.5 text-left">Tipo</th>
                           <th className="px-3 py-1.5 text-right">Valor</th>
                           <th className="px-3 py-1.5 text-right">Impacto</th>
-                          <th className="px-3 py-1.5 text-right">Saldo proj.</th>
+                          <th className="px-3 py-1.5 text-right">Disponível ao liquidar</th>
                         </tr>
                       </thead>
                       <tbody>
