@@ -508,7 +508,7 @@ export default function RendaVariavel() {
                   style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
                 >
                   <div className="px-5 py-3 border-b" style={{ borderColor: "var(--border-soft)" }}>
-                    <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{sinaiesAtivos.length} Sinal{sinaiesAtivos.length !== 1 ? "is" : ""} Ativo{sinaiesAtivos.length !== 1 ? "s" : ""}</h2>
+                    <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{sinaiesAtivos.length} {sinaiesAtivos.length === 1 ? "Sinal Ativo" : "Sinais Ativos"}</h2>
                   </div>
                   <div className="divide-y" style={{ borderColor: "var(--border-soft)" }}>
                     {sinaiesAtivos.map((s) => (

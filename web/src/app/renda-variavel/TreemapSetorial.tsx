@@ -44,12 +44,13 @@ export default function TreemapSetorial({ setores }: { setores: SetorDetalhado[]
   return (
     <div className="relative">
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 420, display: "block" }}>
-        {setorRects.map((sr) => {
+        {setorRects.map((sr, i) => {
           const cor = PALETA_HEX[sr.colorIdx % PALETA_HEX.length];
           const innerY = sr.y + HEADER_H;
           const innerH = Math.max(0, sr.h - HEADER_H);
           const ativoItems = sr.ativos.map((a) => ({ ...a, value: Math.max(0.01, a.valor) }));
           const ativoRects = sr.h > HEADER_H + 10 && sr.w > 4 ? treemapLayout(ativoItems, sr.x, innerY, sr.w, innerH) : [];
+          const clipId = `setor-clip-${i}`;
           return (
             <g key={sr.nome}>
               <rect
@@ -58,9 +59,14 @@ export default function TreemapSetorial({ setores }: { setores: SetorDetalhado[]
                 rx={4} fill={cor} opacity={0.14} stroke={cor} strokeWidth={1.5}
               />
               {sr.w > 60 && (
-                <text x={sr.x + 8} y={sr.y + 15} fontSize={11} fontWeight={700} fill={cor}>
-                  {sr.nome} · {brlCompact(sr.valor_total)}
-                </text>
+                <>
+                  <clipPath id={clipId}>
+                    <rect x={sr.x} y={sr.y} width={Math.max(0, sr.w - 6)} height={HEADER_H} />
+                  </clipPath>
+                  <text x={sr.x + 8} y={sr.y + 15} fontSize={11} fontWeight={700} fill={cor} clipPath={`url(#${clipId})`}>
+                    {sr.nome} · {brlCompact(sr.valor_total)}
+                  </text>
+                </>
               )}
               {ativoRects.map((ar) => (
                 <g
