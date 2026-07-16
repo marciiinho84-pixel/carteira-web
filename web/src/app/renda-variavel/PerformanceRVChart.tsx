@@ -47,7 +47,7 @@ export default function PerformanceRVChart({ twrRv, ibov, cdi, markers }: Props)
     if (!ref.current) return;
 
     const chart: IChartApi = createChart(ref.current, {
-      layout: { background: { color: BG_CARD }, textColor: TEXT_MUTED, fontSize: 11 },
+      layout: { background: { color: BG_CARD }, textColor: TEXT_MUTED, fontSize: 12 },
       grid: { vertLines: { color: BORDER_SOFT }, horzLines: { color: BORDER_SOFT } },
       rightPriceScale: { borderColor: BORDER, scaleMargins: { top: 0.12, bottom: 0.1 } },
       timeScale: { borderColor: BORDER, timeVisible: true, secondsVisible: false, fixLeftEdge: true, fixRightEdge: true },
@@ -90,7 +90,14 @@ export default function PerformanceRVChart({ twrRv, ibov, cdi, markers }: Props)
       .addLineSeries({ color: TEXT_MUTED, lineWidth: 1, lineStyle: LineStyle.Dashed, priceFormat: pctFmt, title: "CDI" })
       .setData(cdi as { time: Time; value: number }[]);
 
-    chart.timeScale().fitContent();
+    // Mostra só os últimos ~3 meses por padrão (não comprime o histórico todo) —
+    // o usuário arrasta o gráfico lateralmente (handleScroll) pra ver meses anteriores.
+    const JANELA_PADRAO = 60;
+    if (twrRv.length > JANELA_PADRAO) {
+      chart.timeScale().setVisibleLogicalRange({ from: twrRv.length - JANELA_PADRAO, to: twrRv.length - 1 });
+    } else {
+      chart.timeScale().fitContent();
+    }
 
     const ro = new ResizeObserver(() => {
       if (!wrapperRef.current) return;
@@ -106,7 +113,7 @@ export default function PerformanceRVChart({ twrRv, ibov, cdi, markers }: Props)
 
   return (
     <div ref={wrapperRef}>
-      <div className="flex items-center gap-4 mb-2 text-[11px] flex-wrap" style={{ color: "var(--text-muted)" }}>
+      <div className="flex items-center gap-4 mb-2 text-xs flex-wrap" style={{ color: "var(--text-muted)" }}>
         <LegendItem color={ACCENT} label="TWR RV" />
         <LegendItem color={WARNING} label="IBOV" />
         <LegendItem color={TEXT_MUTED} label="CDI" dashed />

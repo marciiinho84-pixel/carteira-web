@@ -211,8 +211,6 @@ export default function RendaVariavel() {
     setWatchlist((prev) => prev.filter((w) => w.id !== id));
   }
 
-  const sinaiesAtivos = sinais.filter((s) => s.tem_sinal_ativo);
-
   // ─── Agregação client-side (porta de get_carteira_rv_dados) ────────────────
 
   const dados = useMemo(() => {
@@ -305,7 +303,7 @@ export default function RendaVariavel() {
         <ActionBar />
         <div className="flex-1 px-4 py-4 md:px-8 md:py-6 space-y-4">
           <h1
-            className="text-2xl font-semibold"
+            className="text-3xl font-semibold"
             style={{ color: "var(--text-primary)", fontFamily: "var(--font-source-serif)" }}
           >
             Renda Variável
@@ -318,7 +316,7 @@ export default function RendaVariavel() {
           )}
           {error && (
             <div
-              className="rounded-xl border px-4 py-3 text-sm"
+              className="rounded-xl border px-5 py-4 text-base"
               style={{ borderColor: "rgba(180,68,44,0.3)", background: "rgba(180,68,44,0.08)", color: "var(--negative)" }}
             >
               {error}
@@ -330,7 +328,7 @@ export default function RendaVariavel() {
               {/* Pulso do dia */}
               {dados.movimentosExtremos.length > 0 && (
                 <div
-                  className="rounded-xl border px-4 py-3 text-sm"
+                  className="rounded-xl border px-5 py-4 text-base"
                   style={{ borderColor: "rgba(201,134,43,0.35)", background: "rgba(201,134,43,0.08)", color: "var(--warning)" }}
                 >
                   ⚡ Movimento expressivo hoje (&gt;5%):{" "}
@@ -338,25 +336,25 @@ export default function RendaVariavel() {
                 </div>
               )}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="rounded-xl border px-4 py-3" style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}>
-                  <p className="text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Carteira RV</p>
-                  <p className="text-base font-semibold mt-0.5" style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>{brl(dados.valorAtual, 0)}</p>
-                  <p className="text-[10px] mt-0.5" style={{ color: valColor(dados.varDiaRv) }}>{pct(dados.varDiaPct)} · {brlSinal(dados.varDiaRv, 0)} hoje</p>
+                <div className="rounded-xl border px-5 py-4" style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}>
+                  <p className="text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Carteira RV</p>
+                  <p className="text-lg font-semibold mt-0.5" style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>{brl(dados.valorAtual, 0)}</p>
+                  <p className="text-xs mt-0.5" style={{ color: valColor(dados.varDiaRv) }}>{pct(dados.varDiaPct)} · {brlSinal(dados.varDiaRv, 0)} hoje</p>
                 </div>
-                <div className="rounded-xl border px-4 py-3" style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}>
-                  <p className="text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Maior Alta</p>
-                  <Link href={`/ativos/${dados.movers.maiorAlta.ticker}`} className="text-base font-semibold mt-0.5 block hover:underline" style={{ color: green, fontFamily: "var(--font-plex-mono)" }}>{dados.movers.maiorAlta.ticker}</Link>
-                  <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>{pct(dados.movers.maiorAlta.pct)} · {brlSinal(dados.movers.maiorAlta.contrib_rs, 0)}</p>
+                <div className="rounded-xl border px-5 py-4" style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}>
+                  <p className="text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Maior Alta</p>
+                  <Link href={`/ativos/${dados.movers.maiorAlta.ticker}`} className="text-lg font-semibold mt-0.5 block hover:underline" style={{ color: green, fontFamily: "var(--font-plex-mono)" }}>{dados.movers.maiorAlta.ticker}</Link>
+                  <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{pct(dados.movers.maiorAlta.pct)} · {brlSinal(dados.movers.maiorAlta.contrib_rs, 0)}</p>
                 </div>
-                <div className="rounded-xl border px-4 py-3" style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}>
-                  <p className="text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Maior Queda</p>
-                  <Link href={`/ativos/${dados.movers.maiorQueda.ticker}`} className="text-base font-semibold mt-0.5 block hover:underline" style={{ color: red, fontFamily: "var(--font-plex-mono)" }}>{dados.movers.maiorQueda.ticker}</Link>
-                  <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>{pct(dados.movers.maiorQueda.pct)} · {brlSinal(dados.movers.maiorQueda.contrib_rs, 0)}</p>
+                <div className="rounded-xl border px-5 py-4" style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}>
+                  <p className="text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Maior Queda</p>
+                  <Link href={`/ativos/${dados.movers.maiorQueda.ticker}`} className="text-lg font-semibold mt-0.5 block hover:underline" style={{ color: red, fontFamily: "var(--font-plex-mono)" }}>{dados.movers.maiorQueda.ticker}</Link>
+                  <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{pct(dados.movers.maiorQueda.pct)} · {brlSinal(dados.movers.maiorQueda.contrib_rs, 0)}</p>
                 </div>
-                <div className="rounded-xl border px-4 py-3" style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}>
-                  <p className="text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Maior Impacto P&amp;L</p>
-                  <Link href={`/ativos/${dados.movers.maiorImpacto.ticker}`} className="text-base font-semibold mt-0.5 block hover:underline" style={{ color: valColor(dados.movers.maiorImpacto.contrib_rs), fontFamily: "var(--font-plex-mono)" }}>{dados.movers.maiorImpacto.ticker}</Link>
-                  <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>{brlSinal(dados.movers.maiorImpacto.contrib_rs, 0)} · {pct(dados.movers.maiorImpacto.pct)}</p>
+                <div className="rounded-xl border px-5 py-4" style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}>
+                  <p className="text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Maior Impacto P&amp;L</p>
+                  <Link href={`/ativos/${dados.movers.maiorImpacto.ticker}`} className="text-lg font-semibold mt-0.5 block hover:underline" style={{ color: valColor(dados.movers.maiorImpacto.contrib_rs), fontFamily: "var(--font-plex-mono)" }}>{dados.movers.maiorImpacto.ticker}</Link>
+                  <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{brlSinal(dados.movers.maiorImpacto.contrib_rs, 0)} · {pct(dados.movers.maiorImpacto.pct)}</p>
                 </div>
               </div>
 
@@ -367,34 +365,34 @@ export default function RendaVariavel() {
                   { label: "IBOV YTD", value: pct(rv.ibov_ytd), color: valColor(rv.ibov_ytd) },
                   { label: "S&P500 BRL YTD", value: pct(rv.sp500_brl_ytd), color: valColor(rv.sp500_brl_ytd) },
                 ].map((k) => (
-                  <div key={k.label} className="rounded-xl border px-4 py-3" style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}>
-                    <p className="text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{k.label}</p>
-                    <p className="text-lg font-bold mt-0.5" style={{ color: k.color, fontFamily: "var(--font-plex-mono)" }}>{k.value}</p>
+                  <div key={k.label} className="rounded-xl border px-5 py-4" style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}>
+                    <p className="text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{k.label}</p>
+                    <p className="text-xl font-bold mt-0.5" style={{ color: k.color, fontFamily: "var(--font-plex-mono)" }}>{k.value}</p>
                   </div>
                 ))}
               </div>
 
               {/* Heatmap de Posições */}
               <section className="rounded-xl border px-5 py-4" style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}>
-                <h2 className="text-sm font-semibold mb-1" style={{ color: "var(--text-primary)" }}>Mapa de Posições</h2>
-                <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>Selecione a dimensão de análise</p>
+                <h2 className="text-base font-semibold mb-1" style={{ color: "var(--text-primary)" }}>Mapa de Posições</h2>
+                <p className="text-sm mb-3" style={{ color: "var(--text-muted)" }}>Selecione a dimensão de análise</p>
                 {dados.posicoesOut.length > 0 ? (
                   <PosicoesHeatmap posicoes={dados.posicoesOut} />
                 ) : (
-                  <p className="text-sm" style={{ color: "var(--text-muted)" }}>Sem posições de Renda Variável.</p>
+                  <p className="text-base" style={{ color: "var(--text-muted)" }}>Sem posições de Renda Variável.</p>
                 )}
               </section>
 
               {/* Ranking P&L + Painel de Risco */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <section className="rounded-xl border px-5 py-4" style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}>
-                  <h2 className="text-sm font-semibold mb-3" style={{ color: "var(--text-primary)" }}>Ranking P&amp;L</h2>
+                  <h2 className="text-base font-semibold mb-3" style={{ color: "var(--text-primary)" }}>Ranking P&amp;L</h2>
                   <RankingPnl posicoes={dados.posicoesOut} />
                 </section>
 
                 <section className="rounded-xl border px-5 py-4" style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}>
-                  <h2 className="text-sm font-semibold mb-1" style={{ color: "var(--text-primary)" }}>Painel de Risco</h2>
-                  <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>Posições com P&amp;L abaixo de {pct(THRESH_ATENCAO)}</p>
+                  <h2 className="text-base font-semibold mb-1" style={{ color: "var(--text-primary)" }}>Painel de Risco</h2>
+                  <p className="text-sm mb-3" style={{ color: "var(--text-muted)" }}>Posições com P&amp;L abaixo de {pct(THRESH_ATENCAO)}</p>
                   {dados.emRisco.length > 0 ? (
                     <div className="space-y-2">
                       {dados.emRisco.map((p) => {
@@ -403,12 +401,12 @@ export default function RendaVariavel() {
                         return (
                           <div key={p.ticker} className="rounded-lg px-3 py-2 border-l-4" style={{ borderLeftColor: cor, background: critico ? "rgba(180,68,44,0.06)" : "rgba(201,134,43,0.06)" }}>
                             <div className="flex items-center justify-between">
-                              <Link href={`/ativos/${p.ticker}`} className="text-sm font-bold hover:underline" style={{ color: "var(--text-primary)" }}>{p.ticker}</Link>
-                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded" style={{ color: cor, background: critico ? "rgba(180,68,44,0.15)" : "rgba(201,134,43,0.15)" }}>
+                              <Link href={`/ativos/${p.ticker}`} className="text-base font-bold hover:underline" style={{ color: "var(--text-primary)" }}>{p.ticker}</Link>
+                              <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ color: cor, background: critico ? "rgba(180,68,44,0.15)" : "rgba(201,134,43,0.15)" }}>
                                 {critico ? "CRÍTICO" : "ATENÇÃO"}
                               </span>
                             </div>
-                            <p className="text-xs" style={{ color: cor, fontFamily: "var(--font-plex-mono)" }}>
+                            <p className="text-sm" style={{ color: cor, fontFamily: "var(--font-plex-mono)" }}>
                               {pct(p.pl_total_pct)} <span style={{ color: "var(--text-muted)", fontFamily: "inherit" }}>· {brl(Math.abs(p.pl_total_rs), 0)}</span>
                             </p>
                           </div>
@@ -416,7 +414,7 @@ export default function RendaVariavel() {
                       })}
                     </div>
                   ) : (
-                    <div className="rounded-lg px-4 py-4 text-center text-sm" style={{ background: "rgba(74,124,89,0.08)", border: "1px solid rgba(74,124,89,0.25)", color: green }}>
+                    <div className="rounded-lg px-4 py-4 text-center text-base" style={{ background: "rgba(74,124,89,0.08)", border: "1px solid rgba(74,124,89,0.25)", color: green }}>
                       ✓ Nenhuma posição abaixo de {pct(THRESH_ATENCAO)}
                     </div>
                   )}
@@ -428,7 +426,7 @@ export default function RendaVariavel() {
                 className="rounded-xl border px-5 py-4"
                 style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
               >
-                <h2 className="text-sm font-semibold mb-3" style={{ color: "var(--text-primary)" }}>Caixa e Liquidações (D+2)</h2>
+                <h2 className="text-base font-semibold mb-3" style={{ color: "var(--text-primary)" }}>Caixa e Liquidações (D+2)</h2>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                   {[
                     { label: "Caixa atual (Geral)", value: brl(rv.caixa_atual, 0), color: green },
@@ -437,37 +435,37 @@ export default function RendaVariavel() {
                     { label: "Disponível sem pendência", value: brl(rv.saldo_projetado, 0), color: valColor(rv.saldo_projetado) },
                   ].map((k) => (
                     <div key={k.label}>
-                      <p className="text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{k.label}</p>
-                      <p className="text-sm font-bold mt-0.5" style={{ color: k.color, fontFamily: "var(--font-plex-mono)" }}>{k.value}</p>
+                      <p className="text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{k.label}</p>
+                      <p className="text-base font-bold mt-0.5" style={{ color: k.color, fontFamily: "var(--font-plex-mono)" }}>{k.value}</p>
                     </div>
                   ))}
                 </div>
                 {rv.pendentes.length > 0 && (
                   <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
+                    <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-y text-[10px] uppercase" style={{ borderColor: "var(--border-soft)", color: "var(--text-faint)" }}>
-                          <th className="px-3 py-1.5 text-left">Liquidação</th>
-                          <th className="px-3 py-1.5 text-left">Ativo</th>
-                          <th className="px-3 py-1.5 text-left">Tipo</th>
-                          <th className="px-3 py-1.5 text-right">Valor</th>
-                          <th className="px-3 py-1.5 text-right">Impacto</th>
-                          <th className="px-3 py-1.5 text-right">Disponível ao liquidar</th>
+                        <tr className="border-y text-xs uppercase" style={{ borderColor: "var(--border-soft)", color: "var(--text-faint)" }}>
+                          <th className="px-3 py-2 text-left">Liquidação</th>
+                          <th className="px-3 py-2 text-left">Ativo</th>
+                          <th className="px-3 py-2 text-left">Tipo</th>
+                          <th className="px-3 py-2 text-right">Valor</th>
+                          <th className="px-3 py-2 text-right">Impacto</th>
+                          <th className="px-3 py-2 text-right">Disponível ao liquidar</th>
                         </tr>
                       </thead>
                       <tbody>
                         {rv.pendentes.map((p, i) => (
                           <tr key={i} className="border-b" style={{ borderColor: "var(--border-soft)" }}>
-                            <td className="px-3 py-1.5" style={{ color: "var(--text-muted)", fontFamily: "var(--font-plex-mono)" }}>{p.liquidacao}</td>
-                            <td className="px-3 py-1.5 font-bold">
+                            <td className="px-3 py-2" style={{ color: "var(--text-muted)", fontFamily: "var(--font-plex-mono)" }}>{p.liquidacao}</td>
+                            <td className="px-3 py-2 font-bold">
                               <Link href={`/ativos/${p.ativo}`} className="hover:underline" style={{ color: "var(--purple-accent)" }}>{p.ativo}</Link>
                             </td>
-                            <td className="px-3 py-1.5" style={{ color: "var(--text-muted)" }}>{p.tipo}</td>
-                            <td className="px-3 py-1.5 text-right" style={{ color: "var(--text-body)", fontFamily: "var(--font-plex-mono)" }}>{brl(p.valor, 2)}</td>
-                            <td className="px-3 py-1.5 text-right font-bold" style={{ color: valColor(p.impacto), fontFamily: "var(--font-plex-mono)" }}>
+                            <td className="px-3 py-2" style={{ color: "var(--text-muted)" }}>{p.tipo}</td>
+                            <td className="px-3 py-2 text-right" style={{ color: "var(--text-body)", fontFamily: "var(--font-plex-mono)" }}>{brl(p.valor, 2)}</td>
+                            <td className="px-3 py-2 text-right font-bold" style={{ color: valColor(p.impacto), fontFamily: "var(--font-plex-mono)" }}>
                               {p.impacto >= 0 ? "+" : ""}{brl(p.impacto, 2)}
                             </td>
-                            <td className="px-3 py-1.5 text-right" style={{ color: "var(--text-muted)", fontFamily: "var(--font-plex-mono)" }}>{brl(p.saldo_projetado, 0)}</td>
+                            <td className="px-3 py-2 text-right" style={{ color: "var(--text-muted)", fontFamily: "var(--font-plex-mono)" }}>{brl(p.saldo_projetado, 0)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -478,8 +476,8 @@ export default function RendaVariavel() {
 
               {/* Performance RV vs Benchmarks */}
               <section className="rounded-xl border px-5 py-4" style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}>
-                <h2 className="text-sm font-semibold mb-1" style={{ color: "var(--text-primary)" }}>Performance RV vs Benchmarks</h2>
-                <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>TWR carteira · IBOV · CDI — marcadores de operações</p>
+                <h2 className="text-base font-semibold mb-1" style={{ color: "var(--text-primary)" }}>Performance RV vs Benchmarks</h2>
+                <p className="text-sm mb-3" style={{ color: "var(--text-muted)" }}>TWR carteira · IBOV · CDI — marcadores de operações</p>
                 {dados.performanceSerie.length > 0 ? (
                   <PerformanceRVChart
                     twrRv={dados.performanceSerie.map((r) => ({ time: r.time, value: r.twr_rv }))}
@@ -488,45 +486,16 @@ export default function RendaVariavel() {
                     markers={dados.markers}
                   />
                 ) : (
-                  <p className="text-sm" style={{ color: "var(--text-muted)" }}>Dados de evolução indisponíveis.</p>
+                  <p className="text-base" style={{ color: "var(--text-muted)" }}>Dados de evolução indisponíveis.</p>
                 )}
               </section>
 
               {/* Análise Setorial (treemap) */}
               {dados.setoresDetalhados.length > 0 && (
                 <section className="rounded-xl border px-5 py-4" style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}>
-                  <h2 className="text-sm font-semibold mb-1" style={{ color: "var(--text-primary)" }}>Análise Setorial</h2>
-                  <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>setor → ativos · tamanho = valor alocado</p>
+                  <h2 className="text-base font-semibold mb-1" style={{ color: "var(--text-primary)" }}>Análise Setorial</h2>
+                  <p className="text-sm mb-3" style={{ color: "var(--text-muted)" }}>setor → ativos · tamanho = valor alocado</p>
                   <TreemapSetorial setores={dados.setoresDetalhados} />
-                </section>
-              )}
-
-              {/* Sinais ativos */}
-              {sinaiesAtivos.length > 0 && (
-                <section
-                  className="rounded-xl border"
-                  style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
-                >
-                  <div className="px-5 py-3 border-b" style={{ borderColor: "var(--border-soft)" }}>
-                    <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{sinaiesAtivos.length} {sinaiesAtivos.length === 1 ? "Sinal Ativo" : "Sinais Ativos"}</h2>
-                  </div>
-                  <div className="divide-y" style={{ borderColor: "var(--border-soft)" }}>
-                    {sinaiesAtivos.map((s) => (
-                      <div key={s.ticker} className="flex items-center gap-4 px-5 py-2.5 flex-wrap">
-                        <Link href={`/ativos/${s.ticker}`} className="font-bold w-20 shrink-0" style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>{s.ticker}</Link>
-                        <span
-                          className="text-xs px-2 py-0.5 rounded font-semibold border"
-                          style={{ whiteSpace: "nowrap", color: s.combinado.cor, borderColor: s.combinado.cor }}
-                        >
-                          {s.combinado.label}
-                        </span>
-                        {s.rsi_label && <span className="text-xs" style={{ color: s.rsi_cor ?? "var(--text-muted)" }}>{s.rsi_label}</span>}
-                        {s.macd_label && <span className="text-xs" style={{ color: s.macd_cor ?? "var(--text-muted)" }}>{s.macd_label}</span>}
-                        {s.mm_label && <span className="text-xs" style={{ color: s.mm_cor ?? "var(--text-muted)" }}>{s.mm_label}</span>}
-                        {s.fonte && <span className="text-[10px] ml-auto" style={{ color: "var(--text-faint)" }}>{s.fonte}</span>}
-                      </div>
-                    ))}
-                  </div>
                 </section>
               )}
 
@@ -536,7 +505,7 @@ export default function RendaVariavel() {
                 style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
               >
                 <div className="px-5 py-3 border-b" style={{ borderColor: "var(--border-soft)" }}>
-                  <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Watchlist</h2>
+                  <h2 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>Watchlist</h2>
                 </div>
                 {/* Adicionar */}
                 <div className="px-5 py-3 border-b flex flex-wrap gap-2" style={{ borderColor: "var(--border-soft)" }}>
@@ -544,7 +513,7 @@ export default function RendaVariavel() {
                     value={wlTicker}
                     onChange={(e) => setWlTicker(e.target.value.toUpperCase())}
                     placeholder="Ticker"
-                    className="rounded px-2 py-1.5 text-xs w-24 border focus:outline-none"
+                    className="rounded px-2 py-1.5 text-sm w-24 border focus:outline-none"
                     style={{ background: "var(--bg-app)", borderColor: "var(--border)", color: "var(--text-body)" }}
                   />
                   <input
@@ -552,7 +521,7 @@ export default function RendaVariavel() {
                     onChange={(e) => setWlAlvo(e.target.value)}
                     placeholder="Preço alvo"
                     type="number"
-                    className="rounded px-2 py-1.5 text-xs w-28 border focus:outline-none"
+                    className="rounded px-2 py-1.5 text-sm w-28 border focus:outline-none"
                     style={{ background: "var(--bg-app)", borderColor: "var(--border)", color: "var(--text-body)" }}
                   />
                   <input
@@ -560,47 +529,47 @@ export default function RendaVariavel() {
                     onChange={(e) => setWlStop(e.target.value)}
                     placeholder="Stop-loss (opc.)"
                     type="number"
-                    className="rounded px-2 py-1.5 text-xs w-28 border focus:outline-none"
+                    className="rounded px-2 py-1.5 text-sm w-28 border focus:outline-none"
                     style={{ background: "var(--bg-app)", borderColor: "var(--border)", color: "var(--text-body)" }}
                   />
                   <input
                     value={wlMotivo}
                     onChange={(e) => setWlMotivo(e.target.value)}
                     placeholder="Motivo / tese (opcional)"
-                    className="rounded px-2 py-1.5 text-xs flex-1 min-w-[120px] border focus:outline-none"
+                    className="rounded px-2 py-1.5 text-sm flex-1 min-w-[120px] border focus:outline-none"
                     style={{ background: "var(--bg-app)", borderColor: "var(--border)", color: "var(--text-body)" }}
                   />
                   <button
                     onClick={addWatchlist}
                     disabled={wlAdding || !wlTicker.trim() || !wlAlvo}
-                    className="rounded px-3 py-1.5 text-xs font-medium border disabled:opacity-40 transition"
+                    className="rounded px-3 py-2 text-sm font-medium border disabled:opacity-40 transition"
                     style={{ whiteSpace: "nowrap", background: "rgba(193,95,60,0.08)", color: "var(--accent-strong)", borderColor: "rgba(193,95,60,0.4)" }}
                   >
                     {wlAdding ? "…" : "+ Adicionar"}
                   </button>
                 </div>
                 {watchlist.length === 0 ? (
-                  <p className="px-5 py-4 text-xs" style={{ color: "var(--text-faint)" }}>Watchlist vazia</p>
+                  <p className="px-5 py-4 text-sm" style={{ color: "var(--text-faint)" }}>Watchlist vazia</p>
                 ) : (
                   <div className="divide-y" style={{ borderColor: "var(--border-soft)" }}>
                     {watchlist.map((w) => (
-                      <div key={w.id} className="flex items-center gap-3 px-5 py-2.5 flex-wrap">
+                      <div key={w.id} className="flex items-center gap-3 px-5 py-3 flex-wrap">
                         <Link href={`/ativos/${w.ticker}`} className="font-bold w-20 shrink-0" style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>{w.ticker}</Link>
-                        {w.preco_alvo != null && <span className="text-xs" style={{ color: "var(--text-muted)", fontFamily: "var(--font-plex-mono)" }}>alvo: {brl(w.preco_alvo, 2)}</span>}
-                        {w.stop_loss != null && <span className="text-xs" style={{ color: "var(--negative)", fontFamily: "var(--font-plex-mono)" }}>stop: {brl(w.stop_loss, 2)}</span>}
-                        {w.cotacao_atual != null && <span className="text-xs" style={{ color: "var(--text-muted)", fontFamily: "var(--font-plex-mono)" }}>cot.: {brl(w.cotacao_atual, 2)}</span>}
+                        {w.preco_alvo != null && <span className="text-sm" style={{ color: "var(--text-muted)", fontFamily: "var(--font-plex-mono)" }}>alvo: {brl(w.preco_alvo, 2)}</span>}
+                        {w.stop_loss != null && <span className="text-sm" style={{ color: "var(--negative)", fontFamily: "var(--font-plex-mono)" }}>stop: {brl(w.stop_loss, 2)}</span>}
+                        {w.cotacao_atual != null && <span className="text-sm" style={{ color: "var(--text-muted)", fontFamily: "var(--font-plex-mono)" }}>cot.: {brl(w.cotacao_atual, 2)}</span>}
                         {w.sinal && (
                           <span
-                            className="text-[10px] px-1.5 py-0.5 rounded border"
+                            className="text-xs px-1.5 py-0.5 rounded border"
                             style={{ whiteSpace: "nowrap", color: sinalColor(w.sinal), borderColor: sinalColor(w.sinal) }}
                           >
                             {w.sinal}
                           </span>
                         )}
-                        {w.motivo && <span className="text-[10px] flex-1 truncate" style={{ color: "var(--text-faint)" }}>{w.motivo}</span>}
+                        {w.motivo && <span className="text-xs flex-1 truncate" style={{ color: "var(--text-faint)" }}>{w.motivo}</span>}
                         <button
                           onClick={() => removeWatchlist(w.id)}
-                          className="ml-auto text-xs shrink-0 transition"
+                          className="ml-auto text-sm shrink-0 transition"
                           style={{ color: "var(--text-faint)" }}
                           onMouseEnter={(e) => (e.currentTarget.style.color = "var(--negative)")}
                           onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-faint)")}
@@ -620,12 +589,12 @@ export default function RendaVariavel() {
                   style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
                 >
                   <div className="px-5 py-3 border-b" style={{ borderColor: "var(--border-soft)" }}>
-                    <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Sinais — todos os ativos ({sinais.length})</h2>
+                    <h2 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>{sinais.length} {sinais.length === 1 ? "Sinal Ativo" : "Sinais Ativos"}</h2>
                   </div>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
+                    <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-b text-[10px] uppercase" style={{ borderColor: "var(--border-soft)", color: "var(--text-faint)" }}>
+                        <tr className="border-b text-xs uppercase" style={{ borderColor: "var(--border-soft)", color: "var(--text-faint)" }}>
                           <th className="px-4 py-2 text-left">Ativo</th>
                           <th className="px-4 py-2 text-left">Sinal</th>
                           <th className="px-4 py-2 text-left">RSI</th>
@@ -645,13 +614,13 @@ export default function RendaVariavel() {
                             onClick={() => router.push(`/ativos/${s.ticker}`)}
                           >
                             <td className="px-4 py-2 font-bold" style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>{s.ticker}</td>
-                            <td className="px-4 py-2">
+                            <td className="px-4 py-2.5">
                               <span className="font-semibold" style={{ color: s.combinado.cor }}>{s.combinado.label}</span>
                             </td>
-                            <td className="px-4 py-2" style={{ color: s.rsi_cor ?? "var(--text-muted)" }}>{s.rsi_label ?? "—"}</td>
-                            <td className="px-4 py-2" style={{ color: s.macd_cor ?? "var(--text-muted)" }}>{s.macd_label ?? "—"}</td>
-                            <td className="px-4 py-2" style={{ color: s.mm_cor ?? "var(--text-muted)" }}>{s.mm_label ?? "—"}</td>
-                            <td className="px-4 py-2" style={{ color: "var(--text-muted)" }}>{s.fonte ?? "—"}</td>
+                            <td className="px-4 py-2.5" style={{ color: s.rsi_cor ?? "var(--text-muted)" }}>{s.rsi_label ?? "—"}</td>
+                            <td className="px-4 py-2.5" style={{ color: s.macd_cor ?? "var(--text-muted)" }}>{s.macd_label ?? "—"}</td>
+                            <td className="px-4 py-2.5" style={{ color: s.mm_cor ?? "var(--text-muted)" }}>{s.mm_label ?? "—"}</td>
+                            <td className="px-4 py-2.5" style={{ color: "var(--text-muted)" }}>{s.fonte ?? "—"}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -666,30 +635,30 @@ export default function RendaVariavel() {
                 style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
               >
                 <div className="px-5 py-3 border-b" style={{ borderColor: "var(--border-soft)" }}>
-                  <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Contexto do Diário</h2>
+                  <h2 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>Contexto do Diário</h2>
                 </div>
                 {dados.decisoesRV.length > 0 ? (
                   <div className="divide-y" style={{ borderColor: "var(--border-soft)" }}>
                     {dados.decisoesRV.map((d) => (
                       <div key={d.id} className="px-5 py-3">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="text-[10px]" style={{ color: "var(--text-faint)" }}>{d.data_decisao}</span>
-                          <Link href={`/ativos/${d.ativo}`} className="text-xs font-bold hover:underline" style={{ color: "var(--text-primary)" }}>{d.ativo}</Link>
+                          <span className="text-xs" style={{ color: "var(--text-faint)" }}>{d.data_decisao}</span>
+                          <Link href={`/ativos/${d.ativo}`} className="text-sm font-bold hover:underline" style={{ color: "var(--text-primary)" }}>{d.ativo}</Link>
                           <span
-                            className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                            className="text-xs font-semibold px-1.5 py-0.5 rounded"
                             style={{ color: sinalColor(d.acao), background: `color-mix(in srgb, ${sinalColor(d.acao)} 15%, transparent)` }}
                           >
                             {d.acao}
                           </span>
                         </div>
-                        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                        <p className="text-sm" style={{ color: "var(--text-muted)" }}>
                           {d.tese.length > 160 ? d.tese.slice(0, 160) + "…" : d.tese}
                         </p>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="px-5 py-4 text-xs" style={{ color: "var(--text-faint)" }}>Nenhuma decisão registrada para ativos de Renda Variável ainda.</p>
+                  <p className="px-5 py-4 text-sm" style={{ color: "var(--text-faint)" }}>Nenhuma decisão registrada para ativos de Renda Variável ainda.</p>
                 )}
               </section>
             </>
