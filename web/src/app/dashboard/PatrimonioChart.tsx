@@ -89,7 +89,9 @@ export default function PatrimonioChart({ patrimonio, twr, cdi, ibov }: Props) {
       ...SHARED_OPTS,
       width: botRef.current.clientWidth,
       height: 200,
-      rightPriceScale: { borderColor: BORDER, scaleMargins: { top: 0.05, bottom: 0.05 } },
+      // top maior que o padrão — dá espaço pras etiquetas de último valor
+      // (IBOV/CDI/TWR, empilhadas) não colidirem com o rótulo do grid mais alto.
+      rightPriceScale: { borderColor: BORDER, scaleMargins: { top: 0.16, bottom: 0.05 } },
     });
 
     const pctFmt = {
@@ -121,21 +123,32 @@ export default function PatrimonioChart({ patrimonio, twr, cdi, ibov }: Props) {
       })
       .setData(twr.map((d) => ({ time: d.time as Time, value: 0 })));
 
-    function syncCharts(src: IChartApi, dst: IChartApi, dstSeries: ISeriesApi<"Area"> | ISeriesApi<"Line">) {
+    // dstSeries pertence ao gráfico DESTINO, não ao que disparou o evento —
+    // param.seriesData (do gráfico de origem) nunca teria essa série como
+    // chave, então o valor precisa vir dos dados locais pelo mesmo tempo.
+    function syncCharts(
+      src: IChartApi,
+      dst: IChartApi,
+      dstSeries: ISeriesApi<"Area"> | ISeriesApi<"Line">,
+      dstData: Ponto[],
+    ) {
       src.timeScale().subscribeVisibleLogicalRangeChange((range) => {
         if (range) dst.timeScale().setVisibleLogicalRange(range);
       });
       src.subscribeCrosshairMove((param) => {
-        if (!param.time) return;
-        const val = param.seriesData.get(dstSeries);
-        if (val && "value" in val && val.value !== undefined) {
-          dst.setCrosshairPosition(val.value, param.time, dstSeries);
+        if (!param.time) {
+          dst.clearCrosshairPosition();
+          return;
+        }
+        const ponto = dstData.find((d) => d.time === param.time);
+        if (ponto) {
+          dst.setCrosshairPosition(ponto.value, param.time as Time, dstSeries);
         }
       });
     }
 
-    syncCharts(chartTop, chartBot, twrLine);
-    syncCharts(chartBot, chartTop, areaSeries);
+    syncCharts(chartTop, chartBot, twrLine, twr);
+    syncCharts(chartBot, chartTop, areaSeries, patrimonio);
 
     chartTop.timeScale().fitContent();
     chartBot.timeScale().fitContent();
