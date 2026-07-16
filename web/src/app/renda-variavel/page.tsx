@@ -77,12 +77,19 @@ interface Evento {
 
 interface SinalItem {
   ticker: string;
-  sinal: string;
-  fonte?: string;
-  preco_atual?: number;
-  preco_alvo?: number;
-  variacao_dia?: number;
+  rsi?: number | null;
+  rsi_label?: string;
+  rsi_cor?: string;
+  macd_sinal?: string;
+  macd_label?: string;
+  macd_cor?: string;
+  mm_sinal?: string;
+  mm_label?: string;
+  mm_cor?: string;
+  combinado: { label: string; cor: string; peso: number };
   tem_sinal_ativo?: boolean;
+  erro?: string | null;
+  fonte?: string;
 }
 
 interface WatchlistItem {
@@ -509,12 +516,13 @@ export default function RendaVariavel() {
                         <Link href={`/ativos/${s.ticker}`} className="font-bold w-20 shrink-0" style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>{s.ticker}</Link>
                         <span
                           className="text-xs px-2 py-0.5 rounded font-semibold border"
-                          style={{ whiteSpace: "nowrap", color: sinalColor(s.sinal), borderColor: sinalColor(s.sinal) }}
+                          style={{ whiteSpace: "nowrap", color: s.combinado.cor, borderColor: s.combinado.cor }}
                         >
-                          {s.sinal}
+                          {s.combinado.label}
                         </span>
-                        {s.preco_atual != null && <span className="text-xs" style={{ color: "var(--text-muted)", fontFamily: "var(--font-plex-mono)" }}>atual: {brl(s.preco_atual, 2)}</span>}
-                        {s.preco_alvo != null && <span className="text-xs" style={{ color: "var(--text-muted)", fontFamily: "var(--font-plex-mono)" }}>alvo: {brl(s.preco_alvo, 2)}</span>}
+                        {s.rsi_label && <span className="text-xs" style={{ color: s.rsi_cor ?? "var(--text-muted)" }}>{s.rsi_label}</span>}
+                        {s.macd_label && <span className="text-xs" style={{ color: s.macd_cor ?? "var(--text-muted)" }}>{s.macd_label}</span>}
+                        {s.mm_label && <span className="text-xs" style={{ color: s.mm_cor ?? "var(--text-muted)" }}>{s.mm_label}</span>}
                         {s.fonte && <span className="text-[10px] ml-auto" style={{ color: "var(--text-faint)" }}>{s.fonte}</span>}
                       </div>
                     ))}
@@ -620,8 +628,9 @@ export default function RendaVariavel() {
                         <tr className="border-b text-[10px] uppercase" style={{ borderColor: "var(--border-soft)", color: "var(--text-faint)" }}>
                           <th className="px-4 py-2 text-left">Ativo</th>
                           <th className="px-4 py-2 text-left">Sinal</th>
-                          <th className="px-4 py-2 text-right">Preço</th>
-                          <th className="px-4 py-2 text-right">Alvo</th>
+                          <th className="px-4 py-2 text-left">RSI</th>
+                          <th className="px-4 py-2 text-left">MACD</th>
+                          <th className="px-4 py-2 text-left">MM</th>
                           <th className="px-4 py-2 text-left">Fonte</th>
                         </tr>
                       </thead>
@@ -637,10 +646,11 @@ export default function RendaVariavel() {
                           >
                             <td className="px-4 py-2 font-bold" style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>{s.ticker}</td>
                             <td className="px-4 py-2">
-                              <span className="font-semibold" style={{ color: sinalColor(s.sinal) }}>{s.sinal}</span>
+                              <span className="font-semibold" style={{ color: s.combinado.cor }}>{s.combinado.label}</span>
                             </td>
-                            <td className="px-4 py-2 text-right" style={{ color: "var(--text-body)", fontFamily: "var(--font-plex-mono)" }}>{s.preco_atual != null ? brl(s.preco_atual, 2) : "—"}</td>
-                            <td className="px-4 py-2 text-right" style={{ color: "var(--text-body)", fontFamily: "var(--font-plex-mono)" }}>{s.preco_alvo != null ? brl(s.preco_alvo, 2) : "—"}</td>
+                            <td className="px-4 py-2" style={{ color: s.rsi_cor ?? "var(--text-muted)" }}>{s.rsi_label ?? "—"}</td>
+                            <td className="px-4 py-2" style={{ color: s.macd_cor ?? "var(--text-muted)" }}>{s.macd_label ?? "—"}</td>
+                            <td className="px-4 py-2" style={{ color: s.mm_cor ?? "var(--text-muted)" }}>{s.mm_label ?? "—"}</td>
                             <td className="px-4 py-2" style={{ color: "var(--text-muted)" }}>{s.fonte ?? "—"}</td>
                           </tr>
                         ))}
