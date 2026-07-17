@@ -55,7 +55,7 @@ export default function PosicoesHeatmap({ posicoes }: { posicoes: PosicaoHeat[] 
 
   function corCelula(p: PosicaoHeat): string {
     if (modo === "dia") return interpolateColor(p.variacao_dia_pct * 100, -3, 3, DIVERGENTE);
-    if (modo === "pnl") return interpolateColor(p.pl_total_pct * 100, -50, 100, DIVERGENTE);
+    if (modo === "pnl") return interpolateColor(p.pl_total_pct * 100, -50, 50, DIVERGENTE);
     return interpolateColor(p.pct_rv * 100, 0, 20, SEQUENCIAL);
   }
 
