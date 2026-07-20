@@ -4,7 +4,6 @@ export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import Nav from "@/components/Nav";
 import ActionBar from "@/components/ActionBar";
 import { apiFetch, clearToken } from "@/lib/api";
@@ -88,6 +87,11 @@ const COLS: ColDef[] = [
   { key: "yield_12m", label: "Yield 12m", align: "right" },
   { key: "peso", label: "Peso %", align: "right" },
 ];
+
+// Colunas ocultas na tabela visível (continuam disponíveis na exportação CSV,
+// que usa COLS completo — só a exibição na tela fica mais estreita).
+const COLS_OCULTAS_NA_TABELA = new Set<SortKey>(["classe", "familia", "composite", "bloco_ips"]);
+const TABLE_COLS = COLS.filter((c) => !COLS_OCULTAS_NA_TABELA.has(c.key));
 
 function csvEscape(v: string | number): string {
   const s = String(v);
@@ -458,7 +462,7 @@ export default function Posicoes() {
                         className="border-b text-xs uppercase tracking-wider"
                         style={{ borderColor: "var(--border-soft)", color: "var(--text-faint)" }}
                       >
-                        {COLS.map((c) => (
+                        {TABLE_COLS.map((c) => (
                           <th
                             key={c.key}
                             onClick={() => toggleSort(c.key)}
@@ -498,23 +502,6 @@ export default function Posicoes() {
                                 )}
                               </div>
                             </td>
-                            <td className="px-4 py-2.5 text-sm" style={{ color: "var(--text-muted)" }}>{p.classe ?? "—"}</td>
-                            <td className="px-4 py-2.5 text-sm" style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>{p.familia ?? "—"}</td>
-                            <td className="px-4 py-2.5 text-sm" style={{ color: "var(--text-muted)" }}>{p.composite ?? "—"}</td>
-                            <td className="px-4 py-2.5 text-sm">
-                              {p.bloco_ips ? (
-                                <Link
-                                  href={`/blocos/${p.bloco_ips}`}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="hover:underline"
-                                  style={{ color: "var(--purple-accent)", whiteSpace: "nowrap" }}
-                                >
-                                  {BLOCO_LABEL[p.bloco_ips] ?? p.bloco_ips}
-                                </Link>
-                              ) : (
-                                <span style={{ color: "var(--text-faint)" }}>—</span>
-                              )}
-                            </td>
                             <td className="px-4 py-2.5 text-right text-sm" style={{ color: "var(--text-body)", fontFamily: "var(--font-plex-mono)" }}>{fmt2(p.qtd)}</td>
                             <td className="px-4 py-2.5 text-right text-sm" style={{ color: "var(--text-body)", fontFamily: "var(--font-plex-mono)" }}>{brl(p.custo_medio)}</td>
                             <td className="px-4 py-2.5 text-right text-sm" style={{ color: "var(--text-body)", fontFamily: "var(--font-plex-mono)" }}>{brl(p.custo_total)}</td>
@@ -539,7 +526,7 @@ export default function Posicoes() {
                     </tbody>
                     <tfoot>
                       <tr className="border-t text-sm font-bold" style={{ borderColor: "var(--border)", background: "var(--bg-card-alt)" }}>
-                        <td className="px-4 py-2.5" style={{ color: "var(--text-primary)" }} colSpan={7}>Total ({filtered.length} ativos)</td>
+                        <td className="px-4 py-2.5" style={{ color: "var(--text-primary)" }} colSpan={3}>Total ({filtered.length} ativos)</td>
                         <td className="px-4 py-2.5 text-right" style={{ color: "var(--text-primary)", fontFamily: "var(--font-plex-mono)" }}>{brl(totalCusto)}</td>
                         <td className="px-4 py-2.5" />
                         <td className="px-4 py-2.5" />
