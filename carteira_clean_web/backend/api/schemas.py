@@ -165,6 +165,7 @@ class PosicaoOut(BaseModel):
     classe: Optional[str] = None
     familia: Optional[str] = None
     composite: str
+    bloco_ips: Optional[str] = None
     qtd: float
     custo_total: float
     custo_medio: float

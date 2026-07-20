@@ -152,6 +152,7 @@ def posicoes(db: Session = Depends(get_db)):
             classe=info.get("classe"),
             familia=familia,
             composite=composite,
+            bloco_ips=info.get("bloco_ips"),
             qtd=p.qtd,
             custo_total=p.custo_total,
             custo_medio=p.custo_medio,
