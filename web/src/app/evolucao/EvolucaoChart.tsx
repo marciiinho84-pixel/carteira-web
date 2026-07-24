@@ -72,8 +72,12 @@ export default function EvolucaoChart({ total, funcef, gerida, twrGerida, cdi, i
       ...SHARED_OPTS,
       width: topRef.current.clientWidth,
       height: 280,
-      rightPriceScale: { borderColor: BORDER, scaleMargins: { top: 0.08, bottom: 0.05 } },
-      leftPriceScale: { visible: true, borderColor: BORDER },
+      // scaleMargins empurra Total/FUNCEF pra metade de cima e Gerida pra metade de
+      // baixo do pane — os eixos já são independentes (escalas certas), mas sem essa
+      // separação as três linhas ocupam a mesma faixa de pixels e ficam visualmente
+      // sobrepostas, dando a falsa impressão de estarem na mesma escala.
+      rightPriceScale: { borderColor: BORDER, scaleMargins: { top: 0.05, bottom: 0.55 } },
+      leftPriceScale: { visible: true, borderColor: BORDER, scaleMargins: { top: 0.55, bottom: 0.05 } },
     });
 
     const totalFmt = {
