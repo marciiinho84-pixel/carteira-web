@@ -8,6 +8,8 @@ import Nav from "@/components/Nav";
 import ActionBar from "@/components/ActionBar";
 import { apiFetch, clearToken } from "@/lib/api";
 import { useRefreshSignal } from "@/lib/refresh-context";
+import EvolucaoChart from "./EvolucaoChart";
+import DrawdownChart from "./DrawdownChart";
 
 interface EvolucaoDiaria {
   data: string;
@@ -31,6 +33,11 @@ function brl(n: number): string {
 function pct(n: number, digits = 2): string {
   const sign = n >= 0 ? "+" : "";
   return sign + (n * 100).toFixed(digits) + "%";
+}
+
+function csvEscape(v: string | number): string {
+  const s = String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 const cardShadow = "0 1px 3px rgba(61,54,41,0.06)";
@@ -83,71 +90,6 @@ function agruparMensal(serie: EvolucaoDiaria[]): {
   });
 }
 
-function GraficoSVG({ serie }: { serie: EvolucaoDiaria[] }) {
-  const W = 900, H = 200, PAD = { top: 16, right: 16, bottom: 24, left: 70 };
-
-  if (serie.length < 2) {
-    return <div className="text-xs italic px-4 py-8 text-center" style={{ color: "var(--text-faint)" }}>Dados insuficientes para o gráfico.</div>;
-  }
-
-  const valores = serie.map((d) => d.patrimonio_total);
-  const minV = Math.min(...valores);
-  const maxV = Math.max(...valores);
-  const rangeV = maxV - minV || 1;
-  const innerW = W - PAD.left - PAD.right;
-  const innerH = H - PAD.top - PAD.bottom;
-
-  const toX = (i: number) => PAD.left + (i / (serie.length - 1)) * innerW;
-  const toY = (v: number) => PAD.top + (1 - (v - minV) / rangeV) * innerH;
-
-  const path = serie.map((d, i) => `${i === 0 ? "M" : "L"}${toX(i).toFixed(1)},${toY(d.patrimonio_total).toFixed(1)}`).join(" ");
-  const area = path + ` L${toX(serie.length - 1).toFixed(1)},${(PAD.top + innerH).toFixed(1)} L${PAD.left},${(PAD.top + innerH).toFixed(1)} Z`;
-
-  // Eixo Y — 4 labels
-  const yLabels = [0, 0.33, 0.67, 1].map((f) => ({
-    v: minV + f * rangeV,
-    y: PAD.top + (1 - f) * innerH,
-  }));
-
-  // Eixo X — 5 datas
-  const xCount = 5;
-  const xLabels = Array.from({ length: xCount }, (_, i) => {
-    const idx = Math.round((i / (xCount - 1)) * (serie.length - 1));
-    return { label: serie[idx].data.slice(0, 7), x: toX(idx) };
-  });
-
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: H }}>
-      <defs>
-        <linearGradient id="grad-evo" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#C15F3C" stopOpacity="0.18" />
-          <stop offset="100%" stopColor="#C15F3C" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {/* Grid lines */}
-      {yLabels.map((lbl, i) => (
-        <line key={i} x1={PAD.left} x2={W - PAD.right} y1={lbl.y} y2={lbl.y} stroke="#E5DBC8" strokeWidth="1" />
-      ))}
-      {/* Area */}
-      <path d={area} fill="url(#grad-evo)" />
-      {/* Line */}
-      <path d={path} fill="none" stroke="#C15F3C" strokeWidth="2" />
-      {/* Y labels */}
-      {yLabels.map((lbl, i) => (
-        <text key={i} x={PAD.left - 4} y={lbl.y + 4} textAnchor="end" fill="#A69C88" fontSize="10">
-          {brl(lbl.v)}
-        </text>
-      ))}
-      {/* X labels */}
-      {xLabels.map((lbl, i) => (
-        <text key={i} x={lbl.x} y={H - 4} textAnchor="middle" fill="#A69C88" fontSize="9">
-          {lbl.label}
-        </text>
-      ))}
-    </svg>
-  );
-}
-
 export default function Evolucao() {
   const router = useRouter();
   const { refreshKey } = useRefreshSignal();
@@ -195,6 +137,60 @@ export default function Evolucao() {
 
   const pnlColor = (v: number) => v >= 0 ? "var(--positive)" : "var(--negative)";
 
+  // ─── Séries para os gráficos (lightweight-charts) ────────────────────────
+  const seriePatrimonio = useMemo(() => ({
+    total: serieFiltrada.filter((d) => (d.patrimonio_total || 0) > 0).map((d) => ({ time: d.data, value: d.patrimonio_total })),
+    funcef: serieFiltrada.map((d) => ({ time: d.data, value: d.patrimonio_funcef })),
+    gerida: serieFiltrada.map((d) => ({ time: d.data, value: d.patrimonio_gerida })),
+    twrGerida: serieFiltrada.map((d) => ({ time: d.data, value: Math.round(d.twr_gerida * 100 * 10000) / 10000 })),
+    cdi: serieFiltrada.map((d) => ({ time: d.data, value: Math.round(d.cdi_acum * 100 * 10000) / 10000 })),
+    ibov: serieFiltrada.map((d) => ({ time: d.data, value: Math.round(d.ibov_acum * 100 * 10000) / 10000 })),
+  }), [serieFiltrada]);
+
+  const serieDrawdown = useMemo(
+    () => serieFiltrada
+      .filter((d) => d.drawdown != null)
+      .map((d) => ({ time: d.data, value: Math.round((d.drawdown ?? 0) * 100 * 10000) / 10000 })),
+    [serieFiltrada],
+  );
+
+  const drawdownMax = useMemo(() => {
+    let pior: { valor: number; data: string } | null = null;
+    for (const d of serieFiltrada) {
+      if (d.drawdown == null) continue;
+      if (!pior || d.drawdown < pior.valor) pior = { valor: d.drawdown, data: d.data };
+    }
+    return pior;
+  }, [serieFiltrada]);
+
+  function exportarCSV() {
+    const headers = ["Data", "Patrimônio Total", "Gerida", "FUNCEF", "RV", "TWR Gerida", "TWR Total", "CDI", "IBOV", "Drawdown"];
+    const linhas = serieFiltrada.map((d) => [
+      d.data,
+      d.patrimonio_total,
+      d.patrimonio_gerida,
+      d.patrimonio_funcef,
+      d.patrimonio_rv,
+      (d.twr_gerida * 100).toFixed(4),
+      (d.twr_total * 100).toFixed(4),
+      (d.cdi_acum * 100).toFixed(4),
+      (d.ibov_acum * 100).toFixed(4),
+      d.drawdown != null ? (d.drawdown * 100).toFixed(4) : "",
+    ]);
+    const csv = [headers, ...linhas]
+      .map((row) => row.map((v) => csvEscape(v)).join(","))
+      .join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `evolucao_${filtro}_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="flex min-h-screen" style={{ background: "var(--bg-app)", color: "var(--text-body)" }}>
       <Nav />
@@ -228,8 +224,8 @@ export default function Evolucao() {
 
         {!loading && !error && (
           <>
-            {/* Filtros */}
-            <div className="flex gap-2">
+            {/* Filtros + exportar */}
+            <div className="flex items-center gap-2 flex-wrap">
               {(["3M", "6M", "YTD", "1A", "Tudo"] as Filtro[]).map((f) => {
                 const active = filtro === f;
                 return (
@@ -248,19 +244,30 @@ export default function Evolucao() {
                   </button>
                 );
               })}
+              <button
+                onClick={exportarCSV}
+                disabled={serieFiltrada.length === 0}
+                className="ml-auto rounded-lg px-3.5 py-1.5 text-sm font-medium border disabled:opacity-40 transition"
+                style={{ background: "rgba(193,95,60,0.08)", color: "var(--accent-strong)", borderColor: "rgba(193,95,60,0.4)" }}
+              >
+                ⬇ Exportar CSV
+              </button>
             </div>
 
-            {/* Gráfico */}
+            {/* Gráfico duplo: Patrimônio + TWR */}
             <section
-              className="rounded-xl border overflow-hidden"
+              className="rounded-xl border px-4 py-4"
               style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
             >
-              <div className="px-4 py-2.5 border-b" style={{ borderColor: "var(--border-soft)" }}>
-                <p className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>Patrimônio Total</p>
-              </div>
-              <div className="p-2">
-                <GraficoSVG serie={serieFiltrada} />
-              </div>
+              <h2 className="text-sm font-semibold mb-3" style={{ color: "var(--text-primary)" }}>Patrimônio e TWR</h2>
+              <EvolucaoChart
+                total={seriePatrimonio.total}
+                funcef={seriePatrimonio.funcef}
+                gerida={seriePatrimonio.gerida}
+                twrGerida={seriePatrimonio.twrGerida}
+                cdi={seriePatrimonio.cdi}
+                ibov={seriePatrimonio.ibov}
+              />
             </section>
 
             {/* Comparativos TWR */}
@@ -286,6 +293,23 @@ export default function Evolucao() {
               </section>
             )}
 
+            {/* Drawdown (Underwater) */}
+            {serieDrawdown.length > 0 && (
+              <section
+                className="rounded-xl border px-4 py-4"
+                style={{ borderColor: "var(--border)", background: "var(--bg-card)", boxShadow: cardShadow }}
+              >
+                <h2 className="text-sm font-semibold mb-1" style={{ color: "var(--text-primary)" }}>Drawdown (Underwater)</h2>
+                <p className="text-xs mb-3" style={{ color: "var(--text-faint)" }}>Queda acumulada em relação ao pico anterior do período</p>
+                <DrawdownChart drawdown={serieDrawdown} />
+                {drawdownMax && drawdownMax.valor < 0 && (
+                  <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
+                    Drawdown máximo do período: <strong style={{ color: "var(--negative)", fontFamily: "var(--font-plex-mono)" }}>{pct(drawdownMax.valor)}</strong> em {drawdownMax.data}
+                  </p>
+                )}
+              </section>
+            )}
+
             {/* Tabela mensal com accordion diário */}
             <section
               className="rounded-xl border overflow-hidden"
@@ -302,6 +326,9 @@ export default function Evolucao() {
                     <tr className="border-b text-[10px] uppercase" style={{ borderColor: "var(--border-soft)", color: "var(--text-faint)" }}>
                       <th className="px-4 py-2 text-left">Mês</th>
                       <th className="px-4 py-2 text-right">Patrimônio</th>
+                      <th className="px-4 py-2 text-right">Gerida</th>
+                      <th className="px-4 py-2 text-right">FUNCEF</th>
+                      <th className="px-4 py-2 text-right">RV</th>
                       <th className="px-4 py-2 text-right">Variação R$</th>
                       <th className="px-4 py-2 text-right">TWR Mês</th>
                     </tr>
@@ -322,6 +349,9 @@ export default function Evolucao() {
                               {m.mes}
                             </td>
                             <td className="px-4 py-2 text-right text-xs" style={{ color: "var(--text-body)", fontFamily: "var(--font-plex-mono)" }}>{brl(m.patrimonio)}</td>
+                            <td className="px-4 py-2 text-right text-xs" style={{ color: "var(--text-faint)" }}>—</td>
+                            <td className="px-4 py-2 text-right text-xs" style={{ color: "var(--text-faint)" }}>—</td>
+                            <td className="px-4 py-2 text-right text-xs" style={{ color: "var(--text-faint)" }}>—</td>
                             <td className="px-4 py-2 text-right text-xs" style={{ color: pnlColor(m.variacao), fontFamily: "var(--font-plex-mono)" }}>
                               {m.variacao >= 0 ? "+" : ""}{brl(m.variacao)}
                             </td>
@@ -332,16 +362,18 @@ export default function Evolucao() {
                           {expanded && dias.map((d, i) => {
                             const prev = i > 0 ? dias[i - 1] : null;
                             const varDia = prev ? d.patrimonio_total - prev.patrimonio_total : 0;
-                            const twrDia = prev ? d.twr_total - prev.twr_total : 0;
                             return (
                               <tr key={d.data} className="border-b" style={{ borderColor: "var(--border-soft)", background: "var(--bg-app)" }}>
                                 <td className="pl-10 pr-4 py-1.5 text-[10px]" style={{ color: "var(--text-faint)", fontFamily: "var(--font-plex-mono)" }}>{d.data}</td>
                                 <td className="px-4 py-1.5 text-right text-[10px]" style={{ color: "var(--text-body)", fontFamily: "var(--font-plex-mono)" }}>{brl(d.patrimonio_total)}</td>
+                                <td className="px-4 py-1.5 text-right text-[10px]" style={{ color: "var(--text-muted)", fontFamily: "var(--font-plex-mono)" }}>{brl(d.patrimonio_gerida)}</td>
+                                <td className="px-4 py-1.5 text-right text-[10px]" style={{ color: "var(--text-muted)", fontFamily: "var(--font-plex-mono)" }}>{brl(d.patrimonio_funcef)}</td>
+                                <td className="px-4 py-1.5 text-right text-[10px]" style={{ color: "var(--text-muted)", fontFamily: "var(--font-plex-mono)" }}>{brl(d.patrimonio_rv)}</td>
                                 <td className="px-4 py-1.5 text-right text-[10px]" style={{ color: pnlColor(varDia), fontFamily: "var(--font-plex-mono)" }}>
                                   {i > 0 ? (varDia >= 0 ? "+" : "") + brl(varDia) : "—"}
                                 </td>
-                                <td className="px-4 py-1.5 text-right text-[10px]" style={{ color: pnlColor(twrDia), fontFamily: "var(--font-plex-mono)" }}>
-                                  {i > 0 ? pct(twrDia, 3) : "—"}
+                                <td className="px-4 py-1.5 text-right text-[10px]" style={{ color: pnlColor(d.twr_total), fontFamily: "var(--font-plex-mono)" }}>
+                                  {i > 0 ? pct(d.twr_total - (prev?.twr_total ?? d.twr_total), 3) : "—"}
                                 </td>
                               </tr>
                             );
