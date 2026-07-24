@@ -2,11 +2,12 @@
 
 export const dynamic = "force-dynamic";
 
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Nav from "@/components/Nav";
 import ActionBar from "@/components/ActionBar";
 import { apiFetch, clearToken } from "@/lib/api";
+import { useRefreshSignal } from "@/lib/refresh-context";
 
 interface EvolucaoDiaria {
   data: string;
@@ -149,6 +150,8 @@ function GraficoSVG({ serie }: { serie: EvolucaoDiaria[] }) {
 
 export default function Evolucao() {
   const router = useRouter();
+  const { refreshKey } = useRefreshSignal();
+  const firstLoad = useRef(true);
   const [serie, setSerie] = useState<EvolucaoDiaria[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -158,7 +161,7 @@ export default function Evolucao() {
     const token = localStorage.getItem("carteira_token");
     if (!token) { router.replace("/login"); return; }
     async function load() {
-      setLoading(true);
+      if (firstLoad.current) setLoading(true);
       try {
         const data = await apiFetch<EvolucaoDiaria[]>("/evolucao");
         setSerie(data);
@@ -172,10 +175,11 @@ export default function Evolucao() {
         setError(msg);
       } finally {
         setLoading(false);
+        firstLoad.current = false;
       }
     }
     load();
-  }, [router]);
+  }, [router, refreshKey]);
 
   const [expandedMes, setExpandedMes] = useState<string | null>(null);
   const toggleMes = useCallback((mes: string) => setExpandedMes((prev) => prev === mes ? null : mes), []);

@@ -2,11 +2,12 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import { apiFetch, clearToken } from "@/lib/api";
+import { useRefreshSignal } from "@/lib/refresh-context";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? "https://minhacarteira.duckdns.org/api/v1";
@@ -54,13 +55,15 @@ function descreveCondicao(a: Alerta): string {
 
 export default function Alertas() {
   const router = useRouter();
+  const { refreshKey } = useRefreshSignal();
   const [alertas, setAlertas] = useState<Alerta[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
+  const firstLoad = useRef(true);
 
   async function load() {
-    setLoading(true);
+    if (firstLoad.current) setLoading(true);
     setError(null);
     try {
       const data = await apiFetch<Alerta[]>("/alertas");
@@ -75,6 +78,7 @@ export default function Alertas() {
       setError(msg);
     } finally {
       setLoading(false);
+      firstLoad.current = false;
     }
   }
 
@@ -83,7 +87,7 @@ export default function Alertas() {
     if (!token) { router.replace("/login"); return; }
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refreshKey]);
 
   async function toggle(a: Alerta) {
     setBusy(a.id);

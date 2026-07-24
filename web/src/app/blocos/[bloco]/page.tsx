@@ -2,11 +2,12 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import { apiFetch, clearToken, salaDeComando, type BlocoIPS } from "@/lib/api";
+import { useRefreshSignal } from "@/lib/refresh-context";
 
 interface Posicao {
   ticker: string;
@@ -80,6 +81,8 @@ export default function BlocoPage() {
   const params = useParams<{ bloco: string }>();
   const bloco = (params?.bloco ?? "").toUpperCase();
   const router = useRouter();
+  const { refreshKey } = useRefreshSignal();
+  const firstLoad = useRef(true);
   const [posicoes, setPosicoes] = useState<Posicao[]>([]);
   const [blocoInfo, setBlocoInfo] = useState<BlocoIPS | null>(null);
   const [loading, setLoading] = useState(true);
@@ -89,7 +92,7 @@ export default function BlocoPage() {
     const token = localStorage.getItem("carteira_token");
     if (!token) { router.replace("/login"); return; }
     async function load() {
-      setLoading(true);
+      if (firstLoad.current) setLoading(true);
       try {
         const [posData, sdData] = await Promise.all([
           apiFetch<Posicao[]>("/posicoes"),
@@ -111,10 +114,11 @@ export default function BlocoPage() {
         setError(msg);
       } finally {
         setLoading(false);
+        firstLoad.current = false;
       }
     }
     load();
-  }, [bloco, router]);
+  }, [bloco, router, refreshKey]);
 
   const totalValor = posicoes.reduce((s, p) => s + p.valor_atual, 0);
   const pnlColor = (v: number) => v >= 0 ? "var(--positive)" : "var(--negative)";

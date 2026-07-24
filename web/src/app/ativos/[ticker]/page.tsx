@@ -2,11 +2,12 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import { apiFetch, clearToken } from "@/lib/api";
+import { useRefreshSignal } from "@/lib/refresh-context";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? "https://minhacarteira.duckdns.org/api/v1";
@@ -149,6 +150,8 @@ export default function DetalheAtivo() {
   const params = useParams<{ ticker: string }>();
   const ticker = (params?.ticker ?? "").toUpperCase();
   const router = useRouter();
+  const { refreshKey } = useRefreshSignal();
+  const firstLoad = useRef(true);
   const [data, setData] = useState<AtivoData | null>(null);
   const [teses, setTeses] = useState<Tese[]>([]);
   const [loading, setLoading] = useState(true);
@@ -160,7 +163,7 @@ export default function DetalheAtivo() {
     if (!ticker) return;
 
     async function load() {
-      setLoading(true);
+      if (firstLoad.current) setLoading(true);
       setError(null);
       try {
         const [ativoData, tesData] = await Promise.all([
@@ -179,10 +182,11 @@ export default function DetalheAtivo() {
         setError(msg);
       } finally {
         setLoading(false);
+        firstLoad.current = false;
       }
     }
     load();
-  }, [ticker, router]);
+  }, [ticker, router, refreshKey]);
 
   const pnlColor = (v?: number) => (v == null ? "var(--text-primary)" : v >= 0 ? "var(--positive)" : "var(--negative)");
   const pos = data?.posicao;

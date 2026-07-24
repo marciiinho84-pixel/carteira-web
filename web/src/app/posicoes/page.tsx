@@ -2,11 +2,12 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Nav from "@/components/Nav";
 import ActionBar from "@/components/ActionBar";
 import { apiFetch, clearToken } from "@/lib/api";
+import { useRefreshSignal } from "@/lib/refresh-context";
 
 interface Posicao {
   ticker: string;
@@ -106,6 +107,8 @@ function togglePill(set: Set<string>, v: string): Set<string> {
 
 export default function Posicoes() {
   const router = useRouter();
+  const { refreshKey } = useRefreshSignal();
+  const firstLoad = useRef(true);
   const [posicoes, setPosicoes] = useState<Posicao[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -120,7 +123,7 @@ export default function Posicoes() {
     const token = localStorage.getItem("carteira_token");
     if (!token) { router.replace("/login"); return; }
     async function load() {
-      setLoading(true);
+      if (firstLoad.current) setLoading(true);
       try {
         const data = await apiFetch<Posicao[]>("/posicoes");
         setPosicoes(data.filter((p) => (p.valor_atual ?? 0) > 0));
@@ -134,10 +137,11 @@ export default function Posicoes() {
         setError(msg);
       } finally {
         setLoading(false);
+        firstLoad.current = false;
       }
     }
     load();
-  }, [router]);
+  }, [router, refreshKey]);
 
   const familiasDisponiveis = useMemo(
     () => Array.from(new Set(posicoes.map((p) => p.familia).filter((f): f is string => !!f))).sort(),

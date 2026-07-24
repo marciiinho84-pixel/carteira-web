@@ -8,6 +8,7 @@ import Link from "next/link";
 import Nav from "@/components/Nav";
 import ActionBar from "@/components/ActionBar";
 import { apiFetch, clearToken } from "@/lib/api";
+import { useRefreshSignal } from "@/lib/refresh-context";
 import PosicoesHeatmap, { type PosicaoHeat } from "./PosicoesHeatmap";
 import TreemapSetorial, { type SetorDetalhado } from "./TreemapSetorial";
 import PerformanceRVChart, { type Marcador } from "./PerformanceRVChart";
@@ -138,6 +139,7 @@ const THRESH_CRITICO = -0.25;
 
 export default function RendaVariavel() {
   const router = useRouter();
+  const { refreshKey } = useRefreshSignal();
   const [rv, setRv] = useState<CarteiraRV | null>(null);
   const [posicoes, setPosicoes] = useState<Posicao[]>([]);
   const [evolucao, setEvolucao] = useState<EvolucaoDiaria[]>([]);
@@ -184,7 +186,7 @@ export default function RendaVariavel() {
     const token = localStorage.getItem("carteira_token");
     if (!token) { router.replace("/login"); return; }
     load();
-  }, [router]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [router, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function addWatchlist() {
     if (!wlTicker.trim() || !wlAlvo) return;

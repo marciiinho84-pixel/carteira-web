@@ -2,12 +2,13 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import ActionBar from "@/components/ActionBar";
 import { apiFetch, clearToken, salaDeComando, type BlocoIPS } from "@/lib/api";
+import { useRefreshSignal } from "@/lib/refresh-context";
 
 interface Posicao {
   ticker: string;
@@ -43,6 +44,8 @@ const cardShadow = "0 1px 3px rgba(61,54,41,0.06)";
 
 export default function Risco() {
   const router = useRouter();
+  const { refreshKey } = useRefreshSignal();
+  const firstLoad = useRef(true);
   const [posicoes, setPosicoes] = useState<Posicao[]>([]);
   const [totalFuncef, setTotalFuncef] = useState<number>(0);
   const [blocos, setBlocos] = useState<BlocoIPS[]>([]);
@@ -54,7 +57,7 @@ export default function Risco() {
     const token = localStorage.getItem("carteira_token");
     if (!token) { router.replace("/login"); return; }
     async function load() {
-      setLoading(true);
+      if (firstLoad.current) setLoading(true);
       try {
         const [pos, sd] = await Promise.all([
           apiFetch<Posicao[]>("/posicoes"),
@@ -88,10 +91,11 @@ export default function Risco() {
         setError(msg);
       } finally {
         setLoading(false);
+        firstLoad.current = false;
       }
     }
     load();
-  }, [router]);
+  }, [router, refreshKey]);
 
   const total = posicoes.reduce((s, p) => s + p.valor_atual, 0);
   const top5 = [...posicoes]

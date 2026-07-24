@@ -2,11 +2,12 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import { apiFetch, clearToken } from "@/lib/api";
+import { useRefreshSignal } from "@/lib/refresh-context";
 import FormularioTese from "@/components/maestro/FormularioTese";
 
 interface Tese {
@@ -46,6 +47,8 @@ const cardShadow = "0 1px 3px rgba(61,54,41,0.06)";
 
 export default function Teses() {
   const router = useRouter();
+  const { refreshKey } = useRefreshSignal();
+  const firstLoad = useRef(true);
   const [teses, setTeses] = useState<Tese[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +56,7 @@ export default function Teses() {
   const [showForm, setShowForm] = useState(false);
 
   async function load() {
-    setLoading(true);
+    if (firstLoad.current) setLoading(true);
     try {
       const data = await apiFetch<Tese[]>("/teses");
       setTeses(data);
@@ -67,6 +70,7 @@ export default function Teses() {
       setError(msg);
     } finally {
       setLoading(false);
+      firstLoad.current = false;
     }
   }
 
@@ -74,7 +78,7 @@ export default function Teses() {
     const token = localStorage.getItem("carteira_token");
     if (!token) { router.replace("/login"); return; }
     load();
-  }, [router]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [router, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtered = filtroBloco === "Todos"
     ? teses

@@ -8,6 +8,7 @@ import Link from "next/link";
 import Nav from "@/components/Nav";
 import ActionBar from "@/components/ActionBar";
 import { apiFetch, clearToken } from "@/lib/api";
+import { useRefreshSignal } from "@/lib/refresh-context";
 import PatrimonioChart from "./PatrimonioChart";
 
 interface Alerta { nivel: string; ativo: string; mensagem: string }
@@ -183,6 +184,7 @@ function AlocacaoDonut({ dados }: { dados: { nome: string; valor: number }[] }) 
 
 export default function Dashboard() {
   const router = useRouter();
+  const { refreshKey } = useRefreshSignal();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -211,7 +213,7 @@ export default function Dashboard() {
     apiFetch<IrMensalRow[]>("/ir-mensal").then(setIrMensal).catch(() => setIrMensal([]));
     apiFetch<ProventosProjetados>("/proventos-projetados").then(setProventos).catch(() => setProventos(null));
     apiFetch<DecisaoPendente[]>("/decisoes/pendentes").then(setDecisoes).catch(() => setDecisoes([]));
-  }, [router]);
+  }, [router, refreshKey]);
 
   const nivelCor: Record<string, string> = { CRITICO: red, ATENCAO: amber, OK: green };
 

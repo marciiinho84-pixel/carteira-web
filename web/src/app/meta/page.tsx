@@ -2,10 +2,11 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Nav from "@/components/Nav";
 import { apiFetch, clearToken, salaDeComando, type Meta } from "@/lib/api";
+import { useRefreshSignal } from "@/lib/refresh-context";
 
 interface MetaOut {
   patrimonio_atual: number;
@@ -117,6 +118,8 @@ function GraficoProjecao({
 
 export default function MetaPage() {
   const router = useRouter();
+  const { refreshKey } = useRefreshSignal();
+  const firstLoad = useRef(true);
   const [metaData, setMetaData] = useState<MetaOut | null>(null);
   const [sdMeta, setSdMeta] = useState<Meta | null>(null);
   const [loading, setLoading] = useState(true);
@@ -128,7 +131,7 @@ export default function MetaPage() {
     const token = localStorage.getItem("carteira_token");
     if (!token) { router.replace("/login"); return; }
     async function load() {
-      setLoading(true);
+      if (firstLoad.current) setLoading(true);
       try {
         const [md, sd] = await Promise.all([
           apiFetch<MetaOut>("/meta"),
@@ -146,10 +149,11 @@ export default function MetaPage() {
         setError(msg);
       } finally {
         setLoading(false);
+        firstLoad.current = false;
       }
     }
     load();
-  }, [router]);
+  }, [router, refreshKey]);
 
   const META = metaData?.meta ?? 3_000_000;
   const patAtual = metaData?.patrimonio_atual ?? sdMeta?.patrimonio_atual ?? 0;

@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { useRefreshSignal } from "@/lib/refresh-context";
 
 export default function ActionBar() {
   const [updating, setUpdating] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
   const [ok, setOk] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const { triggerRefresh } = useRefreshSignal();
 
   function flash(msg: string, isErr = false) {
     if (isErr) { setErr(msg); setTimeout(() => setErr(null), 5000); }
@@ -19,6 +21,7 @@ export default function ActionBar() {
     try {
       await apiFetch("/calcular", { method: "POST" });
       flash("Cotações atualizadas e carteira recalculada!");
+      triggerRefresh();
     } catch (e) { flash(e instanceof Error ? e.message : "Erro", true); }
     finally { setUpdating(false); }
   }
@@ -28,6 +31,7 @@ export default function ActionBar() {
     try {
       await apiFetch("/calcular?no_api=true", { method: "POST" });
       flash("Carteira recalculada!");
+      triggerRefresh();
     } catch (e) { flash(e instanceof Error ? e.message : "Erro", true); }
     finally { setRecalculating(false); }
   }
